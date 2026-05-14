@@ -1,202 +1,323 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { api } from '../api'
 import { useAuth } from '../App'
-import Modal from './Modal'
 import { DISPOSITIONS, LEAD_SOURCES, ORDER_SOURCES, PPC_OPTIONS, VERIFICATION_OPTIONS } from './Badges'
 
+const BRAND = '#00D4C8'
 const TYPES = [
-  { value: 'lead',         label: '◎ Lead' },
-  { value: 'repeat',       label: '↻ Repeat Inquiry' },
-  { value: 'online_order', label: '◈ Online Order' },
+  { value: 'lead',         label: '◎ Lead',         color: '#3b82f6' },
+  { value: 'repeat',       label: '↻ Repeat',        color: '#6366f1' },
+  { value: 'online_order', label: '◈ Online Order',  color: '#f59e0b' },
 ]
+
+// Inline input style
+const inp = {
+  width: '100%', boxSizing: 'border-box',
+  background: '#fff', border: '1px solid #e2e8f0',
+  borderRadius: '12px', padding: '10px 14px',
+  fontSize: '13px', color: '#0f172a', fontFamily: '"Plus Jakarta Sans", sans-serif',
+  outline: 'none', transition: 'border 0.15s, box-shadow 0.15s',
+}
+const inpFocus = { border: `1px solid ${BRAND}`, boxShadow: `0 0 0 3px rgba(0,212,200,0.12)` }
+
+function Field({ label, children }) {
+  return (
+    <div style={{ marginBottom: '14px' }}>
+      <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '6px' }}>{label}</div>
+      {children}
+    </div>
+  )
+}
+
+function StyledInput({ value, onChange, placeholder, type = 'text' }) {
+  const [focused, setFocused] = useState(false)
+  return (
+    <input type={type} value={value} onChange={onChange} placeholder={placeholder}
+      style={{ ...inp, ...(focused ? inpFocus : {}) }}
+      onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} />
+  )
+}
+
+function StyledSelect({ value, onChange, children }) {
+  const [focused, setFocused] = useState(false)
+  return (
+    <select value={value} onChange={onChange}
+      style={{ ...inp, cursor: 'pointer', ...(focused ? inpFocus : {}) }}
+      onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}>
+      {children}
+    </select>
+  )
+}
+
+function StyledTextarea({ value, onChange, placeholder, rows = 2 }) {
+  const [focused, setFocused] = useState(false)
+  return (
+    <textarea value={value} onChange={onChange} placeholder={placeholder} rows={rows}
+      style={{ ...inp, resize: 'none', ...(focused ? inpFocus : {}) }}
+      onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} />
+  )
+}
 
 export default function NewInquiryModal({ defaultType = 'lead', customerId, onClose, onCreated }) {
   const { user } = useAuth()
   const [users, setUsers] = useState([])
   const [customers, setCustomers] = useState([])
-  const [form, setForm] = useState({
-    customer_id: customerId || '',
-    type: defaultType,
-    disposition: defaultType === 'online_order' ? 'Processed' : 'Initial Contact',
-    assigned_to: user.id,
-    notes: '',
-    ppc_or_outbound: '',
-    order_amount: '',
-    order_ref: '', // Verification for online orders
-  })
+  const [type, setType] = useState(defaultType)
+  const [disposition, setDisposition] = useState(defaultType === 'online_order' ? 'Processed' : 'Initial Contact')
+  const [assignedTo, setAssignedTo] = useState(String(user.id))
+  const [notes, setNotes] = useState('')
+  const [ppcOrOutbound, setPpcOrOutbound] = useState('')
+  const [orderAmount, setOrderAmount] = useState('')
+  const [verification, setVerification] = useState('')
+  const [selectedCustomerId, setSelectedCustomerId] = useState(customerId ? String(customerId) : '')
   const [requirements, setRequirements] = useState([{ part_number: '', quantity: '' }])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [newCustomer, setNewCustomer] = useState(false)
-  const [custForm, setCustForm] = useState({ name: '', email: '', phone: '', company: '', lead_source: '' })
+  const [newCustomer, setNewCustomer] = useState(!customerId)
+  const [custName, setCustName] = useState('')
+  const [custEmail, setCustEmail] = useState('')
+  const [custPhone, setCustPhone] = useState('')
+  const [custCompany, setCustCompany] = useState('')
+  const [custSource, setCustSource] = useState('')
 
   useEffect(() => {
     api.getUsers().then(setUsers)
     if (!customerId) api.getCustomers().then(setCustomers)
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = '' }
   }, [])
 
-  const setF = (k, v) => setForm(f => ({ ...f, [k]: v }))
-  const addReq = () => setRequirements(r => [...r, { part_number: '', quantity: '' }])
-  const updateReq = (i, k, v) => setRequirements(r => r.map((x, idx) => idx === i ? { ...x, [k]: v } : x))
-  const removeReq = (i) => setRequirements(r => r.filter((_, idx) => idx !== i))
-
-  const handleTypeChange = (type) => {
-    setF('type', type)
-    setF('disposition', type === 'online_order' ? 'Processed' : 'Initial Contact')
+  const handleTypeChange = (t) => {
+    setType(t)
+    setDisposition(t === 'online_order' ? 'Processed' : 'Initial Contact')
   }
+
+  const addReq = () => setRequirements(r => [...r, { part_number: '', quantity: '' }])
+  const removeReq = (i) => setRequirements(r => r.filter((_, idx) => idx !== i))
+  const updateReq = (i, k, v) => setRequirements(r => r.map((x, idx) => idx === i ? { ...x, [k]: v } : x))
 
   const handleSubmit = async () => {
     setSaving(true); setError('')
     try {
-      let cid = form.customer_id
-      if (newCustomer) {
-        if (!custForm.name.trim()) throw new Error('Customer name is required')
-        const c = await api.createCustomer({ ...custForm, assigned_to: form.assigned_to })
+      let cid = customerId || selectedCustomerId
+      if (!customerId && newCustomer) {
+        if (!custName.trim()) throw new Error('Customer name is required')
+        const c = await api.createCustomer({
+          name: custName, email: custEmail, phone: custPhone,
+          company: custCompany, lead_source: custSource,
+          assigned_to: assignedTo,
+        })
         cid = c.id
       }
       if (!cid) throw new Error('Please select or create a customer')
       const validReqs = requirements.filter(r => r.part_number.trim())
-      await api.createInquiry({ ...form, customer_id: cid, requirements: validReqs })
+      await api.createInquiry({
+        customer_id: cid, type, disposition,
+        assigned_to: user.role === 'ae' ? user.id : assignedTo,
+        notes, ppc_or_outbound: ppcOrOutbound,
+        order_amount: orderAmount, order_ref: verification,
+        requirements: validReqs,
+      })
       onCreated()
     } catch (e) { setError(e.message) }
     finally { setSaving(false) }
   }
 
-  const sourcesForType = form.type === 'online_order' ? ORDER_SOURCES : LEAD_SOURCES
+  const sourcesForType = type === 'online_order' ? ORDER_SOURCES : LEAD_SOURCES
+  const dispositionsForType = type === 'online_order'
+    ? ['Processed', 'Cancelled']
+    : DISPOSITIONS.filter(d => d !== 'Processed' && d !== 'Cancelled')
 
-  return (
-    <Modal title="New Inquiry" onClose={onClose} wide>
-      <div className="space-y-4">
-        {/* Type */}
-        <div>
-          <label className="text-xs font-bold text-ink-600 uppercase tracking-widest mb-2 block">Type</label>
-          <div className="flex gap-2">
-            {TYPES.map(t => (
-              <button key={t.value} type="button" onClick={() => handleTypeChange(t.value)}
-                className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-all ${form.type === t.value ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-ink-200 text-ink-500 hover:border-ink-300'}`}>
-                {t.label}
-              </button>
-            ))}
+  const modal = (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 99999,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '16px',
+        background: 'rgba(0,0,0,0.55)',
+        backdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: '#ffffff', borderRadius: '20px',
+          boxShadow: '0 24px 80px rgba(0,0,0,0.25), 0 0 0 1px rgba(0,0,0,0.06)',
+          width: '100%', maxWidth: '640px', maxHeight: '90vh',
+          overflowY: 'auto', position: 'relative',
+          animation: 'modalIn 0.18s ease-out',
+          fontFamily: '"Plus Jakarta Sans", sans-serif',
+        }}
+      >
+        <style>{`@keyframes modalIn { from { opacity:0; transform:scale(0.96) translateY(8px); } to { opacity:1; transform:scale(1) translateY(0); } }`}</style>
+
+        {/* Header */}
+        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, background: '#fff', zIndex: 10, borderRadius: '20px 20px 0 0' }}>
+          <div style={{ fontFamily: '"Bricolage Grotesque", sans-serif', fontWeight: 700, fontSize: '16px', color: '#0f172a' }}>
+            New Inquiry
           </div>
+          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 10, border: 'none', background: '#f1f5f9', cursor: 'pointer', fontSize: 18, color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
         </div>
 
-        {/* Customer */}
-        {!customerId && (
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-bold text-ink-600 uppercase tracking-widest">Customer</label>
-              <button type="button" onClick={() => setNewCustomer(!newCustomer)} className="text-xs text-brand-600 font-semibold hover:text-brand-700">
-                {newCustomer ? '← Select existing' : '+ New customer'}
+        <div style={{ padding: '20px 24px 24px' }}>
+          {/* Type selector */}
+          <Field label="Type">
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {TYPES.map(t => (
+                <button key={t.value} type="button" onClick={() => handleTypeChange(t.value)}
+                  style={{
+                    flex: 1, padding: '10px 8px', borderRadius: '12px', border: '2px solid',
+                    borderColor: type === t.value ? t.color : '#e2e8f0',
+                    background: type === t.value ? `${t.color}12` : '#fff',
+                    color: type === t.value ? t.color : '#64748b',
+                    fontWeight: 600, fontSize: '12px', cursor: 'pointer',
+                    transition: 'all 0.15s', fontFamily: '"Plus Jakarta Sans", sans-serif',
+                  }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </Field>
+
+          {/* Customer */}
+          {!customerId && (
+            <Field label={
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>Customer</span>
+                <button type="button" onClick={() => setNewCustomer(!newCustomer)}
+                  style={{ fontSize: '11px', color: BRAND, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', textTransform: 'none', letterSpacing: 0 }}>
+                  {newCustomer ? '← Select existing' : '+ New customer'}
+                </button>
+              </div>
+            }>
+              {newCustomer ? (
+                <div style={{ background: '#f8fafc', borderRadius: '14px', padding: '14px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <StyledInput value={custName} onChange={e => setCustName(e.target.value)} placeholder="Full name *" />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <StyledInput value={custEmail} onChange={e => setCustEmail(e.target.value)} placeholder="Email" type="email" />
+                    <StyledInput value={custPhone} onChange={e => setCustPhone(e.target.value)} placeholder="Phone" />
+                  </div>
+                  <StyledInput value={custCompany} onChange={e => setCustCompany(e.target.value)} placeholder="Company" />
+                  <StyledSelect value={custSource} onChange={e => setCustSource(e.target.value)}>
+                    <option value="">Lead source</option>
+                    {sourcesForType.map(s => <option key={s}>{s}</option>)}
+                  </StyledSelect>
+                </div>
+              ) : (
+                <StyledSelect value={selectedCustomerId} onChange={e => setSelectedCustomerId(e.target.value)}>
+                  <option value="">Select a customer...</option>
+                  {customers.map(c => <option key={c.id} value={String(c.id)}>{c.name}{c.company ? ` — ${c.company}` : ''}</option>)}
+                </StyledSelect>
+              )}
+            </Field>
+          )}
+
+          {/* Part Numbers */}
+          <Field label={
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>Part Numbers</span>
+              <button type="button" onClick={addReq}
+                style={{ fontSize: '11px', color: BRAND, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', textTransform: 'none', letterSpacing: 0 }}>
+                + Add row
               </button>
             </div>
-            {newCustomer ? (
-              <div className="space-y-2 bg-surface-50 rounded-xl p-3 border">
-                <input className="input" placeholder="Full name *" value={custForm.name} onChange={e => setCustForm(f => ({ ...f, name: e.target.value }))} />
-                <div className="grid grid-cols-2 gap-2">
-                  <input className="input" placeholder="Email" value={custForm.email} onChange={e => setCustForm(f => ({ ...f, email: e.target.value }))} />
-                  <input className="input" placeholder="Phone" value={custForm.phone} onChange={e => setCustForm(f => ({ ...f, phone: e.target.value }))} />
+          }>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {requirements.map((r, i) => (
+                <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <div style={{ flex: 1 }}>
+                    <StyledInput value={r.part_number} onChange={e => updateReq(i, 'part_number', e.target.value)} placeholder="Part number / SKU" />
+                  </div>
+                  <div style={{ width: '100px' }}>
+                    <StyledInput value={r.quantity} onChange={e => updateReq(i, 'quantity', e.target.value)} placeholder="Qty" />
+                  </div>
+                  {requirements.length > 1 && (
+                    <button type="button" onClick={() => removeReq(i)}
+                      style={{ width: 32, height: 40, border: 'none', background: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>×</button>
+                  )}
                 </div>
-                <input className="input" placeholder="Company" value={custForm.company} onChange={e => setCustForm(f => ({ ...f, company: e.target.value }))} />
-                <select className="input" value={custForm.lead_source} onChange={e => setCustForm(f => ({ ...f, lead_source: e.target.value }))}>
-                  <option value="">Lead source</option>
-                  {sourcesForType.map(s => <option key={s}>{s}</option>)}
-                </select>
-              </div>
-            ) : (
-              <select className="input" value={form.customer_id} onChange={e => setF('customer_id', e.target.value)}>
-                <option value="">Select customer</option>
-                {customers.map(c => <option key={c.id} value={c.id}>{c.name}{c.company ? ` — ${c.company}` : ''}</option>)}
-              </select>
+              ))}
+            </div>
+          </Field>
+
+          {/* Disposition + Assign */}
+          <div style={{ display: 'grid', gridTemplateColumns: user.role === 'manager' ? '1fr 1fr' : '1fr', gap: '12px', marginBottom: '14px' }}>
+            <Field label={type === 'online_order' ? 'Status' : 'Disposition'}>
+              <StyledSelect value={disposition} onChange={e => setDisposition(e.target.value)}>
+                {dispositionsForType.map(d => <option key={d}>{d}</option>)}
+              </StyledSelect>
+            </Field>
+            {user.role === 'manager' && (
+              <Field label="Assign to">
+                <StyledSelect value={assignedTo} onChange={e => setAssignedTo(e.target.value)}>
+                  {users.map(u => <option key={u.id} value={String(u.id)}>{u.name}</option>)}
+                </StyledSelect>
+              </Field>
             )}
           </div>
-        )}
 
-        {/* Part Numbers */}
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <label className="text-xs font-bold text-ink-600 uppercase tracking-widest">Part Numbers</label>
-            <button type="button" onClick={addReq} className="text-xs text-brand-600 font-semibold">+ Add row</button>
-          </div>
-          <div className="space-y-2">
-            {requirements.map((r, i) => (
-              <div key={i} className="flex gap-2">
-                <input className="input flex-1" placeholder="Part number" value={r.part_number} onChange={e => updateReq(i, 'part_number', e.target.value)} />
-                <input className="input w-28" placeholder="Qty" value={r.quantity} onChange={e => updateReq(i, 'quantity', e.target.value)} />
-                {requirements.length > 1 && <button type="button" onClick={() => removeReq(i)} className="btn-icon text-red-400 hover:text-red-600 text-lg">×</button>}
-              </div>
-            ))}
-          </div>
-        </div>
+          {/* Type-specific fields */}
+          {type === 'repeat' && (
+            <Field label="PPC or Outbound Repeat">
+              <StyledSelect value={ppcOrOutbound} onChange={e => setPpcOrOutbound(e.target.value)}>
+                <option value="">Select...</option>
+                {PPC_OPTIONS.map(o => <option key={o}>{o}</option>)}
+              </StyledSelect>
+            </Field>
+          )}
 
-        {/* Disposition + Assign */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs font-bold text-ink-600 uppercase tracking-widest mb-1.5 block">
-              {form.type === 'online_order' ? 'Status' : 'Disposition'}
-            </label>
-            <select className="input" value={form.disposition} onChange={e => setF('disposition', e.target.value)}>
-              {form.type === 'online_order'
-                ? ['Processed', 'Cancelled'].map(d => <option key={d}>{d}</option>)
-                : DISPOSITIONS.filter(d => d !== 'Processed' && d !== 'Cancelled').map(d => <option key={d}>{d}</option>)}
-            </select>
-          </div>
-          {user.role === 'manager' && (
-            <div>
-              <label className="text-xs font-bold text-ink-600 uppercase tracking-widest mb-1.5 block">Assign to</label>
-              <select className="input" value={form.assigned_to} onChange={e => setF('assigned_to', e.target.value)}>
-                {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-              </select>
+          {type === 'online_order' && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+              <Field label="Source">
+                <StyledSelect value={custSource} onChange={e => setCustSource(e.target.value)}>
+                  <option value="">Select...</option>
+                  {ORDER_SOURCES.map(s => <option key={s}>{s}</option>)}
+                </StyledSelect>
+              </Field>
+              <Field label="Verification">
+                <StyledSelect value={verification} onChange={e => setVerification(e.target.value)}>
+                  <option value="">Select...</option>
+                  {VERIFICATION_OPTIONS.map(v => <option key={v}>{v}</option>)}
+                </StyledSelect>
+              </Field>
+              <Field label="Order Amount">
+                <StyledInput value={orderAmount} onChange={e => setOrderAmount(e.target.value)} placeholder="e.g. 500" />
+              </Field>
             </div>
           )}
-        </div>
 
-        {/* Type-specific fields */}
-        {form.type === 'repeat' && (
-          <div>
-            <label className="text-xs font-bold text-ink-600 uppercase tracking-widest mb-1.5 block">PPC or Outbound Repeat</label>
-            <select className="input" value={form.ppc_or_outbound} onChange={e => setF('ppc_or_outbound', e.target.value)}>
-              <option value="">Select...</option>
-              {PPC_OPTIONS.map(o => <option key={o}>{o}</option>)}
-            </select>
+          {/* Comments */}
+          <Field label="Comments">
+            <StyledTextarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Add any notes or comments..." rows={2} />
+          </Field>
+
+          {/* Error */}
+          {error && (
+            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '12px', padding: '10px 14px', fontSize: '13px', color: '#dc2626', marginBottom: '14px' }}>
+              ⚠ {error}
+            </div>
+          )}
+
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button onClick={onClose}
+              style={{ flex: 1, padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', background: '#fff', color: '#475569', fontWeight: 600, fontSize: '14px', cursor: 'pointer', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+              Cancel
+            </button>
+            <button onClick={handleSubmit} disabled={saving}
+              style={{ flex: 2, padding: '12px', borderRadius: '12px', border: 'none', background: saving ? '#94a3b8' : BRAND, color: '#0d0d0d', fontWeight: 700, fontSize: '14px', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: '"Plus Jakarta Sans", sans-serif', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+              {saving ? (
+                <><div style={{ width: 14, height: 14, borderRadius: '50%', border: '2px solid #0d0d0d', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />Creating...</>
+              ) : `Create ${type === 'lead' ? 'Lead' : type === 'repeat' ? 'Repeat Inquiry' : 'Online Order'}`}
+            </button>
           </div>
-        )}
-
-        {form.type === 'online_order' && (
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-bold text-ink-600 uppercase tracking-widest mb-1.5 block">Source</label>
-              <select className="input" value={custForm.lead_source} onChange={e => setCustForm(f => ({ ...f, lead_source: e.target.value }))}>
-                <option value="">Select source</option>
-                {ORDER_SOURCES.map(s => <option key={s}>{s}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-bold text-ink-600 uppercase tracking-widest mb-1.5 block">Verification</label>
-              <select className="input" value={form.order_ref} onChange={e => setF('order_ref', e.target.value)}>
-                <option value="">Select...</option>
-                {VERIFICATION_OPTIONS.map(v => <option key={v}>{v}</option>)}
-              </select>
-            </div>
-            <div className="col-span-2">
-              <label className="text-xs font-bold text-ink-600 uppercase tracking-widest mb-1.5 block">Order Amount</label>
-              <input className="input" placeholder="e.g. $500" value={form.order_amount} onChange={e => setF('order_amount', e.target.value)} />
-            </div>
-          </div>
-        )}
-
-        {/* Comments */}
-        <div>
-          <label className="text-xs font-bold text-ink-600 uppercase tracking-widest mb-1.5 block">Comments</label>
-          <textarea className="input resize-none" rows={2} placeholder="Add comments..." value={form.notes} onChange={e => setF('notes', e.target.value)} />
-        </div>
-
-        {error && <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-3 py-2.5 rounded-xl">{error}</div>}
-
-        <div className="flex gap-2 pt-1">
-          <button onClick={onClose} className="btn-secondary flex-1">Cancel</button>
-          <button onClick={handleSubmit} disabled={saving} className="btn-primary flex-1">{saving ? 'Creating...' : 'Create'}</button>
         </div>
       </div>
-    </Modal>
+    </div>
   )
+
+  return createPortal(modal, document.body)
 }

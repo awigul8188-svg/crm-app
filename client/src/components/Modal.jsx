@@ -1,22 +1,78 @@
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 
 export default function Modal({ title, onClose, children, wide }) {
   useEffect(() => {
     const handler = (e) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
+    document.addEventListener('keydown', handler)
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', handler)
+      document.body.style.overflow = ''
+    }
   }, [])
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-ink-900/50 backdrop-blur-sm" onClick={onClose} />
-      <div className={`relative bg-white rounded-2xl shadow-modal w-full ${wide ? 'max-w-2xl' : 'max-w-md'} max-h-[90vh] overflow-y-auto fade-in`}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <h3 className="font-display font-bold text-base text-ink-900">{title}</h3>
-          <button onClick={onClose} className="btn-icon text-ink-400 hover:text-ink-600 text-lg leading-none">×</button>
+  return createPortal(
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 99999,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '16px',
+        background: 'rgba(0,0,0,0.55)',
+        backdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: '#ffffff',
+          borderRadius: '20px',
+          boxShadow: '0 24px 80px rgba(0,0,0,0.25), 0 0 0 1px rgba(0,0,0,0.06)',
+          width: '100%',
+          maxWidth: wide ? '680px' : '480px',
+          maxHeight: '90vh',
+          overflowY: 'auto',
+          position: 'relative',
+          animation: 'modalIn 0.18s ease-out',
+        }}
+      >
+        {/* Header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '20px 24px 16px',
+          borderBottom: '1px solid #f1f5f9',
+          position: 'sticky', top: 0, background: '#fff', zIndex: 1,
+          borderRadius: '20px 20px 0 0',
+        }}>
+          <div style={{ fontFamily: '"Bricolage Grotesque", sans-serif', fontWeight: 700, fontSize: '16px', color: '#0f172a' }}>{title}</div>
+          <button
+            onClick={onClose}
+            style={{
+              width: '32px', height: '32px', borderRadius: '10px', border: 'none',
+              background: '#f1f5f9', cursor: 'pointer', fontSize: '18px', color: '#64748b',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => e.target.style.background = '#e2e8f0'}
+            onMouseLeave={e => e.target.style.background = '#f1f5f9'}
+          >×</button>
         </div>
-        <div className="px-6 py-5">{children}</div>
+
+        {/* Body */}
+        <div style={{ padding: '20px 24px 24px' }}>
+          {children}
+        </div>
       </div>
-    </div>
+
+      <style>{`
+        @keyframes modalIn {
+          from { opacity: 0; transform: scale(0.96) translateY(8px); }
+          to   { opacity: 1; transform: scale(1) translateY(0); }
+        }
+      `}</style>
+    </div>,
+    document.body
   )
 }
