@@ -9,6 +9,7 @@ import InquiryDetail from './pages/InquiryDetail'
 import CustomerDetail from './pages/CustomerDetail'
 import Users from './pages/Users'
 import ImportData from './pages/ImportData'
+import Notifications from './pages/Notifications'
 
 export const AuthContext = createContext(null)
 export const useAuth = () => useContext(AuthContext)
@@ -43,7 +44,7 @@ export default function App() {
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-surface-50">
-      <div className="w-8 h-8 border-2 border-brand-400 border-t-transparent rounded-full spinner" />
+      <div className="w-8 h-8 border-2 border-t-transparent rounded-full spinner" style={{ borderColor: '#00D4C8 transparent transparent' }} />
     </div>
   )
 
@@ -64,6 +65,7 @@ export default function App() {
       case 'inquiry-detail':  return <InquiryDetail id={page.params.id} />
       case 'users':           return user.role === 'manager' ? <Users /> : <Dashboard />
       case 'import':          return user.role === 'manager' ? <ImportData /> : <Dashboard />
+      case 'notifications':   return <Notifications />
       default:                return <Dashboard />
     }
   }

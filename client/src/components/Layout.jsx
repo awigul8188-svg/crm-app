@@ -1,5 +1,7 @@
+import { useState, useEffect } from 'react'
 import { useAuth } from '../App'
 import { useNav } from '../App'
+import { api } from '../api'
 
 function TALogo({ size = 36 }) {
   return (
@@ -23,6 +25,22 @@ const NAV = [
 export default function Layout({ children }) {
   const { user, logout } = useAuth()
   const { page, navigate } = useNav()
+  const [notifCount, setNotifCount] = useState(0)
+
+  // Poll notifications every 60 seconds
+  useEffect(() => {
+    const load = () => api.getNotifications().then(n => setNotifCount(n.total)).catch(() => {})
+    load()
+    const interval = setInterval(load, 60000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Refresh count when navigating away from notifications
+  useEffect(() => {
+    if (page.name !== 'notifications') {
+      api.getNotifications().then(n => setNotifCount(n.total)).catch(() => {})
+    }
+  }, [page.name])
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -38,6 +56,7 @@ export default function Layout({ children }) {
               <div className="font-display font-bold leading-none tracking-tight text-base" style={{ color: '#00D4C8' }}>ATLANTIX</div>
             </div>
           </div>
+          {/* User chip */}
           <div className="flex items-center gap-2.5 rounded-xl px-3 py-2.5"
             style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
             <div className="w-7 h-7 rounded-lg flex items-center justify-center text-dark-900 text-xs font-bold flex-shrink-0"
@@ -66,6 +85,19 @@ export default function Layout({ children }) {
               {page.name === item.name && <span className="ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#00D4C8' }} />}
             </button>
           ))}
+
+          {/* Notifications */}
+          <button onClick={() => navigate('notifications')}
+            className={`nav-item ${page.name === 'notifications' ? 'nav-active' : 'nav-inactive'} relative`}>
+            <span className="text-sm w-5 text-center flex-shrink-0">🔔</span>
+            <span>Notifications</span>
+            {notifCount > 0 && (
+              <span className="ml-auto px-1.5 py-0.5 rounded-full text-dark-900 font-bold leading-none flex-shrink-0"
+                style={{ background: '#00D4C8', fontSize: '10px', minWidth: '18px', textAlign: 'center' }}>
+                {notifCount > 99 ? '99+' : notifCount}
+              </span>
+            )}
+          </button>
 
           {user.role === 'manager' && (
             <>

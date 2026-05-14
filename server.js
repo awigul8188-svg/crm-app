@@ -42,6 +42,7 @@ app.use('/api/customers', require('./routes/customers'));
 app.use('/api/inquiries', require('./routes/inquiries'));
 app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/import', require('./routes/import'));
+app.use('/api/notifications', require('./routes/notifications'));
 
 const clientDist = path.join(__dirname, 'client', 'dist');
 app.use(express.static(clientDist));
