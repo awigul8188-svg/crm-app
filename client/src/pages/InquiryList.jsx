@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { api } from '../api'
 import { useAuth } from '../App'
 import { useNav } from '../App'
@@ -15,16 +15,83 @@ const HEADERS = {
   online_order: ['Date','Name','Email','Part Number','Total Qty','Order Amount','Source','Assigned To','Comments','Verification','Status',''],
 }
 
+// Inline disposition dropdown — appears in place of the badge
+function InlineDispositionEdit({ inquiry, dispositions, onSave, onCancel }) {
+  const ref = useRef()
+  const [value, setValue] = useState(inquiry.disposition || '')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    ref.current?.focus()
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) onCancel()
+    }
+    setTimeout(() => document.addEventListener('mousedown', handler), 0)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const handleChange = async (e) => {
+    const newDisp = e.target.value
+    setValue(newDisp)
+    setSaving(true)
+    try {
+      await api.updateInquiry(inquiry.id, {
+        disposition: newDisp,
+        assigned_to: inquiry.assigned_to,
+        notes: inquiry.notes,
+        requirements: inquiry.requirements,
+        ppc_or_outbound: inquiry.ppc_or_outbound,
+        order_amount: inquiry.order_amount,
+        order_ref: inquiry.order_ref,
+      })
+      onSave(inquiry.id, newDisp)
+    } catch (e) {
+      onCancel()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+      <select
+        value={value}
+        onChange={handleChange}
+        disabled={saving}
+        autoFocus
+        style={{
+          fontSize: '12px', fontWeight: 600, padding: '4px 8px',
+          borderRadius: '8px', border: '2px solid #00D4C8',
+          background: '#fff', cursor: 'pointer', outline: 'none',
+          boxShadow: '0 0 0 3px rgba(0,212,200,0.15)',
+          minWidth: '160px', color: '#0f172a',
+          fontFamily: '"Plus Jakarta Sans", sans-serif',
+        }}
+      >
+        {dispositions.map(d => <option key={d} value={d}>{d}</option>)}
+      </select>
+      {saving && (
+        <div style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+          width: 12, height: 12, borderRadius: '50%', border: '2px solid #00D4C8',
+          borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
+      )}
+    </div>
+  )
+}
+
 export default function InquiryList({ type, title }) {
   const { user } = useAuth()
   const { navigate } = useNav()
   const [inquiries, setInquiries] = useState([])
+  const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [filterDispositions, setFilterDispositions] = useState([])
   const [filterSources, setFilterSources] = useState([])
+  const [filterUsers, setFilterUsers] = useState([])
   const [showNew, setShowNew] = useState(false)
   const [search, setSearch] = useState('')
   const [deleting, setDeleting] = useState(null)
+  const [editingDisp, setEditingDisp] = useState(null) // inquiry id being edited
 
   const load = () => {
     setLoading(true)
@@ -32,9 +99,12 @@ export default function InquiryList({ type, title }) {
       .then(d => { setInquiries(d); setLoading(false) })
       .catch(() => setLoading(false))
   }
+
   useEffect(() => { load() }, [type, filterDispositions, filterSources])
+  useEffect(() => { api.getUsers().then(setUsers) }, [])
 
   const filtered = inquiries.filter(i => {
+    if (filterUsers.length && !filterUsers.includes(String(i.assigned_to))) return false
     if (!search) return true
     const s = search.toLowerCase()
     return i.customer_name?.toLowerCase().includes(s) || i.customer_company?.toLowerCase().includes(s) ||
@@ -50,14 +120,24 @@ export default function InquiryList({ type, title }) {
     finally { setDeleting(null) }
   }
 
+  // Inline disposition save — update locally without full reload
+  const handleDispSave = (id, newDisp) => {
+    setInquiries(prev => prev.map(i => i.id === id ? { ...i, disposition: newDisp } : i))
+    setEditingDisp(null)
+  }
+
   const dispositionOptions = type === 'online_order'
     ? ['Processed', 'Cancelled']
     : DISPOSITIONS.filter(d => d !== 'Processed' && d !== 'Cancelled')
 
   const sourceOptions = type === 'online_order' ? ORDER_SOURCES : LEAD_SOURCES
 
+  const hasFilters = filterDispositions.length || filterSources.length || filterUsers.length || search
+  const clearAll = () => { setFilterDispositions([]); setFilterSources([]); setFilterUsers([]); setSearch('') }
+
   return (
     <div className="p-8 fade-in">
+      {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="font-display font-bold text-2xl text-ink-900 flex items-center gap-2.5">
@@ -68,40 +148,86 @@ export default function InquiryList({ type, title }) {
         <button onClick={() => setShowNew(true)} className="btn-primary">+ New {TYPE_LABELS[type]}</button>
       </div>
 
-      {/* Filters */}
+      {/* Filters — all visible */}
       <div className="flex gap-2.5 mb-4 flex-wrap items-center">
-        <div className="relative">
-          <input className="input pl-8 max-w-xs" placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} />
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-300 text-sm pointer-events-none">⌕</span>
+        {/* Search */}
+        <div style={{ position: 'relative' }}>
+          <input
+            style={{ padding: '9px 12px 9px 34px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '13px', background: '#fff', outline: 'none', width: '220px', fontFamily: '"Plus Jakarta Sans", sans-serif', color: '#0f172a' }}
+            placeholder="Search name, part, email..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '14px', pointerEvents: 'none' }}>⌕</span>
         </div>
-        <MultiSelect placeholder={type === 'online_order' ? 'All Statuses' : 'All Dispositions'} options={dispositionOptions} selected={filterDispositions} onChange={setFilterDispositions} />
-        <MultiSelect placeholder="All Sources" options={sourceOptions} selected={filterSources} onChange={setFilterSources} />
-        {(filterDispositions.length || filterSources.length || search) ? (
-          <button onClick={() => { setFilterDispositions([]); setFilterSources([]); setSearch('') }} className="btn btn-ghost btn-sm text-red-500 hover:bg-red-50">✕ Clear</button>
+
+        <MultiSelect
+          placeholder={type === 'online_order' ? 'All Statuses' : 'All Dispositions'}
+          options={dispositionOptions}
+          selected={filterDispositions}
+          onChange={setFilterDispositions}
+        />
+
+        <MultiSelect
+          placeholder="All Sources"
+          options={sourceOptions}
+          selected={filterSources}
+          onChange={setFilterSources}
+        />
+
+        {/* Assigned To — all roles see this, AEs see only themselves */}
+        {user.role === 'manager' && (
+          <MultiSelect
+            placeholder="All Team Members"
+            options={users.map(u => ({ value: String(u.id), label: u.name }))}
+            selected={filterUsers}
+            onChange={setFilterUsers}
+          />
+        )}
+
+        {hasFilters ? (
+          <button onClick={clearAll}
+            style={{ fontSize: '12px', fontWeight: 600, color: '#ef4444', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '6px 12px', cursor: 'pointer', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+            ✕ Clear all
+          </button>
         ) : null}
       </div>
 
       {/* Active filter tags */}
-      {(filterDispositions.length > 0 || filterSources.length > 0) && (
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          {[...filterDispositions.map(d => ({ k: d, type: 'd' })), ...filterSources.map(s => ({ k: s, type: 's' }))].map(tag => (
-            <span key={tag.k} className="tag">
-              {tag.k}
+      {(filterDispositions.length > 0 || filterSources.length > 0 || filterUsers.length > 0) && (
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {[
+            ...filterDispositions.map(d => ({ k: d, label: d, type: 'd' })),
+            ...filterSources.map(s => ({ k: s, label: s, type: 's' })),
+            ...filterUsers.map(id => ({ k: id, label: users.find(u => String(u.id) === id)?.name || id, type: 'u' })),
+          ].map(tag => (
+            <span key={tag.k + tag.type} className="tag">
+              {tag.label}
               <button onClick={() => {
                 if (tag.type === 'd') setFilterDispositions(f => f.filter(v => v !== tag.k))
-                else setFilterSources(f => f.filter(v => v !== tag.k))
-              }} className="text-brand-500 hover:text-red-500">×</button>
+                else if (tag.type === 's') setFilterSources(f => f.filter(v => v !== tag.k))
+                else setFilterUsers(f => f.filter(v => v !== tag.k))
+              }} style={{ marginLeft: '2px', color: '#00b8ad', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px' }}>×</button>
             </span>
           ))}
         </div>
       )}
 
+      {/* Tip for inline editing */}
+      <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+        <span>💡</span> Click any <strong>disposition badge</strong> to edit it inline — no need to open the record
+      </div>
+
+      {/* Table */}
       {loading ? (
-        <div className="flex items-center justify-center py-24"><div className="w-7 h-7 rounded-full border-2 border-brand-400 border-t-transparent spinner" /></div>
+        <div className="flex items-center justify-center py-24">
+          <div className="w-7 h-7 rounded-full border-2 border-t-transparent spinner" style={{ borderColor: '#00D4C8 transparent transparent' }} />
+        </div>
       ) : filtered.length === 0 ? (
         <div className="card p-16 text-center">
           <div className="text-5xl mb-3 opacity-20">{TYPE_ICONS[type]}</div>
           <div className="font-display font-bold text-ink-400">No {title.toLowerCase()} found</div>
+          <div className="text-ink-300 text-sm mt-1">Try clearing filters or create a new one</div>
         </div>
       ) : (
         <div className="card overflow-hidden">
@@ -117,14 +243,41 @@ export default function InquiryList({ type, title }) {
                   const partNums = inq.requirements?.map(r => r.part_number).join(', ') || '—'
                   const qtys = inq.requirements?.map(r => r.quantity).join(', ') || '—'
                   const totalQty = inq.requirements?.reduce((s, r) => { const n = parseInt(r.quantity); return s + (isNaN(n) ? 0 : n) }, 0)
+                  const isEditingDisp = editingDisp === inq.id
+
+                  // Disposition cell — clickable to edit inline
+                  const dispCell = (
+                    <td className="table-cell" onClick={e => { e.stopPropagation(); setEditingDisp(inq.id) }}>
+                      {isEditingDisp ? (
+                        <InlineDispositionEdit
+                          inquiry={inq}
+                          dispositions={dispositionOptions}
+                          onSave={handleDispSave}
+                          onCancel={() => setEditingDisp(null)}
+                        />
+                      ) : (
+                        <div
+                          title="Click to change disposition"
+                          style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        >
+                          <DispositionBadge disposition={inq.disposition} />
+                          <span style={{ color: '#cbd5e1', fontSize: '10px' }}>✎</span>
+                        </div>
+                      )}
+                    </td>
+                  )
 
                   return (
-                    <tr key={inq.id} className="table-row" onClick={() => navigate('inquiry-detail', { id: inq.id })}>
+                    <tr key={inq.id}
+                      className="table-row"
+                      onClick={() => { if (editingDisp !== inq.id) navigate('inquiry-detail', { id: inq.id }) }}
+                      style={{ cursor: editingDisp === inq.id ? 'default' : 'pointer' }}
+                    >
                       <td className="table-cell text-ink-400 font-mono text-xs whitespace-nowrap">{formatDateShort(inq.created_at)}</td>
 
                       {type === 'lead' && <>
                         <td className="table-cell font-semibold text-ink-700 whitespace-nowrap">{inq.assigned_name||'—'}</td>
-                        <td className="table-cell"><DispositionBadge disposition={inq.disposition} /></td>
+                        {dispCell}
                         <td className="table-cell text-xs text-ink-500 whitespace-nowrap">{inq.lead_source||'—'}</td>
                         <td className="table-cell font-semibold text-ink-900 whitespace-nowrap">{inq.customer_name}</td>
                         <td className="table-cell text-xs text-ink-500">{inq.customer_email||'—'}</td>
@@ -134,8 +287,9 @@ export default function InquiryList({ type, title }) {
                         <td className="table-cell text-xs text-ink-600">{qtys}</td>
                         <td className="table-cell text-xs text-ink-400 max-w-[140px] truncate">{inq.notes||'—'}</td>
                       </>}
+
                       {type === 'repeat' && <>
-                        <td className="table-cell"><DispositionBadge disposition={inq.disposition} /></td>
+                        {dispCell}
                         <td className="table-cell font-semibold text-ink-700 whitespace-nowrap">{inq.assigned_name||'—'}</td>
                         <td className="table-cell font-semibold text-ink-900 whitespace-nowrap">{inq.customer_name}</td>
                         <td className="table-cell text-xs text-ink-500">{inq.customer_email||'—'}</td>
@@ -146,6 +300,7 @@ export default function InquiryList({ type, title }) {
                         <td className="table-cell text-xs text-ink-400 max-w-[130px] truncate">{inq.notes||'—'}</td>
                         <td className="table-cell text-xs">{inq.ppc_or_outbound ? <span className="badge bg-violet-50 text-violet-600 border-violet-100">{inq.ppc_or_outbound}</span> : '—'}</td>
                       </>}
+
                       {type === 'online_order' && <>
                         <td className="table-cell font-semibold text-ink-900 whitespace-nowrap">{inq.customer_name}</td>
                         <td className="table-cell text-xs text-ink-500">{inq.customer_email||'—'}</td>
@@ -160,13 +315,19 @@ export default function InquiryList({ type, title }) {
                             ? <span className={`badge ${inq.order_ref === 'Verified' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-500 border-red-200'}`}>{inq.order_ref}</span>
                             : '—'}
                         </td>
-                        <td className="table-cell"><DispositionBadge disposition={inq.disposition} /></td>
+                        {dispCell}
                       </>}
 
+                      {/* Delete — managers only */}
                       <td className="table-cell" onClick={e => e.stopPropagation()}>
                         {user.role === 'manager' && (
-                          <button onClick={e => handleDelete(e, inq.id)} disabled={deleting === inq.id}
-                            className="btn-icon btn-sm text-red-400 hover:text-red-600 hover:bg-red-50 text-xs">
+                          <button
+                            onClick={e => handleDelete(e, inq.id)}
+                            disabled={deleting === inq.id}
+                            style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', color: '#fca5a5', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s' }}
+                            onMouseEnter={e => { e.currentTarget.style.background = '#fef2f2'; e.currentTarget.style.color = '#ef4444' }}
+                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#fca5a5' }}
+                          >
                             {deleting === inq.id ? '...' : '🗑'}
                           </button>
                         )}
@@ -180,7 +341,13 @@ export default function InquiryList({ type, title }) {
         </div>
       )}
 
-      {showNew && <NewInquiryModal defaultType={type} onClose={() => setShowNew(false)} onCreated={() => { setShowNew(false); load() }} />}
+      {showNew && (
+        <NewInquiryModal
+          defaultType={type}
+          onClose={() => setShowNew(false)}
+          onCreated={() => { setShowNew(false); load() }}
+        />
+      )}
     </div>
   )
 }

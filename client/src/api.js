@@ -20,6 +20,7 @@ export const api = {
   createUser: (data) => req('POST', '/users', data),
   updateUser: (id, data) => req('PUT', `/users/${id}`, data),
   deleteUser: (id) => req('DELETE', `/users/${id}`),
+  resetAePasswords: () => req('POST', '/users/reset-ae-passwords'),
 
   getCustomers: (search) => req('GET', `/customers${search ? `?search=${encodeURIComponent(search)}` : ''}`),
   createCustomer: (data) => req('POST', '/customers', data),
