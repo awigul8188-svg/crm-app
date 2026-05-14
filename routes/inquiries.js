@@ -1,19 +1,24 @@
 const express = require('express');
 const { getDB } = require('../database');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requireManager } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authenticate);
 
 function logActivity(db, entityId, user, action, comment = null) {
-  db.prepare(
-    'INSERT INTO activity_log (entity_type, entity_id, user_id, user_name, action, comment) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run('inquiry', entityId, user.id, user.name, action, comment);
+  db.prepare('INSERT INTO activity_log (entity_type, entity_id, user_id, user_name, action, comment) VALUES (?, ?, ?, ?, ?, ?)').run('inquiry', entityId, user.id, user.name, action, comment);
+}
+
+function buildInFilter(column, value) {
+  if (!value) return null;
+  const values = value.split(',').map(v => v.trim()).filter(Boolean);
+  if (!values.length) return null;
+  return { sql: `${column} IN (${values.map(() => '?').join(',')})`, params: values };
 }
 
 router.get('/', (req, res) => {
   const db = getDB();
-  const { type, disposition } = req.query;
+  const { type, disposition, lead_source } = req.query;
   let query = `
     SELECT i.*, c.name as customer_name, c.email as customer_email, c.company as customer_company,
       c.phone as customer_phone, c.lead_source, u.name as assigned_name
@@ -24,7 +29,16 @@ router.get('/', (req, res) => {
   const params = [];
   if (req.user.role === 'ae') { query += ' AND i.assigned_to = ?'; params.push(req.user.id); }
   if (type) { query += ' AND i.type = ?'; params.push(type); }
-  if (disposition) { query += ' AND i.disposition = ?'; params.push(disposition); }
+
+  if (disposition) {
+    const f = buildInFilter('i.disposition', disposition);
+    if (f) { query += ` AND ${f.sql}`; params.push(...f.params); }
+  }
+  if (lead_source) {
+    const f = buildInFilter('c.lead_source', lead_source);
+    if (f) { query += ` AND ${f.sql}`; params.push(...f.params); }
+  }
+
   query += ' ORDER BY i.created_at DESC';
   const inquiries = db.prepare(query).all(...params);
   res.json(inquiries.map(inq => ({ ...inq, requirements: db.prepare('SELECT * FROM requirements WHERE inquiry_id = ?').all(inq.id) })));
@@ -51,7 +65,7 @@ router.post('/', (req, res) => {
   const inquiryId = result.lastInsertRowid;
   if (requirements?.length) {
     const ins = db.prepare('INSERT INTO requirements (inquiry_id, part_number, quantity) VALUES (?, ?, ?)');
-    requirements.forEach(r => { if (r.part_number?.trim()) ins.run(inquiryId, r.part_number, r.quantity) });
+    requirements.forEach(r => { if (r.part_number?.trim()) ins.run(inquiryId, r.part_number, r.quantity); });
   }
   logActivity(db, inquiryId, req.user, `${type} created`);
   res.json({ id: inquiryId });
@@ -73,9 +87,19 @@ router.put('/:id', (req, res) => {
   db.prepare('UPDATE inquiries SET disposition=?, assigned_to=?, notes=?, ppc_or_outbound=?, order_amount=?, order_ref=?, updated_at=CURRENT_TIMESTAMP WHERE id=?').run(disposition, assigned_to, notes, ppc_or_outbound || null, order_amount || null, order_ref || null, req.params.id);
   if (requirements !== undefined) {
     db.prepare('DELETE FROM requirements WHERE inquiry_id = ?').run(req.params.id);
-    if (requirements.length) { const ins = db.prepare('INSERT INTO requirements (inquiry_id, part_number, quantity) VALUES (?, ?, ?)'); requirements.forEach(r => { if (r.part_number?.trim()) ins.run(req.params.id, r.part_number, r.quantity) }); }
+    if (requirements.length) {
+      const ins = db.prepare('INSERT INTO requirements (inquiry_id, part_number, quantity) VALUES (?, ?, ?)');
+      requirements.forEach(r => { if (r.part_number?.trim()) ins.run(req.params.id, r.part_number, r.quantity); });
+    }
   }
   logActivity(db, req.params.id, req.user, 'Inquiry updated');
+  res.json({ success: true });
+});
+
+// Delete - managers only
+router.delete('/:id', requireManager, (req, res) => {
+  const db = getDB();
+  db.prepare('DELETE FROM inquiries WHERE id = ?').run(req.params.id);
   res.json({ success: true });
 });
 
@@ -101,7 +125,7 @@ router.put('/followups/:id', (req, res) => {
   res.json({ success: true });
 });
 
-router.delete('/followups/:id', (req, res) => {
+router.delete('/followups/:id', requireManager, (req, res) => {
   getDB().prepare('DELETE FROM followups WHERE id = ?').run(req.params.id);
   res.json({ success: true });
 });

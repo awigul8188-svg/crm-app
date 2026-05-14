@@ -4,6 +4,7 @@ import { useAuth } from '../App'
 import { useNav } from '../App'
 import { LEAD_SOURCES } from '../components/Badges'
 import Modal from '../components/Modal'
+import MultiSelect from '../components/MultiSelect'
 
 export default function Customers() {
   const { user } = useAuth()
@@ -16,6 +17,8 @@ export default function Customers() {
   const [form, setForm] = useState({ name: '', email: '', phone: '', company: '', lead_source: '', assigned_to: user.id })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [filterSources, setFilterSources] = useState([])
+  const [deleting, setDeleting] = useState(null)
 
   const load = (s = '') => { setLoading(true); api.getCustomers(s).then(c => { setCustomers(c); setLoading(false) }) }
   useEffect(() => { load(); api.getUsers().then(setUsers) }, [])
@@ -26,30 +29,45 @@ export default function Customers() {
   const handleCreate = async () => {
     if (!form.name.trim()) { setError('Name is required'); return }
     setSaving(true); setError('')
-    try { await api.createCustomer(form); setShowNew(false); setForm({ name: '', email: '', phone: '', company: '', lead_source: '', assigned_to: user.id }); load() }
+    try { await api.createCustomer(form); setShowNew(false); setForm({ name:'',email:'',phone:'',company:'',lead_source:'',assigned_to:user.id }); load() }
     catch (e) { setError(e.message) }
     finally { setSaving(false) }
   }
+
+  const handleDelete = async (e, id, name) => {
+    e.stopPropagation()
+    if (!confirm(`Delete customer "${name}" and all their inquiries? This cannot be undone.`)) return
+    setDeleting(id)
+    try { await api.deleteCustomer(id); load() }
+    catch (err) { alert(err.message) }
+    finally { setDeleting(null) }
+  }
+
+  const displayed = customers.filter(c => !filterSources.length || filterSources.includes(c.lead_source))
 
   return (
     <div className="p-8 fade-in">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="font-display font-bold text-2xl text-ink-900">◉ Customers</h1>
-          <p className="text-ink-400 text-sm mt-0.5">{customers.length} total</p>
+          <p className="text-ink-400 text-sm mt-0.5">{displayed.length} customers</p>
         </div>
         <button onClick={() => setShowNew(true)} className="btn-primary">+ New Customer</button>
       </div>
 
-      <div className="relative mb-5 max-w-sm">
-        <input className="input pl-8" placeholder="Search name, email, company..." value={search} onChange={e => handleSearch(e.target.value)} />
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-300">⌕</span>
+      <div className="flex gap-2.5 mb-5 flex-wrap items-center">
+        <div className="relative">
+          <input className="input pl-8 max-w-xs" placeholder="Search name, email, company..." value={search} onChange={e => handleSearch(e.target.value)} />
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-300 pointer-events-none">⌕</span>
+        </div>
+        <MultiSelect placeholder="All Lead Sources" options={LEAD_SOURCES} selected={filterSources} onChange={setFilterSources} />
+        {filterSources.length > 0 && <button onClick={() => setFilterSources([])} className="btn btn-ghost btn-sm text-red-500 hover:bg-red-50">✕ Clear</button>}
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-24"><div className="w-7 h-7 rounded-full border-2 border-brand-400 border-t-transparent spinner" /></div>
-      ) : customers.length === 0 ? (
-        <div className="card p-16 text-center"><div className="text-5xl mb-3 opacity-30">◉</div><div className="font-display font-bold text-ink-400">No customers yet</div></div>
+      ) : displayed.length === 0 ? (
+        <div className="card p-16 text-center"><div className="text-5xl mb-3 opacity-20">◉</div><div className="font-display font-bold text-ink-400">No customers found</div></div>
       ) : (
         <div className="card overflow-hidden">
           <table className="w-full">
@@ -61,11 +79,12 @@ export default function Customers() {
                 <th className="text-left px-4 py-3">Lead Source</th>
                 <th className="text-left px-4 py-3">Assigned To</th>
                 <th className="text-left px-4 py-3">Inquiries</th>
+                {user.role === 'manager' && <th className="px-4 py-3 w-12" />}
               </tr>
             </thead>
             <tbody>
-              {customers.map(c => (
-                <tr key={c.id} className="table-row" onClick={() => navigate('customer-detail', { id: c.id })}>
+              {displayed.map(c => (
+                <tr key={c.id} className="table-row" onClick={() => navigate('customer-detail',{id:c.id})}>
                   <td className="table-cell">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-xl bg-brand-50 border border-brand-100 flex items-center justify-center text-brand-600 font-bold text-sm flex-shrink-0">{c.name[0].toUpperCase()}</div>
@@ -75,11 +94,19 @@ export default function Customers() {
                       </div>
                     </div>
                   </td>
-                  <td className="table-cell text-ink-500 text-xs">{c.email || '—'}</td>
-                  <td className="table-cell text-ink-500 text-xs">{c.phone || '—'}</td>
-                  <td className="table-cell">{c.lead_source ? <span className="badge bg-blue-50 text-blue-600 border-blue-100">{c.lead_source}</span> : <span className="text-ink-300 text-sm">—</span>}</td>
-                  <td className="table-cell font-medium text-ink-700 text-sm">{c.assigned_name || '—'}</td>
+                  <td className="table-cell text-ink-500 text-xs">{c.email||'—'}</td>
+                  <td className="table-cell text-ink-500 text-xs">{c.phone||'—'}</td>
+                  <td className="table-cell">{c.lead_source ? <span className="badge bg-teal-50 text-teal-700 border-teal-200">{c.lead_source}</span> : <span className="text-ink-300 text-sm">—</span>}</td>
+                  <td className="table-cell font-medium text-ink-700 text-sm">{c.assigned_name||'—'}</td>
                   <td className="table-cell"><span className="badge bg-surface-100 text-ink-600 border-ink-200">{c.inquiry_count}</span></td>
+                  {user.role === 'manager' && (
+                    <td className="table-cell" onClick={e => e.stopPropagation()}>
+                      <button onClick={e => handleDelete(e, c.id, c.name)} disabled={deleting===c.id}
+                        className="btn-icon btn-sm text-red-400 hover:text-red-600 hover:bg-red-50">
+                        {deleting===c.id ? '...' : '🗑'}
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -90,25 +117,25 @@ export default function Customers() {
       {showNew && (
         <Modal title="New Customer" onClose={() => setShowNew(false)}>
           <div className="space-y-3">
-            <input className="input" placeholder="Full name *" value={form.name} onChange={e => setF('name', e.target.value)} />
+            <input className="input" placeholder="Full name *" value={form.name} onChange={e=>setF('name',e.target.value)} />
             <div className="grid grid-cols-2 gap-2">
-              <input className="input" placeholder="Email" value={form.email} onChange={e => setF('email', e.target.value)} />
-              <input className="input" placeholder="Phone" value={form.phone} onChange={e => setF('phone', e.target.value)} />
+              <input className="input" placeholder="Email" value={form.email} onChange={e=>setF('email',e.target.value)} />
+              <input className="input" placeholder="Phone" value={form.phone} onChange={e=>setF('phone',e.target.value)} />
             </div>
-            <input className="input" placeholder="Company" value={form.company} onChange={e => setF('company', e.target.value)} />
-            <select className="input" value={form.lead_source} onChange={e => setF('lead_source', e.target.value)}>
+            <input className="input" placeholder="Company" value={form.company} onChange={e=>setF('company',e.target.value)} />
+            <select className="input" value={form.lead_source} onChange={e=>setF('lead_source',e.target.value)}>
               <option value="">Select lead source</option>
-              {LEAD_SOURCES.map(s => <option key={s}>{s}</option>)}
+              {LEAD_SOURCES.map(s=><option key={s}>{s}</option>)}
             </select>
-            {user.role === 'manager' && (
-              <select className="input" value={form.assigned_to} onChange={e => setF('assigned_to', e.target.value)}>
-                {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            {user.role==='manager' && (
+              <select className="input" value={form.assigned_to} onChange={e=>setF('assigned_to',e.target.value)}>
+                {users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
             )}
             {error && <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-3 py-2.5 rounded-xl">{error}</div>}
             <div className="flex gap-2 pt-1">
-              <button onClick={() => setShowNew(false)} className="btn-secondary flex-1">Cancel</button>
-              <button onClick={handleCreate} disabled={saving} className="btn-primary flex-1">{saving ? 'Creating...' : 'Create'}</button>
+              <button onClick={()=>setShowNew(false)} className="btn-secondary flex-1">Cancel</button>
+              <button onClick={handleCreate} disabled={saving} className="btn-primary flex-1">{saving?'Creating...':'Create'}</button>
             </div>
           </div>
         </Modal>

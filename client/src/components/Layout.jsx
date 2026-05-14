@@ -1,15 +1,30 @@
 import { useAuth } from '../App'
 import { useNav } from '../App'
 
-const NAV = [
-  { name: 'dashboard', label: 'Dashboard', icon: '▣' },
-  { name: 'leads', label: 'Leads', icon: '◎' },
-  { name: 'repeat', label: 'Repeat Inquiries', icon: '↻' },
-  { name: 'orders', label: 'Online Orders', icon: '◈' },
-  { name: 'customers', label: 'Customers', icon: '◉' },
-]
+// Tech Atlantix geometric icon — reconstructed from logo
+// White angular top-right shape + cyan bottom-left block
+function TALogo({ size = 36 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* White top piece — angular bracket shape */}
+      <polygon points="20,2 46,2 46,14 32,14 32,10 20,10" fill="white"/>
+      {/* White right vertical stem */}
+      <rect x="32" y="14" width="14" height="16" fill="white"/>
+      {/* Cyan main block — bottom left */}
+      <rect x="2" y="14" width="28" height="22" fill="#00D4C8"/>
+      {/* White bottom-right piece */}
+      <rect x="20" y="36" width="26" height="10" fill="white"/>
+    </svg>
+  )
+}
 
-const ROLE_LABELS = { manager: 'Manager', ae: 'Account Executive' }
+const NAV = [
+  { name: 'dashboard', label: 'Dashboard',         icon: '▣' },
+  { name: 'leads',     label: 'Leads',              icon: '◎' },
+  { name: 'repeat',    label: 'Repeat Inquiries',   icon: '↻' },
+  { name: 'orders',    label: 'Online Orders',       icon: '◈' },
+  { name: 'customers', label: 'Customers',           icon: '◉' },
+]
 
 export default function Layout({ children }) {
   const { user, logout } = useAuth()
@@ -17,59 +32,82 @@ export default function Layout({ children }) {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Sidebar */}
-      <aside className="w-[220px] flex-shrink-0 flex flex-col" style={{ background: 'linear-gradient(180deg, #0f172a 0%, #1e1b4b 100%)' }}>
-        {/* Logo */}
-        <div className="px-5 pt-6 pb-5">
-          <div className="flex items-center gap-2.5 mb-6">
-            <div className="w-8 h-8 rounded-lg bg-brand-600 flex items-center justify-center text-white font-bold text-sm shadow-lg">⚡</div>
-            <span className="font-display font-bold text-white text-lg tracking-tight">CRM</span>
+      {/* Sidebar — near-black matching logo background */}
+      <aside className="w-[230px] flex-shrink-0 flex flex-col"
+        style={{ background: '#0d0d0d', borderRight: '1px solid rgba(255,255,255,0.06)' }}>
+
+        {/* Logo area */}
+        <div className="px-5 pt-6 pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+          <div className="flex items-center gap-3 mb-5">
+            <TALogo size={34} />
+            <div>
+              <div className="font-display font-bold text-white leading-none tracking-tight text-base">TECH</div>
+              <div className="font-display font-bold leading-none tracking-tight text-base" style={{ color: '#00D4C8' }}>ATLANTIX</div>
+            </div>
           </div>
+
           {/* User chip */}
-          <div className="flex items-center gap-2.5 bg-white/8 rounded-xl px-3 py-2.5">
-            <div className="w-7 h-7 rounded-lg bg-brand-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+          <div className="flex items-center gap-2.5 rounded-xl px-3 py-2.5"
+            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center text-dark-900 text-xs font-bold flex-shrink-0"
+              style={{ background: '#00D4C8' }}>
               {user.name[0].toUpperCase()}
             </div>
             <div className="min-w-0">
               <div className="text-white text-xs font-semibold truncate">{user.name}</div>
-              <div className="text-white/40 text-[10px]">{ROLE_LABELS[user.role]}</div>
+              <div className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                {user.role === 'manager' ? 'Manager' : 'Account Executive'}
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto pb-2">
-          <div className="text-white/25 text-[10px] font-semibold uppercase tracking-widest px-3 mb-2">Menu</div>
+        {/* Navigation */}
+        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+          <div className="text-xs font-bold uppercase tracking-widest px-3 mb-2.5"
+            style={{ color: 'rgba(255,255,255,0.2)', fontSize: '9px', letterSpacing: '0.12em' }}>
+            Main Menu
+          </div>
           {NAV.map(item => (
-            <button key={item.name} onClick={() => navigate(item.name)} className={`nav-item w-full text-left ${page.name === item.name ? 'nav-active' : 'nav-inactive'}`}>
-              <span className="text-base w-5 text-center flex-shrink-0">{item.icon}</span>
-              <span className="text-sm">{item.label}</span>
-              {page.name === item.name && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-brand-400 flex-shrink-0" />}
+            <button key={item.name} onClick={() => navigate(item.name)}
+              className={`nav-item ${page.name === item.name ? 'nav-active' : 'nav-inactive'}`}>
+              <span className="text-sm w-5 text-center flex-shrink-0">{item.icon}</span>
+              <span>{item.label}</span>
+              {page.name === item.name && (
+                <span className="ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#00D4C8' }} />
+              )}
             </button>
           ))}
 
           {user.role === 'manager' && (
             <>
-              <div className="text-white/25 text-[10px] font-semibold uppercase tracking-widest px-3 mt-4 mb-2">Admin</div>
-              <button onClick={() => navigate('users')} className={`nav-item w-full text-left ${page.name === 'users' ? 'nav-active' : 'nav-inactive'}`}>
-                <span className="text-base w-5 text-center">⚙</span>
-                <span className="text-sm">Users</span>
-                {page.name === 'users' && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-brand-400" />}
+              <div className="text-xs font-bold uppercase tracking-widest px-3 mt-5 mb-2.5"
+                style={{ color: 'rgba(255,255,255,0.2)', fontSize: '9px', letterSpacing: '0.12em' }}>
+                Admin
+              </div>
+              <button onClick={() => navigate('users')}
+                className={`nav-item ${page.name === 'users' ? 'nav-active' : 'nav-inactive'}`}>
+                <span className="text-sm w-5 text-center">⚙</span>
+                <span>Users</span>
+                {page.name === 'users' && <span className="ml-auto w-1.5 h-1.5 rounded-full" style={{ background: '#00D4C8' }} />}
               </button>
             </>
           )}
         </nav>
 
-        {/* Logout */}
-        <div className="px-3 pb-5 pt-2 border-t border-white/10">
-          <button onClick={logout} className="nav-item nav-inactive w-full text-left mt-2">
-            <span className="text-base w-5 text-center">→</span>
-            <span className="text-sm">Sign out</span>
+        {/* Footer */}
+        <div className="px-3 pb-5 pt-2" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+          <button onClick={logout} className="nav-item nav-inactive mt-2">
+            <span className="text-sm w-5 text-center">→</span>
+            <span>Sign out</span>
           </button>
+          <div className="text-center mt-3 text-xs" style={{ color: 'rgba(255,255,255,0.12)', fontSize: '9px' }}>
+            Beyond Tech · Above Integration
+          </div>
         </div>
       </aside>
 
-      {/* Content */}
+      {/* Main content */}
       <main className="flex-1 overflow-y-auto bg-surface-50">
         {children}
       </main>
