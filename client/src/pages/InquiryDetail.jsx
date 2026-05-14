@@ -2,9 +2,7 @@ import { useState, useEffect } from 'react'
 import { api } from '../api'
 import { useAuth } from '../App'
 import { useNav } from '../App'
-import { StatusBadge, TypeBadge, timeAgo, formatDate } from '../components/Badges'
-
-const STATUSES = ['open', 'in_progress', 'closed', 'won', 'lost']
+import { DispositionBadge, TypeBadge, DISPOSITIONS, LEAD_SOURCES, PPC_OPTIONS, timeAgo, formatDate } from '../components/Badges'
 
 export default function InquiryDetail({ id }) {
   const { user } = useAuth()
@@ -14,6 +12,7 @@ export default function InquiryDetail({ id }) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [comment, setComment] = useState('')
+  const [sending, setSending] = useState(false)
   const [newFollowup, setNewFollowup] = useState({ note: '', follow_up_date: '' })
   const [showFollowupForm, setShowFollowupForm] = useState(false)
   const [editMode, setEditMode] = useState(false)
@@ -23,9 +22,8 @@ export default function InquiryDetail({ id }) {
 
   const load = () => {
     Promise.all([api.getInquiry(id), api.getUsers()]).then(([inq, us]) => {
-      setInquiry(inq)
-      setUsers(us)
-      setEditForm({ status: inq.status, assigned_to: inq.assigned_to, notes: inq.notes || '' })
+      setInquiry(inq); setUsers(us)
+      setEditForm({ disposition: inq.disposition || 'Initial Contact', assigned_to: inq.assigned_to, notes: inq.notes || '', ppc_or_outbound: inq.ppc_or_outbound || '', order_amount: inq.order_amount || '', order_ref: inq.order_ref || '' })
       setRequirements(inq.requirements || [])
       setLoading(false)
     })
@@ -33,94 +31,72 @@ export default function InquiryDetail({ id }) {
 
   useEffect(() => { load() }, [id])
 
-  const handleSave = async () => {
-    setSaving(true)
-    await api.updateInquiry(id, { ...editForm, requirements })
-    setEditMode(false)
-    setSaving(false)
-    load()
-  }
-
+  const setEF = (k, v) => setEditForm(f => ({ ...f, [k]: v }))
+  const handleSave = async () => { setSaving(true); await api.updateInquiry(id, { ...editForm, requirements }); setEditMode(false); setSaving(false); load() }
   const handleComment = async () => {
     if (!comment.trim()) return
-    await api.addComment(id, comment)
-    setComment('')
-    load()
+    setSending(true); await api.addComment(id, comment); setComment(''); setSending(false); load()
   }
-
   const handleFollowup = async () => {
     if (!newFollowup.note.trim()) return
-    await api.addFollowup(id, newFollowup)
-    setNewFollowup({ note: '', follow_up_date: '' })
-    setShowFollowupForm(false)
-    load()
+    await api.addFollowup(id, newFollowup); setNewFollowup({ note: '', follow_up_date: '' }); setShowFollowupForm(false); load()
   }
+  const toggleFollowup = async (fu) => { await api.updateFollowup(fu.id, { ...fu, completed: !fu.completed }); load() }
+  const addReq = () => setRequirements(r => [...r, { part_number: '', quantity: '' }])
+  const updateReq = (i, k, v) => setRequirements(r => r.map((x, idx) => idx === i ? { ...x, [k]: v } : x))
+  const removeReq = (i) => setRequirements(r => r.filter((_, idx) => idx !== i))
+  const backPage = inquiry?.type === 'lead' ? 'leads' : inquiry?.type === 'repeat' ? 'repeat' : 'orders'
 
-  const toggleFollowup = async (fu) => {
-    await api.updateFollowup(fu.id, { ...fu, completed: !fu.completed })
-    load()
-  }
+  if (loading) return <div className="flex items-center justify-center h-full"><div className="w-7 h-7 rounded-full border-2 border-brand-400 border-t-transparent spinner" /></div>
+  if (!inquiry) return <div className="p-8 text-ink-400">Not found.</div>
 
-  const addReq = () => setRequirements([...requirements, { part_number: '', quantity: '' }])
-  const updateReq = (i, field, val) => {
-    const r = [...requirements]; r[i][field] = val; setRequirements(r)
-  }
-  const removeReq = (i) => setRequirements(requirements.filter((_, idx) => idx !== i))
-
-  if (loading) return (
-    <div className="flex items-center justify-center h-full">
-      <div className="w-6 h-6 border-2 border-brand-400 border-t-transparent rounded-full animate-spin" />
-    </div>
-  )
-
-  if (!inquiry) return <div className="p-8 text-gray-400">Inquiry not found.</div>
+  const pendingFollowups = inquiry.followups?.filter(f => !f.completed).length || 0
 
   return (
-    <div className="p-8 max-w-5xl">
-      {/* Back */}
-      <button onClick={() => navigate(inquiry.type === 'lead' ? 'leads' : inquiry.type === 'repeat' ? 'repeat' : 'orders')}
-        className="text-sm text-gray-500 hover:text-gray-700 mb-5 flex items-center gap-1">
-        ← Back
+    <div className="p-8 max-w-5xl fade-in">
+      {/* Breadcrumb */}
+      <button onClick={() => navigate(backPage)} className="flex items-center gap-1.5 text-xs text-ink-400 hover:text-ink-600 font-medium mb-5 transition-colors">
+        ← Back to {backPage === 'leads' ? 'Leads' : backPage === 'repeat' ? 'Repeat Inquiries' : 'Online Orders'}
       </button>
 
-      {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <div className="flex items-center gap-2.5 mb-1">
-            <TypeBadge type={inquiry.type} />
-            <StatusBadge status={inquiry.status} />
-            <span className="text-gray-400 text-xs">#{inquiry.id}</span>
+      {/* Header card */}
+      <div className="card p-6 mb-5">
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-2.5">
+              <TypeBadge type={inquiry.type} />
+              <DispositionBadge disposition={inquiry.disposition} />
+              <span className="text-ink-300 text-xs font-mono">#{inquiry.id}</span>
+            </div>
+            <h1 className="font-display font-bold text-xl text-ink-900">
+              {inquiry.customer_name}
+              {inquiry.customer_company && <span className="text-ink-400 font-normal ml-2 text-base">— {inquiry.customer_company}</span>}
+            </h1>
+            <div className="flex flex-wrap gap-4 text-sm text-ink-500 mt-2">
+              {inquiry.customer_email && <a href={`mailto:${inquiry.customer_email}`} className="hover:text-brand-600 transition-colors">📧 {inquiry.customer_email}</a>}
+              {inquiry.customer_phone && <span>📞 {inquiry.customer_phone}</span>}
+              {inquiry.lead_source && <span className="badge bg-blue-50 text-blue-600 border-blue-100">📌 {inquiry.lead_source}</span>}
+            </div>
           </div>
-          <h1 className="font-display font-bold text-xl text-gray-900">
-            {inquiry.customer_name}
-            {inquiry.customer_company && <span className="text-gray-400 font-normal ml-2 text-base">— {inquiry.customer_company}</span>}
-          </h1>
-          <div className="flex gap-4 text-sm text-gray-500 mt-1">
-            {inquiry.customer_email && <span>📧 {inquiry.customer_email}</span>}
-            {inquiry.customer_phone && <span>📞 {inquiry.customer_phone}</span>}
-            {inquiry.lead_source && <span>📌 {inquiry.lead_source}</span>}
+          <div className="flex gap-2 ml-4">
+            {editMode ? (
+              <><button onClick={() => setEditMode(false)} className="btn-secondary btn-sm">Cancel</button>
+              <button onClick={handleSave} disabled={saving} className="btn-primary btn-sm">{saving ? '...' : 'Save changes'}</button></>
+            ) : (
+              <button onClick={() => setEditMode(true)} className="btn-secondary btn-sm">✏️ Edit</button>
+            )}
           </div>
-        </div>
-        <div className="flex gap-2">
-          {editMode ? (
-            <>
-              <button onClick={() => setEditMode(false)} className="btn-secondary">Cancel</button>
-              <button onClick={handleSave} disabled={saving} className="btn-primary">{saving ? 'Saving...' : 'Save'}</button>
-            </>
-          ) : (
-            <button onClick={() => setEditMode(true)} className="btn-secondary">✏️ Edit</button>
-          )}
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
-        {/* Main column */}
-        <div className="col-span-2 space-y-5">
-          {/* Requirements */}
+      <div className="grid grid-cols-3 gap-5">
+        {/* Main content */}
+        <div className="col-span-2 space-y-4">
+          {/* Parts */}
           <div className="card p-5">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-display font-bold text-sm text-gray-900">Requirements</h3>
-              {editMode && <button type="button" onClick={addReq} className="text-xs text-brand-500 font-medium">+ Add row</button>}
+              <h3 className="font-display font-bold text-sm text-ink-900">Part Numbers</h3>
+              {editMode && <button onClick={addReq} className="btn btn-ghost btn-sm text-brand-600">+ Add row</button>}
             </div>
             {editMode ? (
               <div className="space-y-2">
@@ -128,51 +104,34 @@ export default function InquiryDetail({ id }) {
                   <div key={i} className="flex gap-2">
                     <input className="input flex-1" placeholder="Part number" value={r.part_number} onChange={e => updateReq(i, 'part_number', e.target.value)} />
                     <input className="input w-28" placeholder="Qty" value={r.quantity} onChange={e => updateReq(i, 'quantity', e.target.value)} />
-                    <button onClick={() => removeReq(i)} className="text-red-400 hover:text-red-500">×</button>
+                    <button onClick={() => removeReq(i)} className="btn-icon text-red-400 hover:text-red-500">×</button>
                   </div>
                 ))}
               </div>
             ) : requirements.length ? (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-gray-500 text-xs">
-                    <th className="text-left pb-2 font-medium">Part Number</th>
-                    <th className="text-left pb-2 font-medium">Quantity</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {requirements.map(r => (
-                    <tr key={r.id}>
-                      <td className="py-1.5 font-mono text-gray-800 text-sm">{r.part_number}</td>
-                      <td className="py-1.5 text-gray-600">{r.quantity}</td>
-                    </tr>
-                  ))}
+              <table className="w-full">
+                <thead><tr className="text-ink-400 text-xs border-b"><th className="text-left py-2 font-semibold">Part Number</th><th className="text-left py-2 font-semibold">Quantity</th></tr></thead>
+                <tbody className="divide-y divide-slate-50">
+                  {requirements.map((r, i) => <tr key={r.id || i}><td className="py-2 font-mono text-sm text-ink-800">{r.part_number}</td><td className="py-2 text-ink-600">{r.quantity}</td></tr>)}
                 </tbody>
               </table>
-            ) : <p className="text-sm text-gray-400">No requirements added.</p>}
+            ) : <p className="text-sm text-ink-300">No parts added yet.</p>}
           </div>
 
-          {/* Notes */}
+          {/* Comments */}
           <div className="card p-5">
-            <h3 className="font-display font-bold text-sm text-gray-900 mb-2">Notes</h3>
-            {editMode ? (
-              <textarea className="input resize-none" rows={3} value={editForm.notes} onChange={e => setEditForm({ ...editForm, notes: e.target.value })} />
-            ) : (
-              <p className="text-sm text-gray-600">{inquiry.notes || <span className="text-gray-400">No notes.</span>}</p>
-            )}
+            <h3 className="font-display font-bold text-sm text-ink-900 mb-2">Comments</h3>
+            {editMode
+              ? <textarea className="input resize-none" rows={3} value={editForm.notes} onChange={e => setEF('notes', e.target.value)} placeholder="Add comments..." />
+              : <p className="text-sm text-ink-600 leading-relaxed">{inquiry.notes || <span className="text-ink-300">No comments yet.</span>}</p>}
           </div>
 
-          {/* Tabs: Activity + Followups */}
+          {/* Tabs */}
           <div className="card overflow-hidden">
-            <div className="flex border-b">
-              {[['activity', '💬 Activity'], ['followups', '📅 Follow-ups']].map(([tab, label]) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-5 py-3 text-sm font-medium transition-colors ${
-                    activeTab === tab ? 'text-brand-600 border-b-2 border-brand-500 -mb-px' : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
+            <div className="flex border-b border-slate-100">
+              {[['activity', `💬 Activity`], ['followups', `📅 Follow-ups${pendingFollowups > 0 ? ` (${pendingFollowups})` : ''}`]].map(([tab, label]) => (
+                <button key={tab} onClick={() => setActiveTab(tab)}
+                  className={`px-5 py-3.5 text-sm font-semibold transition-all border-b-2 -mb-px ${activeTab === tab ? 'text-brand-600 border-brand-500' : 'text-ink-400 border-transparent hover:text-ink-600'}`}>
                   {label}
                 </button>
               ))}
@@ -180,83 +139,64 @@ export default function InquiryDetail({ id }) {
 
             <div className="p-5">
               {activeTab === 'activity' && (
-                <div>
-                  {/* Comment input */}
+                <>
                   <div className="flex gap-2 mb-5">
-                    <input
-                      className="input flex-1"
-                      placeholder="Add a comment..."
-                      value={comment}
-                      onChange={e => setComment(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && handleComment()}
-                    />
-                    <button onClick={handleComment} className="btn-primary px-3">Send</button>
+                    <input className="input flex-1" placeholder="Write a comment..." value={comment} onChange={e => setComment(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleComment()} />
+                    <button onClick={handleComment} disabled={sending || !comment.trim()} className="btn-primary px-4">{sending ? '...' : 'Send'}</button>
                   </div>
-
-                  {/* Activity log */}
-                  <div className="space-y-3">
-                    {inquiry.activity?.length === 0 && <p className="text-sm text-gray-400">No activity yet.</p>}
+                  <div className="space-y-4">
+                    {!inquiry.activity?.length && <p className="text-sm text-ink-300 text-center py-4">No activity yet</p>}
                     {inquiry.activity?.map(a => (
                       <div key={a.id} className="flex gap-3">
-                        <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-600 flex-shrink-0">
-                          {a.user_name?.[0]?.toUpperCase() || '?'}
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-gray-800">{a.user_name}</span>
-                            <span className="text-xs text-gray-400">{timeAgo(a.created_at)}</span>
+                        <div className="w-8 h-8 rounded-xl bg-surface-100 flex items-center justify-center text-xs font-bold text-ink-600 flex-shrink-0 border">{a.user_name?.[0]?.toUpperCase() || '?'}</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-sm font-semibold text-ink-800">{a.user_name}</span>
+                            <span className="text-xs text-ink-300">{timeAgo(a.created_at)}</span>
                           </div>
-                          <div className="text-sm text-gray-600 mt-0.5">
-                            {a.action === 'Comment' ? (
-                              <span className="bg-gray-50 rounded-lg px-3 py-1.5 block mt-1 border">{a.comment}</span>
-                            ) : (
-                              <span className="text-gray-500">{a.action}{a.comment ? `: ${a.comment}` : ''}</span>
-                            )}
-                          </div>
+                          {a.action === 'Comment'
+                            ? <div className="text-sm bg-surface-50 rounded-xl px-4 py-2.5 border text-ink-700 leading-relaxed">{a.comment}</div>
+                            : <span className="text-sm text-ink-400">{a.action}{a.comment ? ` — ${a.comment}` : ''}</span>}
                         </div>
                       </div>
                     ))}
                   </div>
-                </div>
+                </>
               )}
-
               {activeTab === 'followups' && (
-                <div>
-                  <button onClick={() => setShowFollowupForm(!showFollowupForm)} className="btn-secondary mb-4 w-full">
+                <>
+                  <button onClick={() => setShowFollowupForm(!showFollowupForm)} className={`${showFollowupForm ? 'btn-secondary' : 'btn-primary'} w-full mb-4`}>
                     {showFollowupForm ? 'Cancel' : '+ Add Follow-up'}
                   </button>
-
                   {showFollowupForm && (
-                    <div className="bg-gray-50 rounded-xl p-4 mb-4 space-y-2">
-                      <input className="input" placeholder="Follow-up note" value={newFollowup.note} onChange={e => setNewFollowup({ ...newFollowup, note: e.target.value })} />
+                    <div className="bg-surface-50 rounded-xl p-4 mb-4 space-y-2 border">
+                      <input className="input" placeholder="Follow-up note *" value={newFollowup.note} onChange={e => setNewFollowup(f => ({ ...f, note: e.target.value }))} />
                       <div className="flex gap-2">
-                        <input type="date" className="input flex-1" value={newFollowup.follow_up_date} onChange={e => setNewFollowup({ ...newFollowup, follow_up_date: e.target.value })} />
+                        <input type="date" className="input flex-1" value={newFollowup.follow_up_date} onChange={e => setNewFollowup(f => ({ ...f, follow_up_date: e.target.value }))} />
                         <button onClick={handleFollowup} className="btn-primary">Add</button>
                       </div>
                     </div>
                   )}
-
                   <div className="space-y-2">
-                    {inquiry.followups?.length === 0 && <p className="text-sm text-gray-400">No follow-ups yet.</p>}
+                    {!inquiry.followups?.length && <p className="text-sm text-ink-300 text-center py-4">No follow-ups yet</p>}
                     {inquiry.followups?.map(fu => (
-                      <div key={fu.id} className={`flex items-start gap-3 p-3 rounded-xl border ${fu.completed ? 'bg-gray-50 opacity-60' : 'bg-white'}`}>
+                      <div key={fu.id} className={`flex items-start gap-3 p-3.5 rounded-xl border transition-all ${fu.completed ? 'bg-slate-50 opacity-60' : 'bg-white hover:border-brand-200'}`}>
                         <button onClick={() => toggleFollowup(fu)} className="mt-0.5 flex-shrink-0">
-                          <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${fu.completed ? 'bg-brand-500 border-brand-500' : 'border-gray-300'}`}>
+                          <div className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all ${fu.completed ? 'bg-brand-600 border-brand-600' : 'border-ink-300 hover:border-brand-400'}`}>
                             {fu.completed && <span className="text-white text-xs">✓</span>}
                           </div>
                         </button>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-sm ${fu.completed ? 'line-through text-gray-400' : 'text-gray-700'}`}>{fu.note}</p>
-                          <div className="flex gap-3 text-xs text-gray-400 mt-0.5">
-                            {fu.follow_up_date && <span>📅 {formatDate(fu.follow_up_date)}</span>}
-                            <span>by {fu.created_by_name}</span>
-                            <span>{timeAgo(fu.created_at)}</span>
+                        <div className="flex-1">
+                          <p className={`text-sm font-medium ${fu.completed ? 'line-through text-ink-300' : 'text-ink-700'}`}>{fu.note}</p>
+                          <div className="flex gap-3 text-xs text-ink-300 mt-1">
+                            {fu.follow_up_date && <span className="text-amber-500 font-medium">📅 {formatDate(fu.follow_up_date)}</span>}
+                            <span>by {fu.created_by_name} · {timeAgo(fu.created_at)}</span>
                           </div>
                         </div>
                       </div>
                     ))}
                   </div>
-                </div>
+                </>
               )}
             </div>
           </div>
@@ -265,48 +205,56 @@ export default function InquiryDetail({ id }) {
         {/* Sidebar */}
         <div className="space-y-4">
           <div className="card p-4">
-            <h3 className="font-display font-bold text-sm text-gray-900 mb-3">Details</h3>
-            <div className="space-y-3">
-              <div>
-                <div className="text-xs text-gray-400 mb-1">Status</div>
-                {editMode ? (
-                  <select className="input" value={editForm.status} onChange={e => setEditForm({ ...editForm, status: e.target.value })}>
-                    {STATUSES.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-                  </select>
-                ) : <StatusBadge status={inquiry.status} />}
-              </div>
-              <div>
-                <div className="text-xs text-gray-400 mb-1">Assigned to</div>
-                {editMode && user.role === 'manager' ? (
-                  <select className="input" value={editForm.assigned_to} onChange={e => setEditForm({ ...editForm, assigned_to: e.target.value })}>
-                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
-                ) : <span className="text-sm font-medium text-gray-700">{inquiry.assigned_name || '—'}</span>}
-              </div>
-              <div>
-                <div className="text-xs text-gray-400 mb-1">Created</div>
-                <span className="text-sm text-gray-600">{formatDate(inquiry.created_at)}</span>
-              </div>
-              <div>
-                <div className="text-xs text-gray-400 mb-1">Last updated</div>
-                <span className="text-sm text-gray-600">{timeAgo(inquiry.updated_at)}</span>
-              </div>
+            <h3 className="font-display font-bold text-sm text-ink-900 mb-4">Details</h3>
+            <div className="space-y-4">
+              <Detail label="Disposition">
+                {editMode ? <select className="input" value={editForm.disposition} onChange={e => setEF('disposition', e.target.value)}>{DISPOSITIONS.map(d => <option key={d}>{d}</option>)}</select>
+                : <DispositionBadge disposition={inquiry.disposition} />}
+              </Detail>
+              <Detail label="Assigned to">
+                {editMode && user.role === 'manager'
+                  ? <select className="input" value={editForm.assigned_to} onChange={e => setEF('assigned_to', e.target.value)}>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
+                  : <span className="font-semibold text-ink-700">{inquiry.assigned_name || '—'}</span>}
+              </Detail>
+              {inquiry.type === 'repeat' && (
+                <Detail label="PPC / Outbound">
+                  {editMode ? <select className="input" value={editForm.ppc_or_outbound} onChange={e => setEF('ppc_or_outbound', e.target.value)}><option value="">—</option>{PPC_OPTIONS.map(o => <option key={o}>{o}</option>)}</select>
+                  : <span className="text-ink-700">{inquiry.ppc_or_outbound || '—'}</span>}
+                </Detail>
+              )}
+              {inquiry.type === 'online_order' && <>
+                <Detail label="Order #">
+                  {editMode ? <input className="input" value={editForm.order_ref} onChange={e => setEF('order_ref', e.target.value)} />
+                  : <span className="font-mono text-ink-700">{inquiry.order_ref || '—'}</span>}
+                </Detail>
+                <Detail label="Order Amount">
+                  {editMode ? <input className="input" value={editForm.order_amount} onChange={e => setEF('order_amount', e.target.value)} />
+                  : <span className="font-bold text-green-700 text-base">{inquiry.order_amount || '—'}</span>}
+                </Detail>
+              </>}
+              <Detail label="Created"><span className="text-ink-500 text-sm">{formatDate(inquiry.created_at)}</span></Detail>
+              <Detail label="Updated"><span className="text-ink-500 text-sm">{timeAgo(inquiry.updated_at)}</span></Detail>
             </div>
           </div>
 
-          {/* Customer quick link */}
           <div className="card p-4">
-            <h3 className="font-display font-bold text-sm text-gray-900 mb-2">Customer</h3>
-            <button
-              onClick={() => navigate('customer-detail', { id: inquiry.customer_id })}
-              className="text-sm text-brand-500 hover:text-brand-600 font-medium"
-            >
+            <h3 className="font-display font-bold text-sm text-ink-900 mb-2">Customer</h3>
+            <button onClick={() => navigate('customer-detail', { id: inquiry.customer_id })} className="text-sm text-brand-600 hover:text-brand-700 font-semibold transition-colors">
               {inquiry.customer_name} →
             </button>
-            {inquiry.customer_company && <div className="text-xs text-gray-400 mt-0.5">{inquiry.customer_company}</div>}
+            {inquiry.customer_company && <div className="text-xs text-ink-400 mt-0.5">{inquiry.customer_company}</div>}
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+function Detail({ label, children }) {
+  return (
+    <div>
+      <div className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-1.5">{label}</div>
+      {children}
     </div>
   )
 }

@@ -42,9 +42,12 @@ function initializeDB() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
       type TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'open',
+      disposition TEXT DEFAULT 'Initial Contact',
       assigned_to INTEGER REFERENCES users(id),
       notes TEXT,
+      ppc_or_outbound TEXT,
+      order_amount TEXT,
+      order_ref TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -78,13 +81,29 @@ function initializeDB() {
     );
   `);
 
-  // Seed default managers if no users exist
+  // Migrations for existing databases
+  const migrations = [
+    "ALTER TABLE inquiries ADD COLUMN disposition TEXT DEFAULT 'Initial Contact'",
+    "ALTER TABLE inquiries ADD COLUMN ppc_or_outbound TEXT",
+    "ALTER TABLE inquiries ADD COLUMN order_amount TEXT",
+    "ALTER TABLE inquiries ADD COLUMN order_ref TEXT",
+  ];
+  for (const m of migrations) {
+    try { db.exec(m) } catch {}
+  }
+
+  // Seed all team members if no users exist
   const count = db.prepare('SELECT COUNT(*) as c FROM users').get();
   if (count.c === 0) {
-    const hash = bcrypt.hashSync('Admin@123', 10);
-    db.prepare("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, 'manager')").run('ethan', hash, 'Ethan');
-    db.prepare("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, 'manager')").run('eddie', hash, 'Eddie');
-    console.log('✅ Default managers created → ethan / Admin@123 and eddie / Admin@123');
+    const managerHash = bcrypt.hashSync('Admin@123', 10);
+    const aeHash = bcrypt.hashSync('Team@123', 10);
+    db.prepare("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, 'manager')").run('eddie', managerHash, 'Eddie');
+    db.prepare("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, 'manager')").run('ethan', managerHash, 'Ethan');
+    db.prepare("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, 'ae')").run('ryan', aeHash, 'Ryan');
+    db.prepare("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, 'ae')").run('justin', aeHash, 'Justin');
+    db.prepare("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, 'ae')").run('aman', aeHash, 'Aman');
+    db.prepare("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, 'ae')").run('hector', aeHash, 'Hector');
+    console.log('✅ All team members seeded → Managers: Admin@123 | AEs: Team@123');
   }
 
   console.log('✅ Database ready');

@@ -36,10 +36,11 @@ export const api = {
   updateCustomer: (id, data) => req('PUT', `/customers/${id}`, data),
 
   // Inquiries
-  getInquiries: (type, status) => {
+  getInquiries: (type, status, disposition) => {
     const p = new URLSearchParams();
     if (type) p.set('type', type);
     if (status) p.set('status', status);
+    if (disposition) p.set('disposition', disposition);
     return req('GET', `/inquiries?${p}`);
   },
   getStats: () => req('GET', '/inquiries/stats'),
@@ -47,7 +48,12 @@ export const api = {
   getInquiry: (id) => req('GET', `/inquiries/${id}`),
   updateInquiry: (id, data) => req('PUT', `/inquiries/${id}`, data),
 
-  // Comments
+  // Analytics
+  getAnalytics: (filters = {}) => {
+    const p = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => { if (v) p.set(k, v); });
+    return req('GET', `/analytics?${p}`);
+  },
   addComment: (inquiryId, comment) => req('POST', `/inquiries/${inquiryId}/comments`, { comment }),
 
   // Followups

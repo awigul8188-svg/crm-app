@@ -13,6 +13,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/customers', require('./routes/customers'));
 app.use('/api/inquiries', require('./routes/inquiries'));
+app.use('/api/analytics', require('./routes/analytics'));
 
 // Serve React build in production
 const clientDist = path.join(__dirname, 'client', 'dist');

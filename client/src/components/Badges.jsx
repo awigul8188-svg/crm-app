@@ -1,27 +1,56 @@
-export function StatusBadge({ status }) {
-  const labels = { open: 'Open', in_progress: 'In Progress', closed: 'Closed', won: 'Won', lost: 'Lost' }
+export const DISPOSITIONS = [
+  'Initial Contact', 'Quoted', 'Bidding', 'Waiting for approval',
+  'Shopping Around', 'Cold', 'Cold Lead', 'Hold', 'Needed in stock',
+  'Pricing Issue', 'Part Not Available', 'Condition Not Available',
+  'No response', 'Fake Lead', 'Desi', 'Chinese Supplier',
+  'Supplier', 'Supplier, but we are working on it',
+  'Project Cancelled', 'Payment failed', 'Closed Won', 'Closed Lost',
+]
+
+export const LEAD_SOURCES = [
+  'Chat Lead', 'Website RFQ', 'Email Lead', 'Call Lead',
+  'RFQ Lead', 'Contact form', 'BB Lead',
+]
+
+export const PPC_OPTIONS = ['PPC', 'Outbound Repeat']
+
+const DISPOSITION_COLORS = {
+  'Closed Won': 'bg-green-50 text-green-700 border-green-200',
+  'Closed Lost': 'bg-red-50 text-red-600 border-red-200',
+  'Quoted': 'bg-blue-50 text-blue-700 border-blue-200',
+  'Bidding': 'bg-violet-50 text-violet-700 border-violet-200',
+  'Initial Contact': 'bg-gray-100 text-gray-600 border-gray-200',
+  'Cold': 'bg-slate-100 text-slate-500 border-slate-200',
+  'Cold Lead': 'bg-slate-100 text-slate-500 border-slate-200',
+  'Hold': 'bg-amber-50 text-amber-600 border-amber-200',
+  'Fake Lead': 'bg-red-50 text-red-400 border-red-100',
+  'No response': 'bg-gray-100 text-gray-500 border-gray-200',
+  'Payment failed': 'bg-red-50 text-red-500 border-red-200',
+  'Waiting for approval': 'bg-yellow-50 text-yellow-600 border-yellow-200',
+  'Shopping Around': 'bg-orange-50 text-orange-600 border-orange-200',
+}
+
+export function DispositionBadge({ disposition }) {
+  const cls = DISPOSITION_COLORS[disposition] || 'bg-gray-100 text-gray-600 border-gray-200'
   return (
-    <span className={`text-xs font-semibold px-2 py-0.5 rounded-lg border badge-${status}`}>
-      {labels[status] || status}
+    <span className={`text-xs font-semibold px-2 py-0.5 rounded-lg border whitespace-nowrap ${cls}`}>
+      {disposition || '—'}
     </span>
   )
 }
 
 export function TypeBadge({ type }) {
   const map = {
-    lead: { label: 'Lead', class: 'bg-blue-50 text-blue-600 border-blue-100' },
-    repeat: { label: 'Repeat', class: 'bg-violet-50 text-violet-600 border-violet-100' },
-    online_order: { label: 'Online Order', class: 'bg-amber-50 text-amber-600 border-amber-100' },
+    lead: { label: '🎯 Lead', cls: 'bg-blue-50 text-blue-600 border-blue-100' },
+    repeat: { label: '🔁 Repeat', cls: 'bg-violet-50 text-violet-600 border-violet-100' },
+    online_order: { label: '🛒 Order', cls: 'bg-amber-50 text-amber-600 border-amber-100' },
   }
-  const t = map[type] || { label: type, class: 'bg-gray-100 text-gray-600' }
-  return (
-    <span className={`text-xs font-semibold px-2 py-0.5 rounded-lg border ${t.class}`}>
-      {t.label}
-    </span>
-  )
+  const t = map[type] || { label: type, cls: 'bg-gray-100 text-gray-600' }
+  return <span className={`text-xs font-semibold px-2 py-0.5 rounded-lg border ${t.cls}`}>{t.label}</span>
 }
 
 export function timeAgo(dateStr) {
+  if (!dateStr) return '—'
   const diff = Date.now() - new Date(dateStr)
   const mins = Math.floor(diff / 60000)
   if (mins < 1) return 'just now'
@@ -36,4 +65,9 @@ export function timeAgo(dateStr) {
 export function formatDate(dateStr) {
   if (!dateStr) return '—'
   return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+export function formatDateShort(dateStr) {
+  if (!dateStr) return '—'
+  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
