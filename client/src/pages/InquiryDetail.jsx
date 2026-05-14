@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { api } from '../api'
 import { useAuth } from '../App'
 import { useNav } from '../App'
-import { DispositionBadge, TypeBadge, DISPOSITIONS, PPC_OPTIONS, timeAgo, formatDate } from '../components/Badges'
+import { DispositionBadge, TypeBadge, DISPOSITIONS, PPC_OPTIONS, ORDER_SOURCES, VERIFICATION_OPTIONS, timeAgo, formatDate } from '../components/Badges'
 
 export default function InquiryDetail({ id }) {
   const { user } = useAuth()
@@ -43,7 +43,7 @@ export default function InquiryDetail({ id }) {
   }
   const toggleFollowup = async (fu) => { await api.updateFollowup(fu.id, { ...fu, completed: !fu.completed }); load() }
   const handleDelete = async () => {
-    if (!confirm('Delete this inquiry permanently? This cannot be undone.')) return
+    if (!confirm('Delete this inquiry permanently?')) return
     setDeleting(true)
     try { await api.deleteInquiry(id); navigate(inquiry.type === 'lead' ? 'leads' : inquiry.type === 'repeat' ? 'repeat' : 'orders') }
     catch (e) { alert(e.message); setDeleting(false) }
@@ -53,6 +53,10 @@ export default function InquiryDetail({ id }) {
   const removeReq = (i) => setRequirements(r => r.filter((_, idx) => idx !== i))
   const backPage = inquiry?.type === 'lead' ? 'leads' : inquiry?.type === 'repeat' ? 'repeat' : 'orders'
   const backLabel = inquiry?.type === 'lead' ? 'Leads' : inquiry?.type === 'repeat' ? 'Repeat Inquiries' : 'Online Orders'
+
+  const dispositionsForType = inquiry?.type === 'online_order'
+    ? ['Processed', 'Cancelled']
+    : DISPOSITIONS.filter(d => d !== 'Processed' && d !== 'Cancelled')
 
   if (loading) return <div className="flex items-center justify-center h-full"><div className="w-7 h-7 rounded-full border-2 border-brand-400 border-t-transparent spinner" /></div>
   if (!inquiry) return <div className="p-8 text-ink-400">Not found.</div>
@@ -65,7 +69,6 @@ export default function InquiryDetail({ id }) {
         ← {backLabel}
       </button>
 
-      {/* Header */}
       <div className="card p-6 mb-5">
         <div className="flex items-start justify-between">
           <div>
@@ -109,7 +112,7 @@ export default function InquiryDetail({ id }) {
                   <div key={i} className="flex gap-2">
                     <input className="input flex-1" placeholder="Part number" value={r.part_number} onChange={e => updateReq(i,'part_number',e.target.value)} />
                     <input className="input w-28" placeholder="Qty" value={r.quantity} onChange={e => updateReq(i,'quantity',e.target.value)} />
-                    <button onClick={() => removeReq(i)} className="btn-icon text-red-400 hover:text-red-600">×</button>
+                    <button onClick={() => removeReq(i)} className="btn-icon text-red-400 hover:text-red-600 text-lg">×</button>
                   </div>
                 ))}
               </div>
@@ -127,7 +130,7 @@ export default function InquiryDetail({ id }) {
           <div className="card p-5">
             <h3 className="font-display font-bold text-sm text-ink-900 mb-2">Comments</h3>
             {editMode
-              ? <textarea className="input resize-none" rows={3} value={editForm.notes} onChange={e => setEF('notes', e.target.value)} placeholder="Add comments..." />
+              ? <textarea className="input resize-none" rows={3} value={editForm.notes} onChange={e => setEF('notes',e.target.value)} placeholder="Add comments..." />
               : <p className="text-sm text-ink-600 leading-relaxed">{inquiry.notes || <span className="text-ink-300">No comments yet.</span>}</p>}
           </div>
 
@@ -186,7 +189,7 @@ export default function InquiryDetail({ id }) {
                     {inquiry.followups?.map(fu => (
                       <div key={fu.id} className={`flex items-start gap-3 p-3.5 rounded-xl border transition-all ${fu.completed ? 'bg-slate-50 opacity-60' : 'bg-white hover:border-brand-200'}`}>
                         <button onClick={() => toggleFollowup(fu)} className="mt-0.5 flex-shrink-0">
-                          <div className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all ${fu.completed ? 'bg-brand-600 border-brand-600' : 'border-ink-300 hover:border-brand-400'}`}>
+                          <div className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all ${fu.completed ? 'bg-brand-500 border-brand-500' : 'border-ink-300 hover:border-brand-400'}`}>
                             {fu.completed && <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                           </div>
                         </button>
@@ -198,7 +201,7 @@ export default function InquiryDetail({ id }) {
                           </div>
                         </div>
                         {user.role === 'manager' && (
-                          <button onClick={() => api.deleteFollowup(fu.id).then(load)} className="text-red-400 hover:text-red-500 text-xs flex-shrink-0 opacity-0 hover:opacity-100 transition-opacity">🗑</button>
+                          <button onClick={() => api.deleteFollowup(fu.id).then(load)} className="text-red-400 hover:text-red-500 text-xs flex-shrink-0">🗑</button>
                         )}
                       </div>
                     ))}
@@ -209,14 +212,16 @@ export default function InquiryDetail({ id }) {
           </div>
         </div>
 
-        {/* Details sidebar */}
+        {/* Sidebar details */}
         <div className="space-y-4">
           <div className="card p-4">
             <h3 className="font-display font-bold text-sm text-ink-900 mb-4">Details</h3>
             <div className="space-y-4 text-sm">
-              <Detail label="Disposition">
+              <Detail label={inquiry.type === 'online_order' ? 'Status' : 'Disposition'}>
                 {editMode
-                  ? <select className="input" value={editForm.disposition} onChange={e => setEF('disposition',e.target.value)}>{DISPOSITIONS.map(d=><option key={d}>{d}</option>)}</select>
+                  ? <select className="input" value={editForm.disposition} onChange={e => setEF('disposition',e.target.value)}>
+                      {dispositionsForType.map(d=><option key={d}>{d}</option>)}
+                    </select>
                   : <DispositionBadge disposition={inquiry.disposition} />}
               </Detail>
               <Detail label="Assigned to">
@@ -232,13 +237,23 @@ export default function InquiryDetail({ id }) {
                 </Detail>
               )}
               {inquiry.type==='online_order' && <>
-                <Detail label="Order #">
-                  {editMode ? <input className="input" value={editForm.order_ref} onChange={e=>setEF('order_ref',e.target.value)} /> : <span className="font-mono text-ink-700">{inquiry.order_ref||'—'}</span>}
+                <Detail label="Verification">
+                  {editMode
+                    ? <select className="input" value={editForm.order_ref} onChange={e => setEF('order_ref',e.target.value)}>
+                        <option value="">—</option>
+                        {VERIFICATION_OPTIONS.map(v=><option key={v}>{v}</option>)}
+                      </select>
+                    : <span className={`badge ${inquiry.order_ref === 'Verified' ? 'bg-green-50 text-green-700 border-green-200' : inquiry.order_ref === 'Not Verified' ? 'bg-red-50 text-red-500 border-red-200' : 'bg-gray-100 text-gray-500 border-gray-200'}`}>
+                        {inquiry.order_ref || '—'}
+                      </span>}
                 </Detail>
                 <Detail label="Order Amount">
-                  {editMode ? <input className="input" value={editForm.order_amount} onChange={e=>setEF('order_amount',e.target.value)} /> : <span className="font-bold text-green-700">{inquiry.order_amount||'—'}</span>}
+                  {editMode
+                    ? <input className="input" value={editForm.order_amount} onChange={e=>setEF('order_amount',e.target.value)} />
+                    : <span className="font-bold text-green-700">{inquiry.order_amount ? `$${inquiry.order_amount}` : '—'}</span>}
                 </Detail>
               </>}
+              {inquiry.lead_source && <Detail label="Source"><span className="badge bg-teal-50 text-teal-700 border-teal-200">{inquiry.lead_source}</span></Detail>}
               <Detail label="Created"><span className="text-ink-500">{formatDate(inquiry.created_at)}</span></Detail>
               <Detail label="Updated"><span className="text-ink-500">{timeAgo(inquiry.updated_at)}</span></Detail>
             </div>

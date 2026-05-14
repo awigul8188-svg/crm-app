@@ -1,29 +1,23 @@
 import { useAuth } from '../App'
 import { useNav } from '../App'
 
-// Tech Atlantix geometric icon — reconstructed from logo
-// White angular top-right shape + cyan bottom-left block
 function TALogo({ size = 36 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-      {/* White top piece — angular bracket shape */}
       <polygon points="20,2 46,2 46,14 32,14 32,10 20,10" fill="white"/>
-      {/* White right vertical stem */}
       <rect x="32" y="14" width="14" height="16" fill="white"/>
-      {/* Cyan main block — bottom left */}
       <rect x="2" y="14" width="28" height="22" fill="#00D4C8"/>
-      {/* White bottom-right piece */}
       <rect x="20" y="36" width="26" height="10" fill="white"/>
     </svg>
   )
 }
 
 const NAV = [
-  { name: 'dashboard', label: 'Dashboard',         icon: '▣' },
-  { name: 'leads',     label: 'Leads',              icon: '◎' },
-  { name: 'repeat',    label: 'Repeat Inquiries',   icon: '↻' },
-  { name: 'orders',    label: 'Online Orders',       icon: '◈' },
-  { name: 'customers', label: 'Customers',           icon: '◉' },
+  { name: 'dashboard', label: 'Dashboard',       icon: '▣' },
+  { name: 'leads',     label: 'Leads',            icon: '◎' },
+  { name: 'repeat',    label: 'Repeat Inquiries', icon: '↻' },
+  { name: 'orders',    label: 'Online Orders',    icon: '◈' },
+  { name: 'customers', label: 'Customers',        icon: '◉' },
 ]
 
 export default function Layout({ children }) {
@@ -32,11 +26,10 @@ export default function Layout({ children }) {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Sidebar — near-black matching logo background */}
       <aside className="w-[230px] flex-shrink-0 flex flex-col"
         style={{ background: '#0d0d0d', borderRight: '1px solid rgba(255,255,255,0.06)' }}>
 
-        {/* Logo area */}
+        {/* Logo */}
         <div className="px-5 pt-6 pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
           <div className="flex items-center gap-3 mb-5">
             <TALogo size={34} />
@@ -45,8 +38,6 @@ export default function Layout({ children }) {
               <div className="font-display font-bold leading-none tracking-tight text-base" style={{ color: '#00D4C8' }}>ATLANTIX</div>
             </div>
           </div>
-
-          {/* User chip */}
           <div className="flex items-center gap-2.5 rounded-xl px-3 py-2.5"
             style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
             <div className="w-7 h-7 rounded-lg flex items-center justify-center text-dark-900 text-xs font-bold flex-shrink-0"
@@ -62,10 +53,9 @@ export default function Layout({ children }) {
           </div>
         </div>
 
-        {/* Navigation */}
+        {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-          <div className="text-xs font-bold uppercase tracking-widest px-3 mb-2.5"
-            style={{ color: 'rgba(255,255,255,0.2)', fontSize: '9px', letterSpacing: '0.12em' }}>
+          <div className="px-3 mb-2.5" style={{ color: 'rgba(255,255,255,0.2)', fontSize: '9px', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
             Main Menu
           </div>
           {NAV.map(item => (
@@ -73,24 +63,26 @@ export default function Layout({ children }) {
               className={`nav-item ${page.name === item.name ? 'nav-active' : 'nav-inactive'}`}>
               <span className="text-sm w-5 text-center flex-shrink-0">{item.icon}</span>
               <span>{item.label}</span>
-              {page.name === item.name && (
-                <span className="ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#00D4C8' }} />
-              )}
+              {page.name === item.name && <span className="ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#00D4C8' }} />}
             </button>
           ))}
 
           {user.role === 'manager' && (
             <>
-              <div className="text-xs font-bold uppercase tracking-widest px-3 mt-5 mb-2.5"
-                style={{ color: 'rgba(255,255,255,0.2)', fontSize: '9px', letterSpacing: '0.12em' }}>
+              <div className="px-3 mt-5 mb-2.5" style={{ color: 'rgba(255,255,255,0.2)', fontSize: '9px', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
                 Admin
               </div>
-              <button onClick={() => navigate('users')}
-                className={`nav-item ${page.name === 'users' ? 'nav-active' : 'nav-inactive'}`}>
-                <span className="text-sm w-5 text-center">⚙</span>
-                <span>Users</span>
-                {page.name === 'users' && <span className="ml-auto w-1.5 h-1.5 rounded-full" style={{ background: '#00D4C8' }} />}
-              </button>
+              {[
+                { name: 'import', label: 'Import Data', icon: '📥' },
+                { name: 'users',  label: 'Users',       icon: '⚙' },
+              ].map(item => (
+                <button key={item.name} onClick={() => navigate(item.name)}
+                  className={`nav-item ${page.name === item.name ? 'nav-active' : 'nav-inactive'}`}>
+                  <span className="text-sm w-5 text-center">{item.icon}</span>
+                  <span>{item.label}</span>
+                  {page.name === item.name && <span className="ml-auto w-1.5 h-1.5 rounded-full" style={{ background: '#00D4C8' }} />}
+                </button>
+              ))}
             </>
           )}
         </nav>
@@ -101,13 +93,12 @@ export default function Layout({ children }) {
             <span className="text-sm w-5 text-center">→</span>
             <span>Sign out</span>
           </button>
-          <div className="text-center mt-3 text-xs" style={{ color: 'rgba(255,255,255,0.12)', fontSize: '9px' }}>
+          <div className="text-center mt-3" style={{ color: 'rgba(255,255,255,0.12)', fontSize: '9px' }}>
             Beyond Tech · Above Integration
           </div>
         </div>
       </aside>
 
-      {/* Main content */}
       <main className="flex-1 overflow-y-auto bg-surface-50">
         {children}
       </main>

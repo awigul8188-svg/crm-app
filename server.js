@@ -12,9 +12,7 @@ const DISABLED = process.env.DISABLE_IP_WHITELIST === 'true';
 
 const BLOCKED_HTML = `<!DOCTYPE html><html><head><title>Access Restricted</title></head><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0d0d0d;color:white;text-align:center"><div><div style="font-size:48px;margin-bottom:16px">🔒</div><h2 style="color:#00D4C8;margin:0 0 8px">Access Restricted</h2><p style="color:rgba(255,255,255,0.5);margin:0">Only accessible from the Tech Atlantix office.</p></div></body></html>`;
 
-// Create raw HTTP server to intercept ALL requests before Express
 const server = http.createServer((req, res) => {
-  // Always allow debug endpoint
   if (req.url === '/debug-ip') {
     const forwarded = req.headers['x-forwarded-for'];
     const ip = forwarded ? forwarded.split(',')[0].trim() : req.socket.remoteAddress;
@@ -22,21 +20,16 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({ detected_ip: ip, x_forwarded_for: forwarded || 'none', allowed_ips: ALLOWED_IPS, disabled: DISABLED }));
     return;
   }
-
-  // IP check
   if (!DISABLED) {
     const forwarded = req.headers['x-forwarded-for'];
     const ip = forwarded ? forwarded.split(',')[0].trim() : req.socket.remoteAddress;
     if (!ALLOWED_IPS.includes(ip)) {
-      console.log(`BLOCKED: ${ip} tried to access ${req.url}`);
+      console.log(`BLOCKED: ${ip}`);
       res.writeHead(403, { 'Content-Type': 'text/html' });
       res.end(BLOCKED_HTML);
       return;
     }
-    console.log(`ALLOWED: ${ip}`);
   }
-
-  // Pass to Express
   app(req, res);
 });
 
@@ -48,12 +41,11 @@ app.use('/api/users', require('./routes/users'));
 app.use('/api/customers', require('./routes/customers'));
 app.use('/api/inquiries', require('./routes/inquiries'));
 app.use('/api/analytics', require('./routes/analytics'));
+app.use('/api/import', require('./routes/import'));
 
 const clientDist = path.join(__dirname, 'client', 'dist');
 app.use(express.static(clientDist));
-app.get('*', (req, res) => {
-  res.sendFile(path.join(clientDist, 'index.html'));
-});
+app.get('*', (req, res) => res.sendFile(path.join(clientDist, 'index.html')));
 
 initializeDB();
 server.listen(PORT, () => console.log(`CRM running on port ${PORT}`));

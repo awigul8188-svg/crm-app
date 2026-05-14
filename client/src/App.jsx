@@ -8,10 +8,10 @@ import Customers from './pages/Customers'
 import InquiryDetail from './pages/InquiryDetail'
 import CustomerDetail from './pages/CustomerDetail'
 import Users from './pages/Users'
+import ImportData from './pages/ImportData'
 
 export const AuthContext = createContext(null)
 export const useAuth = () => useContext(AuthContext)
-
 export const NavContext = createContext(null)
 export const useNav = () => useContext(NavContext)
 
@@ -23,10 +23,7 @@ export default function App() {
   useEffect(() => {
     const token = localStorage.getItem('crm_token')
     if (token) {
-      api.me().then(u => { setUser(u); setLoading(false) }).catch(() => {
-        localStorage.removeItem('crm_token')
-        setLoading(false)
-      })
+      api.me().then(u => { setUser(u); setLoading(false) }).catch(() => { localStorage.removeItem('crm_token'); setLoading(false) })
     } else setLoading(false)
   }, [])
 
@@ -45,8 +42,8 @@ export default function App() {
   const navigate = (name, params = {}) => setPage({ name, params })
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="w-8 h-8 border-4 border-brand-400 border-t-transparent rounded-full animate-spin" />
+    <div className="min-h-screen flex items-center justify-center bg-surface-50">
+      <div className="w-8 h-8 border-2 border-brand-400 border-t-transparent rounded-full spinner" />
     </div>
   )
 
@@ -58,15 +55,16 @@ export default function App() {
 
   const renderPage = () => {
     switch (page.name) {
-      case 'dashboard': return <Dashboard />
-      case 'leads': return <InquiryList type="lead" title="Leads" />
-      case 'repeat': return <InquiryList type="repeat" title="Repeat Inquiries" />
-      case 'orders': return <InquiryList type="online_order" title="Online Orders" />
-      case 'customers': return <Customers />
+      case 'dashboard':       return <Dashboard />
+      case 'leads':           return <InquiryList type="lead" title="Leads" />
+      case 'repeat':          return <InquiryList type="repeat" title="Repeat Inquiries" />
+      case 'orders':          return <InquiryList type="online_order" title="Online Orders" />
+      case 'customers':       return <Customers />
       case 'customer-detail': return <CustomerDetail id={page.params.id} />
-      case 'inquiry-detail': return <InquiryDetail id={page.params.id} />
-      case 'users': return user.role === 'manager' ? <Users /> : <Dashboard />
-      default: return <Dashboard />
+      case 'inquiry-detail':  return <InquiryDetail id={page.params.id} />
+      case 'users':           return user.role === 'manager' ? <Users /> : <Dashboard />
+      case 'import':          return user.role === 'manager' ? <ImportData /> : <Dashboard />
+      default:                return <Dashboard />
     }
   }
 
