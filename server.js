@@ -6,6 +6,39 @@ const { initializeDB } = require('./database');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// ─── IP Whitelist ───────────────────────────────────────────────
+// Add more IPs to this array if needed (e.g. remote workers, VPN)
+const ALLOWED_IPS = (process.env.ALLOWED_IPS || '203.99.187.217').split(',').map(ip => ip.trim());
+
+function getClientIP(req) {
+  // Render sits behind a proxy, real IP is in X-Forwarded-For
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) return forwarded.split(',')[0].trim();
+  return req.socket.remoteAddress;
+}
+
+function ipWhitelist(req, res, next) {
+  // Skip check if whitelist is disabled via env var
+  if (process.env.DISABLE_IP_WHITELIST === 'true') return next();
+
+  const clientIP = getClientIP(req);
+  if (ALLOWED_IPS.includes(clientIP)) return next();
+
+  console.log(`Blocked request from IP: ${clientIP}`);
+  res.status(403).send(`
+    <html><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0d0d0d;color:white;text-align:center">
+      <div>
+        <div style="font-size:48px;margin-bottom:16px">🔒</div>
+        <h2 style="color:#00D4C8;margin:0 0 8px">Access Restricted</h2>
+        <p style="color:rgba(255,255,255,0.5);margin:0">This app is only accessible from the Tech Atlantix office network.</p>
+      </div>
+    </body></html>
+  `);
+}
+
+app.use(ipWhitelist);
+// ────────────────────────────────────────────────────────────────
+
 app.use(cors());
 app.use(express.json());
 
