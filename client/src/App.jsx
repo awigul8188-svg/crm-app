@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext } from 'react'
+import { useState, useEffect, useRef, createContext, useContext } from 'react'
 import { api } from './api'
 import Login from './pages/Login'
 import Layout from './components/Layout'
@@ -16,6 +16,49 @@ export const useAuth = () => useContext(AuthContext)
 export const NavContext = createContext(null)
 export const useNav = () => useContext(NavContext)
 
+// Ringtone player for AEs — polls every 3 seconds
+function RingtonePlayer({ userId }) {
+  const audioRef = useRef(null)
+  const activeRef = useRef(false)
+
+  useEffect(() => {
+    let interval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/ringtone/status', { headers: { Authorization: `Bearer ${localStorage.getItem('crm_token')}` } })
+        const data = await res.json()
+
+        if (data.active && data.url) {
+          if (!activeRef.current) {
+            // Start playing
+            if (!audioRef.current) {
+              audioRef.current = new Audio(data.url)
+              audioRef.current.loop = true
+            }
+            audioRef.current.play().catch(() => {})
+            activeRef.current = true
+          }
+        } else {
+          if (activeRef.current) {
+            // Stop playing
+            if (audioRef.current) {
+              audioRef.current.pause()
+              audioRef.current.currentTime = 0
+            }
+            activeRef.current = false
+          }
+        }
+      } catch {}
+    }, 3000)
+
+    return () => {
+      clearInterval(interval)
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null }
+    }
+  }, [userId])
+
+  return null // invisible component
+}
+
 export default function App() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -24,7 +67,8 @@ export default function App() {
   useEffect(() => {
     const token = localStorage.getItem('crm_token')
     if (token) {
-      api.me().then(u => { setUser(u); setLoading(false) }).catch(() => { localStorage.removeItem('crm_token'); setLoading(false) })
+      api.me().then(u => { setUser(u); setLoading(false) })
+        .catch(() => { localStorage.removeItem('crm_token'); setLoading(false) })
     } else setLoading(false)
   }, [])
 
@@ -43,8 +87,9 @@ export default function App() {
   const navigate = (name, params = {}) => setPage({ name, params })
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-surface-50">
-      <div className="w-8 h-8 border-2 border-t-transparent rounded-full spinner" style={{ borderColor: '#00D4C8 transparent transparent' }} />
+    <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#f8fafc' }}>
+      <div style={{ width:32, height:32, borderRadius:'50%', border:'2px solid #00D4C8', borderTopColor:'transparent', animation:'spin 0.8s linear infinite' }} />
+      <style>{`@keyframes spin { to { transform:rotate(360deg); } }`}</style>
     </div>
   )
 
@@ -73,6 +118,8 @@ export default function App() {
   return (
     <AuthContext.Provider value={{ user, login, logout }}>
       <NavContext.Provider value={{ page, navigate }}>
+        {/* Ringtone poller — only for AEs */}
+        {user.role === 'ae' && <RingtonePlayer userId={user.id} />}
         <Layout>
           {renderPage()}
         </Layout>

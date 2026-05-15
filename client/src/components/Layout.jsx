@@ -25,26 +25,25 @@ const NAV = [
 export default function Layout({ children }) {
   const { user, logout } = useAuth()
   const { page, navigate } = useNav()
-  const [notifData, setNotifData] = useState({ total: 0, unreadActivity: 0 })
+  const [notifCount, setNotifCount] = useState(0)
+  const [avatarUrl, setAvatarUrl] = useState(null)
 
-  const loadNotifs = () => {
-    api.getNotifications()
-      .then(n => setNotifData({ total: n.total, unreadActivity: n.unreadActivity || 0 }))
-      .catch(() => {})
-  }
+  const loadNotifs = () => api.getNotifications().then(n => setNotifCount(n.total)).catch(() => {})
 
   useEffect(() => {
     loadNotifs()
-    const interval = setInterval(loadNotifs, 30000) // poll every 30s
+    // Load current user's avatar
+    api.getUsers().then(users => {
+      const me = users.find(u => u.id === user.id)
+      if (me?.avatar_url) setAvatarUrl(me.avatar_url)
+    }).catch(() => {})
+    const interval = setInterval(loadNotifs, 30000)
     return () => clearInterval(interval)
   }, [])
 
-  // Refresh when leaving notifications page
   useEffect(() => {
     if (page.name !== 'notifications') loadNotifs()
   }, [page.name])
-
-  const badgeCount = notifData.total
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -60,12 +59,18 @@ export default function Layout({ children }) {
               <div className="font-display font-bold leading-none tracking-tight text-base" style={{ color: '#00D4C8' }}>ATLANTIX</div>
             </div>
           </div>
+
+          {/* User chip with avatar */}
           <div className="flex items-center gap-2.5 rounded-xl px-3 py-2.5"
             style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center text-dark-900 text-xs font-bold flex-shrink-0"
-              style={{ background: '#00D4C8' }}>
-              {user.name[0].toUpperCase()}
-            </div>
+            {avatarUrl ? (
+              <img src={avatarUrl} alt={user.name} style={{ width:28, height:28, borderRadius:8, objectFit:'cover', flexShrink:0 }} onError={() => setAvatarUrl(null)} />
+            ) : (
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center text-dark-900 text-xs font-bold flex-shrink-0"
+                style={{ background: '#00D4C8' }}>
+                {user.name[0].toUpperCase()}
+              </div>
+            )}
             <div className="min-w-0">
               <div className="text-white text-xs font-semibold truncate">{user.name}</div>
               <div className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>
@@ -89,15 +94,15 @@ export default function Layout({ children }) {
             </button>
           ))}
 
-          {/* Notifications with badge */}
+          {/* Notifications */}
           <button onClick={() => navigate('notifications')}
             className={`nav-item ${page.name === 'notifications' ? 'nav-active' : 'nav-inactive'}`}>
             <span className="text-sm w-5 text-center flex-shrink-0">🔔</span>
             <span>Notifications</span>
-            {badgeCount > 0 && page.name !== 'notifications' && (
+            {notifCount > 0 && page.name !== 'notifications' && (
               <span className="ml-auto font-bold leading-none flex-shrink-0"
                 style={{ background: '#00D4C8', color: '#0d0d0d', fontSize: '10px', padding: '2px 7px', borderRadius: '20px', minWidth: '20px', textAlign: 'center' }}>
-                {badgeCount > 99 ? '99+' : badgeCount}
+                {notifCount > 99 ? '99+' : notifCount}
               </span>
             )}
           </button>

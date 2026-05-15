@@ -5,7 +5,6 @@ const { authenticate } = require('../middleware/auth');
 const router = express.Router();
 router.use(authenticate);
 
-// Parse comma-separated filter values into SQL IN clause
 function buildInFilter(column, value) {
   if (!value) return null;
   const values = value.split(',').map(v => v.trim()).filter(Boolean);
@@ -13,96 +12,137 @@ function buildInFilter(column, value) {
   return { sql: `${column} IN (${values.map(() => '?').join(',')})`, params: values };
 }
 
+// Parse order amount string to number
+function parseAmount(str) {
+  if (!str) return 0;
+  const n = parseFloat(String(str).replace(/[$,\s]/g, ''));
+  return isNaN(n) ? 0 : n;
+}
+
+// Main analytics (overview)
 router.get('/', (req, res) => {
   const db = getDB();
   const { from, to, lead_source, disposition, assigned_to, type } = req.query;
   const userId = req.user.role === 'ae' ? req.user.id : (assigned_to && !assigned_to.includes(',') ? assigned_to : null);
-
-  const filters = [];
-  const params = [];
+  const filters = []; const params = [];
 
   if (userId) { filters.push('i.assigned_to = ?'); params.push(userId); }
-
-  // Multi-value assigned_to for managers
   if (req.user.role === 'manager' && assigned_to && assigned_to.includes(',')) {
-    const f = buildInFilter('i.assigned_to', assigned_to);
-    if (f) { filters.push(f.sql); params.push(...f.params); }
+    const f = buildInFilter('i.assigned_to', assigned_to); if (f) { filters.push(f.sql); params.push(...f.params); }
   }
-
   if (from) { filters.push("date(i.created_at) >= ?"); params.push(from); }
   if (to) { filters.push("date(i.created_at) <= ?"); params.push(to); }
-
-  // Multi-value disposition filter
-  if (disposition) {
-    const f = buildInFilter('i.disposition', disposition);
-    if (f) { filters.push(f.sql); params.push(...f.params); }
-  }
-
-  // Multi-value lead source filter
-  if (lead_source) {
-    const f = buildInFilter('c.lead_source', lead_source);
-    if (f) { filters.push(f.sql); params.push(...f.params); }
-  }
-
-  // Multi-value type filter
-  if (type) {
-    const f = buildInFilter('i.type', type);
-    if (f) { filters.push(f.sql); params.push(...f.params); }
-  }
+  if (disposition) { const f = buildInFilter('i.disposition', disposition); if (f) { filters.push(f.sql); params.push(...f.params); } }
+  if (lead_source) { const f = buildInFilter('c.lead_source', lead_source); if (f) { filters.push(f.sql); params.push(...f.params); } }
+  if (type) { const f = buildInFilter('i.type', type); if (f) { filters.push(f.sql); params.push(...f.params); } }
 
   const where = filters.length ? 'WHERE ' + filters.join(' AND ') : '';
   const base = `FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id LEFT JOIN users u ON i.assigned_to = u.id ${where}`;
 
   try {
-    // Totals by type
     const totals = db.prepare(`SELECT i.type, COUNT(*) as count ${base} GROUP BY i.type`).all(...params);
-
-    // By disposition
     const byDisposition = db.prepare(`SELECT i.disposition, COUNT(*) as count ${base} GROUP BY i.disposition ORDER BY count DESC`).all(...params);
-
-    // By lead source
     const bySource = db.prepare(`SELECT c.lead_source as source, COUNT(*) as count ${base} GROUP BY c.lead_source ORDER BY count DESC`).all(...params);
-
-    // By assigned person
     const byPerson = db.prepare(`SELECT u.name as name, COUNT(*) as count ${base} GROUP BY i.assigned_to ORDER BY count DESC`).all(...params);
 
-    // Trend (last 30 days or filtered range)
-    const trendFilters = [...filters];
-    const trendParams = [...params];
-    if (!from && !to) {
-      trendFilters.push("date(i.created_at) >= date('now', '-30 days')");
-    }
+    const trendFilters = [...filters]; const trendParams = [...params];
+    if (!from && !to) trendFilters.push("date(i.created_at) >= date('now', '-30 days')");
     const trendWhere = trendFilters.length ? 'WHERE ' + trendFilters.join(' AND ') : '';
-    const trend = db.prepare(`
-      SELECT date(i.created_at) as date, i.type, COUNT(*) as count
-      FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id LEFT JOIN users u ON i.assigned_to = u.id
-      ${trendWhere} GROUP BY date(i.created_at), i.type ORDER BY date ASC
-    `).all(...trendParams);
+    const trend = db.prepare(`SELECT date(i.created_at) as date, i.type, COUNT(*) as count FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id LEFT JOIN users u ON i.assigned_to = u.id ${trendWhere} GROUP BY date(i.created_at), i.type ORDER BY date ASC`).all(...trendParams);
 
-    // Total count and closed won (fix: no extra params)
     const totalCount = db.prepare(`SELECT COUNT(*) as c ${base}`).get(...params).c;
+    const wonWhere = 'WHERE ' + [...filters, "i.disposition = 'Closed Won'"].join(' AND ');
+    const wonCount = db.prepare(`SELECT COUNT(*) as c FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id LEFT JOIN users u ON i.assigned_to = u.id ${wonWhere || "WHERE i.disposition = 'Closed Won'"}`).get(...params).c;
 
-    // Won count - add disposition filter separately
-    const wonFilters = [...filters, "i.disposition = 'Closed Won'"];
-    const wonWhere = 'WHERE ' + wonFilters.join(' AND ');
-    const wonCount = db.prepare(`SELECT COUNT(*) as c FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id LEFT JOIN users u ON i.assigned_to = u.id ${wonWhere}`).get(...params).c;
-
-    // Upcoming follow-ups
-    const fuFilters = [];
-    const fuParams = [];
+    const fuFilters = []; const fuParams = [];
     if (req.user.role === 'ae') { fuFilters.push('i.assigned_to = ?'); fuParams.push(req.user.id); }
     else if (userId) { fuFilters.push('i.assigned_to = ?'); fuParams.push(userId); }
     fuFilters.push("f.completed = 0", "f.follow_up_date >= date('now')");
-    const upcomingFollowups = db.prepare(`
-      SELECT f.*, i.type, i.id as inquiry_id, c.name as customer_name, u.name as assigned_name
-      FROM followups f JOIN inquiries i ON f.inquiry_id = i.id
-      JOIN customers c ON i.customer_id = c.id LEFT JOIN users u ON i.assigned_to = u.id
-      WHERE ${fuFilters.join(' AND ')} ORDER BY f.follow_up_date ASC LIMIT 10
-    `).all(...fuParams);
+    const upcomingFollowups = db.prepare(`SELECT f.*, i.type, c.name as customer_name, u.name as assigned_name FROM followups f JOIN inquiries i ON f.inquiry_id = i.id JOIN customers c ON i.customer_id = c.id LEFT JOIN users u ON i.assigned_to = u.id WHERE ${fuFilters.join(' AND ')} ORDER BY f.follow_up_date ASC LIMIT 10`).all(...fuParams);
 
     res.json({ totals, byDisposition, bySource, byPerson, trend, totalCount, wonCount, upcomingFollowups });
   } catch (err) {
     console.error('Analytics error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Detailed module analytics
+router.get('/module', (req, res) => {
+  const db = getDB();
+  const { type, from, to, assigned_to } = req.query;
+  if (!type) return res.status(400).json({ error: 'type required' });
+
+  const userId = req.user.role === 'ae' ? req.user.id : (assigned_to || null);
+  const today = new Date().toISOString().split('T')[0];
+
+  const filters = [`i.type = ?`]; const params = [type];
+  if (userId) { filters.push('i.assigned_to = ?'); params.push(userId); }
+  if (from) { filters.push("date(i.created_at) >= ?"); params.push(from); }
+  if (to) { filters.push("date(i.created_at) <= ?"); params.push(to); }
+
+  const todayFilters = [`i.type = ?`, `date(i.created_at) = ?`]; const todayParams = [type, today];
+  if (userId) { todayFilters.push('i.assigned_to = ?'); todayParams.push(userId); }
+
+  const where = 'WHERE ' + filters.join(' AND ');
+  const todayWhere = 'WHERE ' + todayFilters.join(' AND ');
+  const base = `FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id LEFT JOIN users u ON i.assigned_to = u.id`;
+
+  try {
+    if (type === 'online_order') {
+      // Period stats
+      const periodTotal = db.prepare(`SELECT COUNT(*) as c ${base} ${where}`).get(...params).c;
+      const periodProcessed = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'Processed'`).get(...params).c;
+      const periodCancelled = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'Cancelled'`).get(...params).c;
+      const periodVerified = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.order_ref = 'Verified'`).get(...params).c;
+      const periodNotVerified = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.order_ref = 'Not Verified'`).get(...params).c;
+      const allOrders = db.prepare(`SELECT i.order_amount ${base} ${where}`).all(...params);
+      const periodValue = allOrders.reduce((sum, o) => sum + parseAmount(o.order_amount), 0);
+
+      // Today stats
+      const todayTotal = db.prepare(`SELECT COUNT(*) as c ${base} ${todayWhere}`).get(...todayParams).c;
+      const todayVerified = db.prepare(`SELECT COUNT(*) as c ${base} ${todayWhere} AND i.order_ref = 'Verified'`).get(...todayParams).c;
+      const todayNotVerified = db.prepare(`SELECT COUNT(*) as c ${base} ${todayWhere} AND i.order_ref = 'Not Verified'`).get(...todayParams).c;
+      const todayOrders = db.prepare(`SELECT i.order_amount ${base} ${todayWhere}`).all(...todayParams);
+      const todayValue = todayOrders.reduce((sum, o) => sum + parseAmount(o.order_amount), 0);
+      const todayProcessed = db.prepare(`SELECT COUNT(*) as c ${base} ${todayWhere} AND i.disposition = 'Processed'`).get(...todayParams).c;
+      const todayCancelled = db.prepare(`SELECT COUNT(*) as c ${base} ${todayWhere} AND i.disposition = 'Cancelled'`).get(...todayParams).c;
+
+      // By source
+      const bySource = db.prepare(`SELECT c.lead_source as source, COUNT(*) as count ${base} ${where} GROUP BY c.lead_source ORDER BY count DESC`).all(...params);
+      const byPerson = db.prepare(`SELECT u.name, COUNT(*) as count, SUM(CASE WHEN i.disposition='Processed' THEN 1 ELSE 0 END) as processed ${base} ${where} GROUP BY i.assigned_to ORDER BY count DESC`).all(...params);
+
+      // Trend
+      const trend = db.prepare(`SELECT date(i.created_at) as date, COUNT(*) as total, SUM(CASE WHEN i.disposition='Processed' THEN 1 ELSE 0 END) as processed, SUM(CASE WHEN i.disposition='Cancelled' THEN 1 ELSE 0 END) as cancelled ${base} ${where} GROUP BY date(i.created_at) ORDER BY date ASC`).all(...params);
+
+      res.json({ type, today: { total: todayTotal, verified: todayVerified, not_verified: todayNotVerified, value: todayValue, processed: todayProcessed, cancelled: todayCancelled }, period: { total: periodTotal, processed: periodProcessed, cancelled: periodCancelled, verified: periodVerified, not_verified: periodNotVerified, value: periodValue }, bySource, byPerson, trend });
+
+    } else if (type === 'repeat') {
+      const periodTotal = db.prepare(`SELECT COUNT(*) as c ${base} ${where}`).get(...params).c;
+      const ppc = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.ppc_or_outbound = 'PPC'`).get(...params).c;
+      const outbound = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.ppc_or_outbound = 'Outbound Repeat'`).get(...params).c;
+      const todayTotal = db.prepare(`SELECT COUNT(*) as c ${base} ${todayWhere}`).get(...todayParams).c;
+      const byDisposition = db.prepare(`SELECT i.disposition, COUNT(*) as count ${base} ${where} GROUP BY i.disposition ORDER BY count DESC`).all(...params);
+      const byPerson = db.prepare(`SELECT u.name, COUNT(*) as count ${base} ${where} GROUP BY i.assigned_to ORDER BY count DESC`).all(...params);
+      const trend = db.prepare(`SELECT date(i.created_at) as date, COUNT(*) as total ${base} ${where} GROUP BY date(i.created_at) ORDER BY date ASC`).all(...params);
+      const closedWon = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'Closed Won'`).get(...params).c;
+
+      res.json({ type, today: { total: todayTotal }, period: { total: periodTotal, ppc, outbound, closed_won: closedWon, win_rate: periodTotal > 0 ? Math.round(closedWon / periodTotal * 100) : 0 }, byDisposition, byPerson, trend });
+
+    } else if (type === 'lead') {
+      const periodTotal = db.prepare(`SELECT COUNT(*) as c ${base} ${where}`).get(...params).c;
+      const todayTotal = db.prepare(`SELECT COUNT(*) as c ${base} ${todayWhere}`).get(...todayParams).c;
+      const closedWon = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'Closed Won'`).get(...params).c;
+      const closedLost = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'Closed Lost'`).get(...params).c;
+      const byDisposition = db.prepare(`SELECT i.disposition, COUNT(*) as count ${base} ${where} GROUP BY i.disposition ORDER BY count DESC`).all(...params);
+      const bySource = db.prepare(`SELECT c.lead_source as source, COUNT(*) as count ${base} ${where} GROUP BY c.lead_source ORDER BY count DESC`).all(...params);
+      const byPerson = db.prepare(`SELECT u.name, COUNT(*) as count ${base} ${where} GROUP BY i.assigned_to ORDER BY count DESC`).all(...params);
+      const trend = db.prepare(`SELECT date(i.created_at) as date, COUNT(*) as total ${base} ${where} GROUP BY date(i.created_at) ORDER BY date ASC`).all(...params);
+
+      res.json({ type, today: { total: todayTotal }, period: { total: periodTotal, closed_won: closedWon, closed_lost: closedLost, win_rate: periodTotal > 0 ? Math.round(closedWon / periodTotal * 100) : 0 }, byDisposition, bySource, byPerson, trend });
+    }
+  } catch (err) {
+    console.error('Module analytics error:', err);
     res.status(500).json({ error: err.message });
   }
 });
