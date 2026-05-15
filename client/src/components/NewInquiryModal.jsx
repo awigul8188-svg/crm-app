@@ -12,21 +12,13 @@ const TYPES = [
   { value: 'online_order', label: '◈ Online Order', color: '#f59e0b' },
 ]
 
-const inp = {
-  width: '100%', boxSizing: 'border-box',
-  background: '#fff', border: '1px solid #e2e8f0',
-  borderRadius: '12px', padding: '10px 14px',
-  fontSize: '13px', color: '#0f172a',
-  fontFamily: '"Plus Jakarta Sans", sans-serif',
-  outline: 'none', transition: 'border 0.15s',
-}
+const inp = { width: '100%', boxSizing: 'border-box', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px 14px', fontSize: '13px', color: '#0f172a', fontFamily: '"Plus Jakarta Sans", sans-serif', outline: 'none', transition: 'border 0.15s' }
+const inpFocused = { border: `1px solid ${BRAND}`, boxShadow: `0 0 0 3px rgba(0,212,200,0.12)` }
 
 function Field({ label, children }) {
   return (
     <div style={{ marginBottom: '14px' }}>
-      <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '6px' }}>
-        {label}
-      </div>
+      <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '6px' }}>{label}</div>
       {children}
     </div>
   )
@@ -35,21 +27,24 @@ function Field({ label, children }) {
 function SInput({ value, onChange, placeholder, type = 'text' }) {
   const [f, setF] = useState(false)
   return <input type={type} value={value} onChange={onChange} placeholder={placeholder}
-    style={{ ...inp, ...(f ? { border: `1px solid ${BRAND}`, boxShadow: `0 0 0 3px rgba(0,212,200,0.12)` } : {}) }}
-    onFocus={() => setF(true)} onBlur={() => setF(false)} />
+    style={{ ...inp, ...(f ? inpFocused : {}) }} onFocus={() => setF(true)} onBlur={() => setF(false)} />
 }
 
 function SSelect({ value, onChange, children }) {
   const [f, setF] = useState(false)
-  return <select value={value} onChange={onChange} style={{ ...inp, cursor: 'pointer', ...(f ? { border: `1px solid ${BRAND}`, boxShadow: `0 0 0 3px rgba(0,212,200,0.12)` } : {}) }}
+  return <select value={value} onChange={onChange} style={{ ...inp, cursor: 'pointer', ...(f ? inpFocused : {}) }}
     onFocus={() => setF(true)} onBlur={() => setF(false)}>{children}</select>
 }
 
 function STextarea({ value, onChange, placeholder }) {
   const [f, setF] = useState(false)
   return <textarea value={value} onChange={onChange} placeholder={placeholder} rows={2}
-    style={{ ...inp, resize: 'none', ...(f ? { border: `1px solid ${BRAND}`, boxShadow: `0 0 0 3px rgba(0,212,200,0.12)` } : {}) }}
-    onFocus={() => setF(true)} onBlur={() => setF(false)} />
+    style={{ ...inp, resize: 'none', ...(f ? inpFocused : {}) }} onFocus={() => setF(true)} onBlur={() => setF(false)} />
+}
+
+// Get today's date in YYYY-MM-DD format
+function todayStr() {
+  return new Date().toISOString().split('T')[0]
 }
 
 export default function NewInquiryModal({ defaultType = 'lead', customerId, onClose, onCreated }) {
@@ -63,6 +58,7 @@ export default function NewInquiryModal({ defaultType = 'lead', customerId, onCl
   const [ppcOrOutbound, setPpcOrOutbound] = useState('')
   const [orderAmount, setOrderAmount] = useState('')
   const [verification, setVerification] = useState('')
+  const [customDate, setCustomDate] = useState(todayStr()) // default today
   const [selectedCustomerId, setSelectedCustomerId] = useState(customerId ? String(customerId) : '')
   const [requirements, setRequirements] = useState([{ part_number: '', quantity: '' }])
   const [saving, setSaving] = useState(false)
@@ -101,7 +97,14 @@ export default function NewInquiryModal({ defaultType = 'lead', customerId, onCl
       }
       if (!cid) throw new Error('Please select or create a customer')
       const validReqs = requirements.filter(r => r.part_number.trim())
-      await api.createInquiry({ customer_id: cid, type, disposition, assigned_to: user.role === 'ae' ? user.id : assignedTo, notes, ppc_or_outbound: ppcOrOutbound, order_amount: orderAmount, order_ref: verification, requirements: validReqs })
+      await api.createInquiry({
+        customer_id: cid, type, disposition,
+        assigned_to: user.role === 'ae' ? user.id : assignedTo,
+        notes, ppc_or_outbound: ppcOrOutbound,
+        order_amount: orderAmount, order_ref: verification,
+        requirements: validReqs,
+        custom_date: customDate, // send selected date
+      })
       onCreated()
     } catch (e) { setError(e.message) }
     finally { setSaving(false) }
@@ -126,14 +129,29 @@ export default function NewInquiryModal({ defaultType = 'lead', customerId, onCl
           <Field label="Type">
             <div style={{ display: 'flex', gap: '8px' }}>
               {TYPES.map(t => (
-                <button key={t.value} type="button" onClick={() => handleTypeChange(t.value)} style={{ flex: 1, padding: '10px 8px', borderRadius: '12px', border: '2px solid', borderColor: type === t.value ? t.color : '#e2e8f0', background: type === t.value ? `${t.color}12` : '#fff', color: type === t.value ? t.color : '#64748b', fontWeight: 600, fontSize: '12px', cursor: 'pointer', transition: 'all 0.15s', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                <button key={t.value} type="button" onClick={() => handleTypeChange(t.value)}
+                  style={{ flex: 1, padding: '10px 8px', borderRadius: '12px', border: '2px solid', borderColor: type === t.value ? t.color : '#e2e8f0', background: type === t.value ? `${t.color}12` : '#fff', color: type === t.value ? t.color : '#64748b', fontWeight: 600, fontSize: '12px', cursor: 'pointer', transition: 'all 0.15s', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
                   {t.label}
                 </button>
               ))}
             </div>
           </Field>
 
-          {/* Customer selector */}
+          {/* Date + Assign row */}
+          <div style={{ display: 'grid', gridTemplateColumns: user.role === 'manager' ? '1fr 1fr' : '1fr', gap: '12px', marginBottom: '14px' }}>
+            <Field label="Date">
+              <SInput type="date" value={customDate} onChange={e => setCustomDate(e.target.value)} />
+            </Field>
+            {user.role === 'manager' && (
+              <Field label="Assign to">
+                <SSelect value={assignedTo} onChange={e => setAssignedTo(e.target.value)}>
+                  {users.map(u => <option key={u.id} value={String(u.id)}>{u.name}</option>)}
+                </SSelect>
+              </Field>
+            )}
+          </div>
+
+          {/* Customer */}
           {!customerId && (
             <Field label={
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
@@ -158,12 +176,7 @@ export default function NewInquiryModal({ defaultType = 'lead', customerId, onCl
                   </SSelect>
                 </div>
               ) : (
-                <SearchableCustomerSelect
-                  customers={customers}
-                  value={selectedCustomerId}
-                  onChange={setSelectedCustomerId}
-                  placeholder="Search by name, company, or email..."
-                />
+                <SearchableCustomerSelect customers={customers} value={selectedCustomerId} onChange={setSelectedCustomerId} placeholder="Search by name, company or email..." />
               )}
             </Field>
           )}
@@ -180,27 +193,18 @@ export default function NewInquiryModal({ defaultType = 'lead', customerId, onCl
                 <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   <div style={{ flex: 1 }}><SInput value={r.part_number} onChange={e => updateReq(i, 'part_number', e.target.value)} placeholder="Part number / SKU" /></div>
                   <div style={{ width: '100px' }}><SInput value={r.quantity} onChange={e => updateReq(i, 'quantity', e.target.value)} placeholder="Qty" /></div>
-                  {requirements.length > 1 && <button type="button" onClick={() => removeReq(i)} style={{ width: 32, height: 40, border: 'none', background: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>×</button>}
+                  {requirements.length > 1 && <button type="button" onClick={() => removeReq(i)} style={{ width: 32, height: 40, border: 'none', background: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '18px', flexShrink: 0 }}>×</button>}
                 </div>
               ))}
             </div>
           </Field>
 
-          {/* Disposition + Assign */}
-          <div style={{ display: 'grid', gridTemplateColumns: user.role === 'manager' ? '1fr 1fr' : '1fr', gap: '12px', marginBottom: '14px' }}>
-            <Field label={type === 'online_order' ? 'Status' : 'Disposition'}>
-              <SSelect value={disposition} onChange={e => setDisposition(e.target.value)}>
-                {dispositionsForType.map(d => <option key={d}>{d}</option>)}
-              </SSelect>
-            </Field>
-            {user.role === 'manager' && (
-              <Field label="Assign to">
-                <SSelect value={assignedTo} onChange={e => setAssignedTo(e.target.value)}>
-                  {users.map(u => <option key={u.id} value={String(u.id)}>{u.name}</option>)}
-                </SSelect>
-              </Field>
-            )}
-          </div>
+          {/* Disposition */}
+          <Field label={type === 'online_order' ? 'Status' : 'Disposition'}>
+            <SSelect value={disposition} onChange={e => setDisposition(e.target.value)}>
+              {dispositionsForType.map(d => <option key={d}>{d}</option>)}
+            </SSelect>
+          </Field>
 
           {/* Repeat-specific */}
           {type === 'repeat' && (

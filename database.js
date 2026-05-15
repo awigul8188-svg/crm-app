@@ -88,6 +88,7 @@ function initializeDB() {
     "ALTER TABLE inquiries ADD COLUMN order_amount TEXT",
     "ALTER TABLE inquiries ADD COLUMN order_ref TEXT",
     "ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 1",
+    "CREATE TABLE IF NOT EXISTS notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, inquiry_id INTEGER, inquiry_type TEXT, customer_name TEXT, actor_name TEXT, action TEXT, comment TEXT, read INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)",
   ];
   for (const m of migrations) {
     try { db.exec(m) } catch {}

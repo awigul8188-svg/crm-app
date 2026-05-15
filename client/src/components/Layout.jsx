@@ -25,22 +25,26 @@ const NAV = [
 export default function Layout({ children }) {
   const { user, logout } = useAuth()
   const { page, navigate } = useNav()
-  const [notifCount, setNotifCount] = useState(0)
+  const [notifData, setNotifData] = useState({ total: 0, unreadActivity: 0 })
 
-  // Poll notifications every 60 seconds
+  const loadNotifs = () => {
+    api.getNotifications()
+      .then(n => setNotifData({ total: n.total, unreadActivity: n.unreadActivity || 0 }))
+      .catch(() => {})
+  }
+
   useEffect(() => {
-    const load = () => api.getNotifications().then(n => setNotifCount(n.total)).catch(() => {})
-    load()
-    const interval = setInterval(load, 60000)
+    loadNotifs()
+    const interval = setInterval(loadNotifs, 30000) // poll every 30s
     return () => clearInterval(interval)
   }, [])
 
-  // Refresh count when navigating away from notifications
+  // Refresh when leaving notifications page
   useEffect(() => {
-    if (page.name !== 'notifications') {
-      api.getNotifications().then(n => setNotifCount(n.total)).catch(() => {})
-    }
+    if (page.name !== 'notifications') loadNotifs()
   }, [page.name])
+
+  const badgeCount = notifData.total
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -56,7 +60,6 @@ export default function Layout({ children }) {
               <div className="font-display font-bold leading-none tracking-tight text-base" style={{ color: '#00D4C8' }}>ATLANTIX</div>
             </div>
           </div>
-          {/* User chip */}
           <div className="flex items-center gap-2.5 rounded-xl px-3 py-2.5"
             style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
             <div className="w-7 h-7 rounded-lg flex items-center justify-center text-dark-900 text-xs font-bold flex-shrink-0"
@@ -86,15 +89,15 @@ export default function Layout({ children }) {
             </button>
           ))}
 
-          {/* Notifications */}
+          {/* Notifications with badge */}
           <button onClick={() => navigate('notifications')}
-            className={`nav-item ${page.name === 'notifications' ? 'nav-active' : 'nav-inactive'} relative`}>
+            className={`nav-item ${page.name === 'notifications' ? 'nav-active' : 'nav-inactive'}`}>
             <span className="text-sm w-5 text-center flex-shrink-0">🔔</span>
             <span>Notifications</span>
-            {notifCount > 0 && (
-              <span className="ml-auto px-1.5 py-0.5 rounded-full text-dark-900 font-bold leading-none flex-shrink-0"
-                style={{ background: '#00D4C8', fontSize: '10px', minWidth: '18px', textAlign: 'center' }}>
-                {notifCount > 99 ? '99+' : notifCount}
+            {badgeCount > 0 && page.name !== 'notifications' && (
+              <span className="ml-auto font-bold leading-none flex-shrink-0"
+                style={{ background: '#00D4C8', color: '#0d0d0d', fontSize: '10px', padding: '2px 7px', borderRadius: '20px', minWidth: '20px', textAlign: 'center' }}>
+                {badgeCount > 99 ? '99+' : badgeCount}
               </span>
             )}
           </button>

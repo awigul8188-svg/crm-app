@@ -8,14 +8,11 @@ async function req(method, path, body) {
     body: body ? JSON.stringify(body) : undefined
   });
   const data = await res.json();
-
-  // Auto-logout if session was invalidated (e.g. password reset by manager)
   if (res.status === 401 && path !== '/auth/login') {
     localStorage.removeItem('crm_token');
     window.location.reload();
     return;
   }
-
   if (!res.ok) throw new Error(data.error || 'Request failed');
   return data;
 }
@@ -66,5 +63,7 @@ export const api = {
   },
 
   getNotifications: () => req('GET', '/notifications'),
-  completeFollowup: (id) => req('PATCH', `/notifications/${id}/complete`),
+  markNotificationRead: (id) => req('PATCH', `/notifications/${id}/read`),
+  markAllRead: () => req('POST', '/notifications/read-all'),
+  completeFollowup: (id) => req('PATCH', `/notifications/followup/${id}/complete`),
 };

@@ -9,6 +9,15 @@ function logActivity(db, entityId, user, action, comment = null) {
   db.prepare('INSERT INTO activity_log (entity_type, entity_id, user_id, user_name, action, comment) VALUES (?, ?, ?, ?, ?, ?)').run('inquiry', entityId, user.id, user.name, action, comment);
 }
 
+// Notify all managers about an AE action
+function notifyManagers(db, { inquiry_id, inquiry_type, customer_name, actor_name, actor_role, action, comment }) {
+  // Only notify when an AE does something (not when a manager acts on their own stuff)
+  // Managers still get notified of all AE actions
+  const managers = db.prepare("SELECT id FROM users WHERE role = 'manager'").all();
+  const insert = db.prepare("INSERT INTO notifications (user_id, inquiry_id, inquiry_type, customer_name, actor_name, action, comment) VALUES (?, ?, ?, ?, ?, ?, ?)");
+  managers.forEach(m => insert.run(m.id, inquiry_id, inquiry_type, customer_name, actor_name, action, comment));
+}
+
 function buildInFilter(column, value) {
   if (!value) return null;
   const values = value.split(',').map(v => v.trim()).filter(Boolean);
@@ -29,16 +38,8 @@ router.get('/', (req, res) => {
   const params = [];
   if (req.user.role === 'ae') { query += ' AND i.assigned_to = ?'; params.push(req.user.id); }
   if (type) { query += ' AND i.type = ?'; params.push(type); }
-
-  if (disposition) {
-    const f = buildInFilter('i.disposition', disposition);
-    if (f) { query += ` AND ${f.sql}`; params.push(...f.params); }
-  }
-  if (lead_source) {
-    const f = buildInFilter('c.lead_source', lead_source);
-    if (f) { query += ` AND ${f.sql}`; params.push(...f.params); }
-  }
-
+  if (disposition) { const f = buildInFilter('i.disposition', disposition); if (f) { query += ` AND ${f.sql}`; params.push(...f.params); } }
+  if (lead_source) { const f = buildInFilter('c.lead_source', lead_source); if (f) { query += ` AND ${f.sql}`; params.push(...f.params); } }
   query += ' ORDER BY i.created_at DESC';
   const inquiries = db.prepare(query).all(...params);
   res.json(inquiries.map(inq => ({ ...inq, requirements: db.prepare('SELECT * FROM requirements WHERE inquiry_id = ?').all(inq.id) })));
@@ -57,17 +58,35 @@ router.get('/stats', (req, res) => {
 });
 
 router.post('/', (req, res) => {
-  const { customer_id, type, disposition, assigned_to, notes, requirements, ppc_or_outbound, order_amount, order_ref } = req.body;
+  const { customer_id, type, disposition, assigned_to, notes, requirements, ppc_or_outbound, order_amount, order_ref, custom_date } = req.body;
   if (!customer_id || !type) return res.status(400).json({ error: 'customer_id and type required' });
   const db = getDB();
   const assignee = req.user.role === 'ae' ? req.user.id : (assigned_to || req.user.id);
-  const result = db.prepare('INSERT INTO inquiries (customer_id, type, disposition, assigned_to, notes, ppc_or_outbound, order_amount, order_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(customer_id, type, disposition || 'Initial Contact', assignee, notes || null, ppc_or_outbound || null, order_amount || null, order_ref || null);
+
+  // Use custom_date if provided, otherwise now
+  const createdAt = custom_date ? new Date(custom_date).toISOString() : new Date().toISOString();
+
+  const result = db.prepare('INSERT INTO inquiries (customer_id, type, disposition, assigned_to, notes, ppc_or_outbound, order_amount, order_ref, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(customer_id, type, disposition || 'Initial Contact', assignee, notes || null, ppc_or_outbound || null, order_amount || null, order_ref || null, createdAt, createdAt);
   const inquiryId = result.lastInsertRowid;
+
   if (requirements?.length) {
     const ins = db.prepare('INSERT INTO requirements (inquiry_id, part_number, quantity) VALUES (?, ?, ?)');
     requirements.forEach(r => { if (r.part_number?.trim()) ins.run(inquiryId, r.part_number, r.quantity); });
   }
+
   logActivity(db, inquiryId, req.user, `${type} created`);
+
+  // Notify managers if AE created this
+  const customer = db.prepare('SELECT name FROM customers WHERE id = ?').get(customer_id);
+  notifyManagers(db, {
+    inquiry_id: inquiryId, inquiry_type: type,
+    customer_name: customer?.name || 'Unknown',
+    actor_name: req.user.name,
+    actor_role: req.user.role,
+    action: `New ${type === 'lead' ? 'Lead' : type === 'repeat' ? 'Repeat Inquiry' : 'Online Order'} created`,
+    comment: null,
+  });
+
   res.json({ id: inquiryId });
 });
 
@@ -84,29 +103,55 @@ router.get('/:id', (req, res) => {
 router.put('/:id', (req, res) => {
   const { disposition, assigned_to, notes, requirements, ppc_or_outbound, order_amount, order_ref } = req.body;
   const db = getDB();
+
+  // Get inquiry info for notification
+  const inquiry = db.prepare('SELECT i.type, c.name as customer_name FROM inquiries i JOIN customers c ON i.customer_id = c.id WHERE i.id = ?').get(req.params.id);
+
   db.prepare('UPDATE inquiries SET disposition=?, assigned_to=?, notes=?, ppc_or_outbound=?, order_amount=?, order_ref=?, updated_at=CURRENT_TIMESTAMP WHERE id=?').run(disposition, assigned_to, notes, ppc_or_outbound || null, order_amount || null, order_ref || null, req.params.id);
   if (requirements !== undefined) {
     db.prepare('DELETE FROM requirements WHERE inquiry_id = ?').run(req.params.id);
-    if (requirements.length) {
-      const ins = db.prepare('INSERT INTO requirements (inquiry_id, part_number, quantity) VALUES (?, ?, ?)');
-      requirements.forEach(r => { if (r.part_number?.trim()) ins.run(req.params.id, r.part_number, r.quantity); });
-    }
+    if (requirements.length) { const ins = db.prepare('INSERT INTO requirements (inquiry_id, part_number, quantity) VALUES (?, ?, ?)'); requirements.forEach(r => { if (r.part_number?.trim()) ins.run(req.params.id, r.part_number, r.quantity); }); }
   }
+
   logActivity(db, req.params.id, req.user, 'Inquiry updated');
+
+  notifyManagers(db, {
+    inquiry_id: parseInt(req.params.id),
+    inquiry_type: inquiry?.type,
+    customer_name: inquiry?.customer_name || 'Unknown',
+    actor_name: req.user.name,
+    actor_role: req.user.role,
+    action: `Disposition changed to "${disposition}"`,
+    comment: null,
+  });
+
   res.json({ success: true });
 });
 
-// Delete - managers only
 router.delete('/:id', requireManager, (req, res) => {
-  const db = getDB();
-  db.prepare('DELETE FROM inquiries WHERE id = ?').run(req.params.id);
+  getDB().prepare('DELETE FROM inquiries WHERE id = ?').run(req.params.id);
   res.json({ success: true });
 });
 
 router.post('/:id/comments', (req, res) => {
   const { comment } = req.body;
   if (!comment?.trim()) return res.status(400).json({ error: 'Comment cannot be empty' });
-  logActivity(getDB(), req.params.id, req.user, 'Comment', comment);
+  const db = getDB();
+
+  const inquiry = db.prepare('SELECT i.type, c.name as customer_name FROM inquiries i JOIN customers c ON i.customer_id = c.id WHERE i.id = ?').get(req.params.id);
+
+  logActivity(db, req.params.id, req.user, 'Comment', comment);
+
+  notifyManagers(db, {
+    inquiry_id: parseInt(req.params.id),
+    inquiry_type: inquiry?.type,
+    customer_name: inquiry?.customer_name || 'Unknown',
+    actor_name: req.user.name,
+    actor_role: req.user.role,
+    action: 'Added a comment',
+    comment: comment.length > 80 ? comment.slice(0, 80) + '...' : comment,
+  });
+
   res.json({ success: true });
 });
 
@@ -114,8 +159,22 @@ router.post('/:id/followups', (req, res) => {
   const { note, follow_up_date } = req.body;
   if (!note?.trim()) return res.status(400).json({ error: 'Note required' });
   const db = getDB();
+
+  const inquiry = db.prepare('SELECT i.type, c.name as customer_name FROM inquiries i JOIN customers c ON i.customer_id = c.id WHERE i.id = ?').get(req.params.id);
+
   const result = db.prepare('INSERT INTO followups (inquiry_id, note, follow_up_date, created_by) VALUES (?, ?, ?, ?)').run(req.params.id, note, follow_up_date || null, req.user.id);
   logActivity(db, req.params.id, req.user, 'Follow-up added', note);
+
+  notifyManagers(db, {
+    inquiry_id: parseInt(req.params.id),
+    inquiry_type: inquiry?.type,
+    customer_name: inquiry?.customer_name || 'Unknown',
+    actor_name: req.user.name,
+    actor_role: req.user.role,
+    action: `Added a follow-up${follow_up_date ? ` for ${follow_up_date}` : ''}`,
+    comment: note.length > 80 ? note.slice(0, 80) + '...' : note,
+  });
+
   res.json({ id: result.lastInsertRowid });
 });
 
