@@ -127,7 +127,18 @@ router.get('/module', (req, res) => {
       const trend = db.prepare(`SELECT date(i.created_at) as date, COUNT(*) as total ${base} ${where} GROUP BY date(i.created_at) ORDER BY date ASC`).all(...params);
       const closedWon = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'Closed Won'`).get(...params).c;
 
-      res.json({ type, today: { total: todayTotal }, period: { total: periodTotal, ppc, outbound, closed_won: closedWon, win_rate: periodTotal > 0 ? Math.round(closedWon / periodTotal * 100) : 0 }, byDisposition, byPerson, trend });
+      // Top customers by period
+      const topCustomersBase = `FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id LEFT JOIN users u ON i.assigned_to = u.id WHERE i.type = 'repeat'`;
+      const topCustomersDay   = db.prepare(`SELECT c.name, c.company, COUNT(*) as count ${topCustomersBase} AND date(i.created_at) = ? GROUP BY i.customer_id ORDER BY count DESC LIMIT 10`).all(today);
+      const topCustomersMonth = db.prepare(`SELECT c.name, c.company, COUNT(*) as count ${topCustomersBase} AND strftime('%Y-%m', i.created_at) = strftime('%Y-%m', 'now') GROUP BY i.customer_id ORDER BY count DESC LIMIT 10`).all();
+      const topCustomersYear  = db.prepare(`SELECT c.name, c.company, COUNT(*) as count ${topCustomersBase} AND strftime('%Y', i.created_at) = strftime('%Y', 'now') GROUP BY i.customer_id ORDER BY count DESC LIMIT 10`).all();
+
+      // Top reps by period
+      const topRepsDay   = db.prepare(`SELECT u.name, COUNT(*) as count ${topCustomersBase} AND date(i.created_at) = ? GROUP BY i.assigned_to ORDER BY count DESC LIMIT 10`).all(today);
+      const topRepsMonth = db.prepare(`SELECT u.name, COUNT(*) as count ${topCustomersBase} AND strftime('%Y-%m', i.created_at) = strftime('%Y-%m', 'now') GROUP BY i.assigned_to ORDER BY count DESC LIMIT 10`).all();
+      const topRepsYear  = db.prepare(`SELECT u.name, COUNT(*) as count ${topCustomersBase} AND strftime('%Y', i.created_at) = strftime('%Y', 'now') GROUP BY i.assigned_to ORDER BY count DESC LIMIT 10`).all();
+
+      res.json({ type, today: { total: todayTotal }, period: { total: periodTotal, ppc, outbound, closed_won: closedWon, win_rate: periodTotal > 0 ? Math.round(closedWon / periodTotal * 100) : 0 }, byDisposition, byPerson, trend, topCustomers: { day: topCustomersDay, month: topCustomersMonth, year: topCustomersYear }, topReps: { day: topRepsDay, month: topRepsMonth, year: topRepsYear } });
 
     } else if (type === 'lead') {
       const periodTotal = db.prepare(`SELECT COUNT(*) as c ${base} ${where}`).get(...params).c;

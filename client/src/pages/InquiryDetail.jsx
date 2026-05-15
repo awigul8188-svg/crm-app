@@ -24,7 +24,7 @@ export default function InquiryDetail({ id }) {
   const load = () => {
     Promise.all([api.getInquiry(id), api.getUsers()]).then(([inq, us]) => {
       setInquiry(inq); setUsers(us)
-      setEditForm({ disposition: inq.disposition || 'Initial Contact', assigned_to: inq.assigned_to, notes: inq.notes || '', ppc_or_outbound: inq.ppc_or_outbound || '', order_amount: inq.order_amount || '', order_ref: inq.order_ref || '' })
+      setEditForm({ disposition: inq.disposition || 'Initial Contact', assigned_to: inq.assigned_to, notes: inq.notes || '', ppc_or_outbound: inq.ppc_or_outbound || '', order_amount: inq.order_amount || '', order_ref: inq.order_ref || '', custom_date: inq.created_at ? inq.created_at.split('T')[0] : '' })
       setRequirements(inq.requirements || [])
       setLoading(false)
     })
@@ -32,7 +32,7 @@ export default function InquiryDetail({ id }) {
   useEffect(() => { load() }, [id])
 
   const setEF = (k, v) => setEditForm(f => ({ ...f, [k]: v }))
-  const handleSave = async () => { setSaving(true); await api.updateInquiry(id, { ...editForm, requirements }); setEditMode(false); setSaving(false); load() }
+  const handleSave = async () => { setSaving(true); await api.updateInquiry(id, { ...editForm, requirements, custom_date: editForm.custom_date }); setEditMode(false); setSaving(false); load() }
   const handleComment = async () => {
     if (!comment.trim()) return
     setSending(true); await api.addComment(id, comment); setComment(''); setSending(false); load()
@@ -254,7 +254,11 @@ export default function InquiryDetail({ id }) {
                 </Detail>
               </>}
               {inquiry.lead_source && <Detail label="Source"><span className="badge bg-teal-50 text-teal-700 border-teal-200">{inquiry.lead_source}</span></Detail>}
-              <Detail label="Created"><span className="text-ink-500">{formatDate(inquiry.created_at)}</span></Detail>
+              <Detail label="Date">
+                {editMode
+                  ? <input type="date" className="input" value={editForm.custom_date} onChange={e => setEF('custom_date', e.target.value)} />
+                  : <span className="text-ink-500">{formatDate(inquiry.created_at)}</span>}
+              </Detail>
               <Detail label="Updated"><span className="text-ink-500">{timeAgo(inquiry.updated_at)}</span></Detail>
             </div>
           </div>

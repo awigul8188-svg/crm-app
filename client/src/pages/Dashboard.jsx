@@ -243,6 +243,55 @@ function OrdersTab({ preset, customFrom, customTo }) {
   )
 }
 
+// ─── Top List Component ─────────────────────────────────────────
+function TopList({ data, label, color, showCompany }) {
+  const [period, setPeriod] = useState('month')
+  const rows = data?.[period] || []
+  const max = rows[0]?.count || 1
+
+  return (
+    <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+        <SectionTitle>{label}</SectionTitle>
+        <div style={{ display:'flex', gap:2, background:'#f1f5f9', borderRadius:8, padding:3 }}>
+          {[['day','Today'],['month','Month'],['year','Year']].map(([val,lbl]) => (
+            <button key={val} onClick={() => setPeriod(val)}
+              style={{ padding:'4px 10px', borderRadius:6, border:'none', background: period===val ? '#fff' : 'transparent', color: period===val ? '#0f172a' : '#64748b', fontSize:11, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans", sans-serif', boxShadow: period===val ? '0 1px 3px rgba(0,0,0,0.08)' : 'none', transition:'all 0.12s' }}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {rows.length === 0 ? (
+        <div style={{ textAlign:'center', color:'#94a3b8', fontSize:13, padding:'24px 0' }}>No data for this period</div>
+      ) : (
+        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+          {rows.map((row, i) => (
+            <div key={row.name + i} style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <div style={{ width:22, height:22, borderRadius:6, background: i === 0 ? color : '#f1f5f9', color: i === 0 ? '#fff' : '#94a3b8', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, flexShrink:0 }}>
+                {i + 1}
+              </div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:3 }}>
+                  <div>
+                    <span style={{ fontSize:13, fontWeight:600, color:'#0f172a' }}>{row.name || 'Unknown'}</span>
+                    {showCompany && row.company && <span style={{ fontSize:11, color:'#94a3b8', marginLeft:6 }}>· {row.company}</span>}
+                  </div>
+                  <span style={{ fontSize:13, fontWeight:700, color: i === 0 ? color : '#475569', flexShrink:0, marginLeft:8 }}>{row.count}</span>
+                </div>
+                <div style={{ height:4, background:'#f1f5f9', borderRadius:4 }}>
+                  <div style={{ height:'100%', borderRadius:4, background: i === 0 ? color : '#cbd5e1', width:`${Math.round(row.count / max * 100)}%`, transition:'width 0.3s' }} />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Repeat Tab ──────────────────────────────────────────────────
 function RepeatTab({ preset, customFrom, customTo }) {
   const [data, setData] = useState(null)
@@ -278,6 +327,12 @@ function RepeatTab({ preset, customFrom, customTo }) {
         <MetricCard label="PPC vs Outbound" value={`${p.ppc} / ${p.outbound}`} color="#8b5cf6" />
       </div>
 
+      {/* Top Customers + Top Reps side by side */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, marginBottom:20 }}>
+        <TopList data={data.topCustomers} label="🏆 Top Customers" color="#6366f1" showCompany />
+        <TopList data={data.topReps} label="⭐ Top Reps" color={BRAND} showCompany={false} />
+      </div>
+
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, marginBottom:20 }}>
         {/* Disposition breakdown */}
         <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
@@ -297,9 +352,9 @@ function RepeatTab({ preset, customFrom, customTo }) {
           </div>
         </div>
 
-        {/* By person */}
+        {/* By person chart */}
         <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
-          <SectionTitle>By Team Member</SectionTitle>
+          <SectionTitle>Inquiries by Rep (Period)</SectionTitle>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={(data.byPerson||[]).filter(p=>p.name)} layout="vertical" barSize={14}>
               <XAxis type="number" tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />

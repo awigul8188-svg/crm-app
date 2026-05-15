@@ -101,13 +101,18 @@ router.get('/:id', (req, res) => {
 });
 
 router.put('/:id', (req, res) => {
-  const { disposition, assigned_to, notes, requirements, ppc_or_outbound, order_amount, order_ref } = req.body;
+  const { disposition, assigned_to, notes, requirements, ppc_or_outbound, order_amount, order_ref, custom_date } = req.body;
   const db = getDB();
 
   // Get inquiry info for notification
   const inquiry = db.prepare('SELECT i.type, c.name as customer_name FROM inquiries i JOIN customers c ON i.customer_id = c.id WHERE i.id = ?').get(req.params.id);
 
-  db.prepare('UPDATE inquiries SET disposition=?, assigned_to=?, notes=?, ppc_or_outbound=?, order_amount=?, order_ref=?, updated_at=CURRENT_TIMESTAMP WHERE id=?').run(disposition, assigned_to, notes, ppc_or_outbound || null, order_amount || null, order_ref || null, req.params.id);
+  const newDate = custom_date ? new Date(custom_date).toISOString() : null;
+  if (newDate) {
+    db.prepare('UPDATE inquiries SET disposition=?, assigned_to=?, notes=?, ppc_or_outbound=?, order_amount=?, order_ref=?, created_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?').run(disposition, assigned_to, notes, ppc_or_outbound || null, order_amount || null, order_ref || null, newDate, req.params.id);
+  } else {
+    db.prepare('UPDATE inquiries SET disposition=?, assigned_to=?, notes=?, ppc_or_outbound=?, order_amount=?, order_ref=?, updated_at=CURRENT_TIMESTAMP WHERE id=?').run(disposition, assigned_to, notes, ppc_or_outbound || null, order_amount || null, order_ref || null, req.params.id);
+  }
   if (requirements !== undefined) {
     db.prepare('DELETE FROM requirements WHERE inquiry_id = ?').run(req.params.id);
     if (requirements.length) { const ins = db.prepare('INSERT INTO requirements (inquiry_id, part_number, quantity) VALUES (?, ?, ?)'); requirements.forEach(r => { if (r.part_number?.trim()) ins.run(req.params.id, r.part_number, r.quantity); }); }
