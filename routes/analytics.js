@@ -141,16 +141,66 @@ router.get('/module', (req, res) => {
       res.json({ type, today: { total: todayTotal }, period: { total: periodTotal, ppc, outbound, closed_won: closedWon, win_rate: periodTotal > 0 ? Math.round(closedWon / periodTotal * 100) : 0 }, byDisposition, byPerson, trend, topCustomers: { day: topCustomersDay, month: topCustomersMonth, year: topCustomersYear }, topReps: { day: topRepsDay, month: topRepsMonth, year: topRepsYear } });
 
     } else if (type === 'lead') {
-      const periodTotal = db.prepare(`SELECT COUNT(*) as c ${base} ${where}`).get(...params).c;
-      const todayTotal = db.prepare(`SELECT COUNT(*) as c ${base} ${todayWhere}`).get(...todayParams).c;
-      const closedWon = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'Closed Won'`).get(...params).c;
-      const closedLost = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'Closed Lost'`).get(...params).c;
-      const byDisposition = db.prepare(`SELECT i.disposition, COUNT(*) as count ${base} ${where} GROUP BY i.disposition ORDER BY count DESC`).all(...params);
-      const bySource = db.prepare(`SELECT c.lead_source as source, COUNT(*) as count ${base} ${where} GROUP BY c.lead_source ORDER BY count DESC`).all(...params);
-      const byPerson = db.prepare(`SELECT u.name, COUNT(*) as count ${base} ${where} GROUP BY i.assigned_to ORDER BY count DESC`).all(...params);
-      const trend = db.prepare(`SELECT date(i.created_at) as date, COUNT(*) as total ${base} ${where} GROUP BY date(i.created_at) ORDER BY date ASC`).all(...params);
+      const periodTotal  = db.prepare(`SELECT COUNT(*) as c ${base} ${where}`).get(...params).c;
+      const todayTotal   = db.prepare(`SELECT COUNT(*) as c ${base} ${todayWhere}`).get(...todayParams).c;
+      const closedWon    = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'Closed Won'`).get(...params).c;
+      const closedLost   = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'Closed Lost'`).get(...params).c;
+      const inProgress   = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition NOT IN ('Closed Won','Closed Lost','Fake Lead','No response','Cold','Cold Lead')`).get(...params).c;
+      const fakeLead     = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'Fake Lead'`).get(...params).c;
+      const noResponse   = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'No response'`).get(...params).c;
+      const quoted       = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'Quoted'`).get(...params).c;
+      const bidding      = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'Bidding'`).get(...params).c;
 
-      res.json({ type, today: { total: todayTotal }, period: { total: periodTotal, closed_won: closedWon, closed_lost: closedLost, win_rate: periodTotal > 0 ? Math.round(closedWon / periodTotal * 100) : 0 }, byDisposition, bySource, byPerson, trend });
+      const byDisposition = db.prepare(`SELECT i.disposition, COUNT(*) as count ${base} ${where} GROUP BY i.disposition ORDER BY count DESC`).all(...params);
+      const bySource      = db.prepare(`SELECT c.lead_source as source, COUNT(*) as count ${base} ${where} GROUP BY c.lead_source ORDER BY count DESC`).all(...params);
+      const trend         = db.prepare(`SELECT date(i.created_at) as date, COUNT(*) as total, SUM(CASE WHEN i.disposition='Closed Won' THEN 1 ELSE 0 END) as won ${base} ${where} GROUP BY date(i.created_at) ORDER BY date ASC`).all(...params);
+
+      // Full AE performance breakdown for leads
+      const aeBase = `FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id LEFT JOIN users u ON i.assigned_to = u.id WHERE i.type = 'lead'`;
+      const aePerformance = db.prepare(`
+        SELECT 
+          u.id,
+          u.name,
+          u.avatar_url,
+          COUNT(*) as total,
+          SUM(CASE WHEN i.disposition='Closed Won' THEN 1 ELSE 0 END) as won,
+          SUM(CASE WHEN i.disposition='Closed Lost' THEN 1 ELSE 0 END) as lost,
+          SUM(CASE WHEN i.disposition='Quoted' THEN 1 ELSE 0 END) as quoted,
+          SUM(CASE WHEN i.disposition='Bidding' THEN 1 ELSE 0 END) as bidding,
+          SUM(CASE WHEN i.disposition='Fake Lead' THEN 1 ELSE 0 END) as fake,
+          SUM(CASE WHEN i.disposition='No response' THEN 1 ELSE 0 END) as no_response,
+          SUM(CASE WHEN i.disposition='Cold' OR i.disposition='Cold Lead' THEN 1 ELSE 0 END) as cold,
+          SUM(CASE WHEN date(i.created_at) = ? THEN 1 ELSE 0 END) as today,
+          SUM(CASE WHEN strftime('%Y-%m', i.created_at) = strftime('%Y-%m','now') THEN 1 ELSE 0 END) as this_month
+        FROM inquiries i 
+        LEFT JOIN users u ON i.assigned_to = u.id 
+        WHERE i.type = 'lead'
+        GROUP BY i.assigned_to 
+        ORDER BY total DESC
+      `).all(today);
+
+      // Top sources per AE
+      const aeSourceBreakdown = db.prepare(`
+        SELECT u.name as ae_name, c.lead_source as source, COUNT(*) as count
+        FROM inquiries i
+        LEFT JOIN customers c ON i.customer_id = c.id
+        LEFT JOIN users u ON i.assigned_to = u.id
+        WHERE i.type = 'lead' AND c.lead_source IS NOT NULL
+        GROUP BY i.assigned_to, c.lead_source
+        ORDER BY ae_name, count DESC
+      `).all();
+
+      // Today per AE
+      const todayPerAE = db.prepare(`SELECT u.name, COUNT(*) as count ${aeBase} AND date(i.created_at) = ? GROUP BY i.assigned_to ORDER BY count DESC`).all(today);
+      const thisMonthPerAE = db.prepare(`SELECT u.name, COUNT(*) as count ${aeBase} AND strftime('%Y-%m',i.created_at)=strftime('%Y-%m','now') GROUP BY i.assigned_to ORDER BY count DESC`).all();
+
+      res.json({ 
+        type, 
+        today: { total: todayTotal, perAE: todayPerAE }, 
+        period: { total: periodTotal, closed_won: closedWon, closed_lost: closedLost, in_progress: inProgress, fake: fakeLead, no_response: noResponse, quoted, bidding, win_rate: periodTotal > 0 ? Math.round(closedWon / periodTotal * 100) : 0 }, 
+        byDisposition, bySource, trend,
+        aePerformance, aeSourceBreakdown, thisMonthPerAE
+      });
     }
   } catch (err) {
     console.error('Module analytics error:', err);

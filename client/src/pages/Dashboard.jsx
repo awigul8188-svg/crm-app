@@ -398,85 +398,163 @@ function LeadsTab({ preset, customFrom, customTo }) {
   if (loading) return <div style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:'80px 0' }}><div style={{ width:32, height:32, borderRadius:'50%', border:`2px solid ${BRAND}`, borderTopColor:'transparent', animation:'spin 0.8s linear infinite' }} /></div>
   if (!data) return null
 
-  const t = data.today; const p = data.period
+  const p = data.period
+  const trendData = (data.trend || []).map(t => ({ ...t, date: t.date?.slice(5) }))
+
+  // Build source lookup per AE
+  const aeSourceMap = {}
+  ;(data.aeSourceBreakdown || []).forEach(row => {
+    if (!aeSourceMap[row.ae_name]) aeSourceMap[row.ae_name] = []
+    aeSourceMap[row.ae_name].push({ source: row.source, count: row.count })
+  })
 
   return (
     <div>
+      {/* ── Summary Cards ── */}
       <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:12 }}>Today</div>
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:24 }}>
-        <MetricCard label="Leads Received" value={t.total} color="#3b82f6" />
-        <MetricCard label="Closed Won Today" value={0} color="#10b981" />
-        <MetricCard label="Closed Lost Today" value={0} color="#ef4444" />
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:24 }}>
+        <MetricCard label="Leads Received" value={data.today.total} color="#3b82f6" />
+        {(data.today.perAE || []).slice(0, 3).map((ae, i) => (
+          <MetricCard key={ae.name} label={ae.name} value={ae.count} color={CHART_COLORS[i+1]} sub="leads today" />
+        ))}
       </div>
 
       <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:12 }}>Period Summary</div>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:24 }}>
         <MetricCard label="Total Leads" value={p.total} color="#3b82f6" />
-        <MetricCard label="Closed Won" value={p.closed_won} color="#10b981" />
+        <MetricCard label="Closed Won" value={p.closed_won} color="#10b981" sub={`${p.win_rate}% win rate`} />
         <MetricCard label="Closed Lost" value={p.closed_lost} color="#ef4444" />
-        <MetricCard label="Win Rate" value={`${p.win_rate}%`} color={BRAND} sub={`${p.closed_won} won of ${p.total}`} />
+        <MetricCard label="In Progress" value={p.in_progress} color="#f59e0b" />
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:28 }}>
+        <MetricCard label="Quoted" value={p.quoted} color="#6366f1" />
+        <MetricCard label="Bidding" value={p.bidding} color="#8b5cf6" />
+        <MetricCard label="Fake Leads" value={p.fake} color="#94a3b8" />
+        <MetricCard label="No Response" value={p.no_response} color="#64748b" />
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, marginBottom:20 }}>
+      {/* ── Trend + Source ── */}
+      <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:20, marginBottom:20 }}>
         <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
-          <SectionTitle>By Disposition</SectionTitle>
-          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-            {(data.byDisposition||[]).slice(0,10).map((d,i) => (
-              <div key={d.disposition}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+            <SectionTitle>Lead Trend — Won vs Total</SectionTitle>
+            <div style={{ display:'flex', gap:12 }}>
+              {[['Total','#3b82f6'],['Won','#10b981']].map(([l,c]) => (
+                <div key={l} style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, color:'#94a3b8' }}>
+                  <span style={{ width:8, height:8, borderRadius:'50%', background:c, display:'inline-block' }} />{l}
+                </div>
+              ))}
+            </div>
+          </div>
+          {trendData.length === 0 ? <div style={{ height:180, display:'flex', alignItems:'center', justifyContent:'center', color:'#94a3b8' }}>No data — try All Time</div> : (
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={trendData} barSize={8} barGap={2}>
+                <XAxis dataKey="date" tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                <Tooltip content={<Tip />} />
+                <Bar dataKey="total" name="Total" fill="#3b82f6" radius={[3,3,0,0]} />
+                <Bar dataKey="won" name="Won" fill="#10b981" radius={[3,3,0,0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
+          <SectionTitle>By Lead Source</SectionTitle>
+          <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
+            {(data.bySource || []).filter(s => s.source).slice(0, 8).map((s, i) => (
+              <div key={s.source}>
                 <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:3 }}>
-                  <span style={{ color:'#475569', fontWeight:500 }}>{d.disposition||'Unknown'}</span>
-                  <span style={{ fontWeight:700, color:'#0f172a' }}>{d.count}</span>
+                  <span style={{ color:'#475569', fontWeight:500 }}>{s.source}</span>
+                  <span style={{ fontWeight:700, color:'#0f172a' }}>{s.count}</span>
                 </div>
                 <div style={{ height:5, background:'#f1f5f9', borderRadius:4 }}>
-                  <div style={{ height:'100%', borderRadius:4, background: CHART_COLORS[i % CHART_COLORS.length], width: `${p.total > 0 ? Math.round(d.count/p.total*100) : 0}%` }} />
+                  <div style={{ height:'100%', borderRadius:4, background: CHART_COLORS[i % CHART_COLORS.length], width:`${p.total > 0 ? Math.round(s.count/p.total*100) : 0}%` }} />
                 </div>
               </div>
             ))}
           </div>
         </div>
+      </div>
 
-        <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
-          <SectionTitle>By Lead Source</SectionTitle>
-          {!data.bySource?.filter(s=>s.source)?.length ? <div style={{ color:'#94a3b8', fontSize:14 }}>No data</div> : (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={data.bySource.filter(s=>s.source)} layout="vertical" barSize={14}>
-                <XAxis type="number" tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
-                <YAxis type="category" dataKey="source" tick={{ fontSize:10, fill:'#475569' }} axisLine={false} tickLine={false} width={80} />
-                <Tooltip content={<Tip />} />
-                <Bar dataKey="count" name="Leads" fill="#3b82f6" radius={[0,4,4,0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
+      {/* ── Disposition breakdown ── */}
+      <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20, marginBottom:20 }}>
+        <SectionTitle>By Disposition</SectionTitle>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))', gap:12 }}>
+          {(data.byDisposition || []).filter(d => d.disposition).map((d, i) => {
+            const pct = p.total > 0 ? Math.round(d.count / p.total * 100) : 0
+            return (
+              <div key={d.disposition} style={{ background:'#f8fafc', borderRadius:12, padding:'12px 14px', border:'1px solid #f1f5f9' }}>
+                <div style={{ fontSize:11, color:'#64748b', fontWeight:500, marginBottom:6, truncate:true }}>{d.disposition}</div>
+                <div style={{ fontSize:22, fontWeight:800, color:'#0f172a', fontFamily:'"Bricolage Grotesque",sans-serif' }}>{d.count}</div>
+                <div style={{ height:3, background:'#e2e8f0', borderRadius:4, marginTop:8 }}>
+                  <div style={{ height:'100%', borderRadius:4, background: CHART_COLORS[i % CHART_COLORS.length], width:`${pct}%` }} />
+                </div>
+                <div style={{ fontSize:10, color:'#94a3b8', marginTop:4 }}>{pct}% of total</div>
+              </div>
+            )
+          })}
         </div>
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
-        <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
-          <SectionTitle>By Team Member</SectionTitle>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={(data.byPerson||[]).filter(p=>p.name)} layout="vertical" barSize={14}>
-              <XAxis type="number" tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
-              <YAxis type="category" dataKey="name" tick={{ fontSize:11, fill:'#475569' }} axisLine={false} tickLine={false} width={55} />
-              <Tooltip content={<Tip />} />
-              <Bar dataKey="count" name="Leads" fill={BRAND} radius={[0,4,4,0]} />
-            </BarChart>
-          </ResponsiveContainer>
+      {/* ── AE Performance Table ── */}
+      <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
+          <SectionTitle>AE Performance — Leads</SectionTitle>
+          <div style={{ fontSize:11, color:'#94a3b8' }}>All time stats per rep</div>
         </div>
-        <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
-          <SectionTitle>Volume Trend</SectionTitle>
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={(data.trend||[]).map(t => ({ ...t, date: t.date?.slice(5) }))}>
-              <XAxis dataKey="date" tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
-              <Tooltip content={<Tip />} />
-              <Line type="monotone" dataKey="total" name="Leads" stroke="#3b82f6" strokeWidth={2} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
+        <div style={{ overflowX:'auto' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+            <thead>
+              <tr style={{ borderBottom:'2px solid #f1f5f9' }}>
+                {['Rep','Total','Today','This Month','Won','Lost','Quoted','Bidding','Fake','No Response','Cold','Win Rate','Top Source'].map(h => (
+                  <th key={h} style={{ textAlign: h === 'Rep' ? 'left' : 'center', padding:'8px 10px', fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.06em', whiteSpace:'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {(data.aePerformance || []).filter(ae => ae.name).map((ae, i) => {
+                const winRate = ae.total > 0 ? Math.round(ae.won / ae.total * 100) : 0
+                const topSource = (aeSourceMap[ae.name] || [])[0]?.source || '—'
+                const rowColor = i % 2 === 0 ? '#fff' : '#fafbfc'
+                return (
+                  <tr key={ae.id || ae.name} style={{ background: rowColor, borderBottom:'1px solid #f1f5f9' }}>
+                    <td style={{ padding:'12px 10px' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                        {ae.avatar_url
+                          ? <img src={ae.avatar_url} alt={ae.name} style={{ width:28, height:28, borderRadius:8, objectFit:'cover', flexShrink:0 }} />
+                          : <div style={{ width:28, height:28, borderRadius:8, background:`${CHART_COLORS[i]}25`, color:CHART_COLORS[i], display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:12, flexShrink:0 }}>{ae.name?.[0]}</div>
+                        }
+                        <span style={{ fontWeight:700, color:'#0f172a', whiteSpace:'nowrap' }}>{ae.name}</span>
+                      </div>
+                    </td>
+                    <td style={{ padding:'12px 10px', textAlign:'center', fontWeight:700, color:'#0f172a' }}>{ae.total}</td>
+                    <td style={{ padding:'12px 10px', textAlign:'center', color:'#475569' }}>{ae.today}</td>
+                    <td style={{ padding:'12px 10px', textAlign:'center', color:'#475569' }}>{ae.this_month}</td>
+                    <td style={{ padding:'12px 10px', textAlign:'center', fontWeight:700, color:'#10b981' }}>{ae.won}</td>
+                    <td style={{ padding:'12px 10px', textAlign:'center', color:'#ef4444' }}>{ae.lost}</td>
+                    <td style={{ padding:'12px 10px', textAlign:'center', color:'#6366f1' }}>{ae.quoted}</td>
+                    <td style={{ padding:'12px 10px', textAlign:'center', color:'#8b5cf6' }}>{ae.bidding}</td>
+                    <td style={{ padding:'12px 10px', textAlign:'center', color:'#94a3b8' }}>{ae.fake}</td>
+                    <td style={{ padding:'12px 10px', textAlign:'center', color:'#64748b' }}>{ae.no_response}</td>
+                    <td style={{ padding:'12px 10px', textAlign:'center', color:'#64748b' }}>{ae.cold}</td>
+                    <td style={{ padding:'12px 10px', textAlign:'center' }}>
+                      <span style={{ padding:'3px 10px', borderRadius:20, fontSize:12, fontWeight:700, background: winRate >= 20 ? '#f0fdf4' : winRate >= 10 ? '#fff7ed' : '#fef2f2', color: winRate >= 20 ? '#16a34a' : winRate >= 10 ? '#d97706' : '#dc2626' }}>
+                        {winRate}%
+                      </span>
+                    </td>
+                    <td style={{ padding:'12px 10px', textAlign:'center', fontSize:11, color:'#64748b', whiteSpace:'nowrap' }}>{topSource}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
   )
 }
+
 
 // ─── Main Dashboard ──────────────────────────────────────────────
 export default function Dashboard() {

@@ -55,6 +55,7 @@ app.use('/api/inquiries', require('./routes/inquiries'));
 app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/import', require('./routes/import'));
 app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/admin', require('./routes/admin'));
 app.use('/api/ringtone', require('./routes/ringtone'));
 app.use('/api/upload', require('./routes/upload'));
 
