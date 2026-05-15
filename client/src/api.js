@@ -8,6 +8,14 @@ async function req(method, path, body) {
     body: body ? JSON.stringify(body) : undefined
   });
   const data = await res.json();
+
+  // Auto-logout if session was invalidated (e.g. password reset by manager)
+  if (res.status === 401 && path !== '/auth/login') {
+    localStorage.removeItem('crm_token');
+    window.location.reload();
+    return;
+  }
+
   if (!res.ok) throw new Error(data.error || 'Request failed');
   return data;
 }

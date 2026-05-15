@@ -12,12 +12,13 @@ router.post('/login', (req, res) => {
 
   const db = getDB();
   const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username.toLowerCase().trim());
+
   if (!user || !bcrypt.compareSync(password, user.password)) {
     return res.status(401).json({ error: 'Invalid username or password' });
   }
 
   const token = jwt.sign(
-    { id: user.id, username: user.username, name: user.name, role: user.role },
+    { id: user.id, username: user.username, name: user.name, role: user.role, token_version: user.token_version || 1 },
     JWT_SECRET,
     { expiresIn: '7d' }
   );
@@ -25,8 +26,6 @@ router.post('/login', (req, res) => {
   res.json({ token, user: { id: user.id, username: user.username, name: user.name, role: user.role } });
 });
 
-router.get('/me', authenticate, (req, res) => {
-  res.json(req.user);
-});
+router.get('/me', authenticate, (req, res) => res.json(req.user));
 
 module.exports = router;

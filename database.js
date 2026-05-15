@@ -87,6 +87,7 @@ function initializeDB() {
     "ALTER TABLE inquiries ADD COLUMN ppc_or_outbound TEXT",
     "ALTER TABLE inquiries ADD COLUMN order_amount TEXT",
     "ALTER TABLE inquiries ADD COLUMN order_ref TEXT",
+    "ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 1",
   ];
   for (const m of migrations) {
     try { db.exec(m) } catch {}

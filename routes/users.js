@@ -68,7 +68,7 @@ router.post('/reset-ae-passwords', requireManager, (req, res) => {
   const results = aes.map(ae => {
     const newPassword = generatePassword();
     const hash = bcrypt.hashSync(newPassword, 10);
-    db.prepare('UPDATE users SET password=? WHERE id=?').run(hash, ae.id);
+    db.prepare('UPDATE users SET password=?, token_version = COALESCE(token_version, 1) + 1 WHERE id=?').run(hash, ae.id);
     return { id: ae.id, name: ae.name, username: ae.username, password: newPassword };
   });
 
