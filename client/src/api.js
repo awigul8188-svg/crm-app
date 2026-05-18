@@ -38,7 +38,7 @@ export const api = {
     if (type) p.set('type', type);
     Object.entries(filters).forEach(([k, v]) => {
       if (Array.isArray(v) && v.length) p.set(k, v.join(','));
-      else if (v) p.set(k, v);
+      else if (v && v !== '') p.set(k, v);
     });
     return req('GET', `/inquiries?${p}`);
   },

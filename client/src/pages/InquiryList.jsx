@@ -88,6 +88,8 @@ export default function InquiryList({ type, title }) {
   const [filterDispositions, setFilterDispositions] = useState([])
   const [filterSources, setFilterSources] = useState([])
   const [filterUsers, setFilterUsers] = useState([])
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [showNew, setShowNew] = useState(false)
   const [search, setSearch] = useState('')
   const [deleting, setDeleting] = useState(null)
@@ -95,12 +97,12 @@ export default function InquiryList({ type, title }) {
 
   const load = () => {
     setLoading(true)
-    api.getInquiries(type, { disposition: filterDispositions, lead_source: filterSources })
+    api.getInquiries(type, { disposition: filterDispositions, lead_source: filterSources, assigned_to: filterUsers, from: dateFrom, to: dateTo })
       .then(d => { setInquiries(d); setLoading(false) })
       .catch(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [type, filterDispositions, filterSources])
+  useEffect(() => { load() }, [type, filterDispositions, filterSources, filterUsers, dateFrom, dateTo])
   useEffect(() => { api.getUsers().then(setUsers) }, [])
 
   const filtered = inquiries.filter(i => {
@@ -132,8 +134,8 @@ export default function InquiryList({ type, title }) {
 
   const sourceOptions = type === 'online_order' ? ORDER_SOURCES : LEAD_SOURCES
 
-  const hasFilters = filterDispositions.length || filterSources.length || filterUsers.length || search
-  const clearAll = () => { setFilterDispositions([]); setFilterSources([]); setFilterUsers([]); setSearch('') }
+  const hasFilters = filterDispositions.length || filterSources.length || filterUsers.length || search || dateFrom || dateTo
+  const clearAll = () => { setFilterDispositions([]); setFilterSources([]); setFilterUsers([]); setSearch(''); setDateFrom(''); setDateTo('') }
 
   return (
     <div className="p-8 fade-in">
@@ -149,6 +151,21 @@ export default function InquiryList({ type, title }) {
       </div>
 
       {/* Filters — all visible */}
+      {/* Date range row */}
+      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10, flexWrap:'wrap' }}>
+        <span style={{ fontSize:12, fontWeight:600, color:'#64748b' }}>Date:</span>
+        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+          style={{ padding:'7px 10px', border:'1px solid #e2e8f0', borderRadius:10, fontSize:12, outline:'none', fontFamily:'"Plus Jakarta Sans",sans-serif', color:'#0f172a' }} />
+        <span style={{ color:'#94a3b8', fontSize:13 }}>→</span>
+        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+          style={{ padding:'7px 10px', border:'1px solid #e2e8f0', borderRadius:10, fontSize:12, outline:'none', fontFamily:'"Plus Jakarta Sans",sans-serif', color:'#0f172a' }} />
+        {(dateFrom || dateTo) && (
+          <button onClick={() => { setDateFrom(''); setDateTo('') }}
+            style={{ fontSize:11, color:'#94a3b8', background:'none', border:'none', cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>
+            clear dates
+          </button>
+        )}
+      </div>
       <div className="flex gap-2.5 mb-4 flex-wrap items-center">
         {/* Search */}
         <div style={{ position: 'relative' }}>

@@ -27,7 +27,7 @@ function buildInFilter(column, value) {
 
 router.get('/', (req, res) => {
   const db = getDB();
-  const { type, disposition, lead_source } = req.query;
+  const { type, disposition, lead_source, from, to, assigned_to } = req.query;
   let query = `
     SELECT i.*, c.name as customer_name, c.email as customer_email, c.company as customer_company,
       c.phone as customer_phone, c.lead_source, u.name as assigned_name
@@ -37,10 +37,13 @@ router.get('/', (req, res) => {
   `;
   const params = [];
   if (req.user.role === 'ae') { query += ' AND i.assigned_to = ?'; params.push(req.user.id); }
+  else if (assigned_to) { const f = buildInFilter('i.assigned_to', assigned_to); if (f) { query += ` AND ${f.sql}`; params.push(...f.params); } }
   if (type) { query += ' AND i.type = ?'; params.push(type); }
   if (disposition) { const f = buildInFilter('i.disposition', disposition); if (f) { query += ` AND ${f.sql}`; params.push(...f.params); } }
   if (lead_source) { const f = buildInFilter('c.lead_source', lead_source); if (f) { query += ` AND ${f.sql}`; params.push(...f.params); } }
-  query += ' ORDER BY i.created_at DESC';
+  if (from) { query += ' AND date(i.created_at) >= ?'; params.push(from); }
+  if (to) { query += ' AND date(i.created_at) <= ?'; params.push(to); }
+  query += ' ORDER BY i.created_at DESC LIMIT 500';
   const inquiries = db.prepare(query).all(...params);
   res.json(inquiries.map(inq => ({ ...inq, requirements: db.prepare('SELECT * FROM requirements WHERE inquiry_id = ?').all(inq.id) })));
 });

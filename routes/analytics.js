@@ -138,7 +138,13 @@ router.get('/module', (req, res) => {
       const topRepsMonth = db.prepare(`SELECT u.name, COUNT(*) as count ${topCustomersBase} AND strftime('%Y-%m', i.created_at) = strftime('%Y-%m', 'now') GROUP BY i.assigned_to ORDER BY count DESC LIMIT 10`).all();
       const topRepsYear  = db.prepare(`SELECT u.name, COUNT(*) as count ${topCustomersBase} AND strftime('%Y', i.created_at) = strftime('%Y', 'now') GROUP BY i.assigned_to ORDER BY count DESC LIMIT 10`).all();
 
-      res.json({ type, today: { total: todayTotal }, period: { total: periodTotal, ppc, outbound, closed_won: closedWon, win_rate: periodTotal > 0 ? Math.round(closedWon / periodTotal * 100) : 0 }, byDisposition, byPerson, trend, topCustomers: { day: topCustomersDay, month: topCustomersMonth, year: topCustomersYear }, topReps: { day: topRepsDay, month: topRepsMonth, year: topRepsYear } });
+      // Top companies
+      const topCompBase = `FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id WHERE i.type = 'repeat' AND c.company IS NOT NULL AND c.company != ''`;
+      const topCompDay   = db.prepare(`SELECT c.company as name, COUNT(*) as count ${topCompBase} AND date(i.created_at) = ? GROUP BY c.company ORDER BY count DESC LIMIT 10`).all(today);
+      const topCompMonth = db.prepare(`SELECT c.company as name, COUNT(*) as count ${topCompBase} AND strftime('%Y-%m', i.created_at) = strftime('%Y-%m', 'now') GROUP BY c.company ORDER BY count DESC LIMIT 10`).all();
+      const topCompYear  = db.prepare(`SELECT c.company as name, COUNT(*) as count ${topCompBase} AND strftime('%Y', i.created_at) = strftime('%Y', 'now') GROUP BY c.company ORDER BY count DESC LIMIT 10`).all();
+
+      res.json({ type, today: { total: todayTotal }, period: { total: periodTotal, ppc, outbound, closed_won: closedWon, win_rate: periodTotal > 0 ? Math.round(closedWon / periodTotal * 100) : 0 }, byDisposition, byPerson, trend, topCustomers: { day: topCustomersDay, month: topCustomersMonth, year: topCustomersYear }, topReps: { day: topRepsDay, month: topRepsMonth, year: topRepsYear }, topCompanies: { day: topCompDay, month: topCompMonth, year: topCompYear } });
 
     } else if (type === 'lead') {
       const periodTotal  = db.prepare(`SELECT COUNT(*) as c ${base} ${where}`).get(...params).c;
