@@ -215,3 +215,91 @@ router.get('/module', (req, res) => {
 });
 
 module.exports = router;
+
+// AE personal dashboard stats
+router.get('/ae', (req, res) => {
+  const db = getDB();
+  const userId = req.user.id;
+  const today = new Date().toISOString().split('T')[0];
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const thisYear = new Date().getFullYear().toString();
+
+  try {
+    // Today
+    const todayLeads   = db.prepare("SELECT COUNT(*) as c FROM inquiries WHERE type='lead' AND assigned_to=? AND date(created_at)=?").get(userId, today).c;
+    const todayRepeat  = db.prepare("SELECT COUNT(*) as c FROM inquiries WHERE type='repeat' AND assigned_to=? AND date(created_at)=?").get(userId, today).c;
+    const todayOrders  = db.prepare("SELECT COUNT(*) as c FROM inquiries WHERE type='online_order' AND assigned_to=? AND date(created_at)=?").get(userId, today).c;
+
+    // This month performance
+    const monthTotal   = db.prepare("SELECT COUNT(*) as c FROM inquiries WHERE assigned_to=? AND strftime('%Y-%m',created_at)=?").get(userId, thisMonth).c;
+    const monthWon     = db.prepare("SELECT COUNT(*) as c FROM inquiries WHERE assigned_to=? AND disposition='Closed Won' AND strftime('%Y-%m',created_at)=?").get(userId, thisMonth).c;
+    const monthLost    = db.prepare("SELECT COUNT(*) as c FROM inquiries WHERE assigned_to=? AND disposition='Closed Lost' AND strftime('%Y-%m',created_at)=?").get(userId, thisMonth).c;
+
+    // This year performance
+    const yearTotal    = db.prepare("SELECT COUNT(*) as c FROM inquiries WHERE assigned_to=? AND strftime('%Y',created_at)=?").get(userId, thisYear).c;
+    const yearWon      = db.prepare("SELECT COUNT(*) as c FROM inquiries WHERE assigned_to=? AND disposition='Closed Won' AND strftime('%Y',created_at)=?").get(userId, thisYear).c;
+
+    // All time
+    const allTotal     = db.prepare("SELECT COUNT(*) as c FROM inquiries WHERE assigned_to=?").get(userId).c;
+    const allWon       = db.prepare("SELECT COUNT(*) as c FROM inquiries WHERE assigned_to=? AND disposition='Closed Won'").get(userId).c;
+
+    // Active pipeline (not closed/fake/no response/cold)
+    const pipeline = db.prepare(`
+      SELECT i.disposition, COUNT(*) as count FROM inquiries i
+      WHERE i.assigned_to=? AND i.disposition NOT IN ('Closed Won','Closed Lost','Fake Lead','No response','Cold','Cold Lead')
+      GROUP BY i.disposition ORDER BY count DESC
+    `).all(userId);
+
+    // Untouched leads — assigned to me, no activity in 7+ days, still open
+    const untouched = db.prepare(`
+      SELECT i.id, c.name as customer_name, c.company as customer_company,
+        i.type, i.disposition, i.created_at,
+        MAX(a.created_at) as last_activity
+      FROM inquiries i
+      JOIN customers c ON i.customer_id = c.id
+      LEFT JOIN activity_log a ON a.entity_id = i.id AND a.entity_type = 'inquiry'
+      WHERE i.assigned_to = ? AND i.disposition NOT IN ('Closed Won','Closed Lost','Fake Lead')
+      GROUP BY i.id
+      HAVING (last_activity IS NULL AND i.created_at < datetime('now','-7 days'))
+          OR (last_activity IS NOT NULL AND last_activity < datetime('now','-7 days'))
+      ORDER BY last_activity ASC NULLS FIRST
+      LIMIT 10
+    `).all(userId);
+
+    // My open follow-ups
+    const overdueFollowups  = db.prepare(`SELECT f.*, i.type as inquiry_type, c.name as customer_name, c.company as customer_company FROM followups f JOIN inquiries i ON f.inquiry_id=i.id JOIN customers c ON i.customer_id=c.id WHERE i.assigned_to=? AND f.completed=0 AND f.follow_up_date < ? ORDER BY f.follow_up_date ASC LIMIT 10`).all(userId, today);
+    const todayFollowups    = db.prepare(`SELECT f.*, i.type as inquiry_type, c.name as customer_name FROM followups f JOIN inquiries i ON f.inquiry_id=i.id JOIN customers c ON i.customer_id=c.id WHERE i.assigned_to=? AND f.completed=0 AND f.follow_up_date = ? ORDER BY f.id ASC LIMIT 10`).all(userId, today);
+    const upcomingFollowups = db.prepare(`SELECT f.*, i.type as inquiry_type, c.name as customer_name FROM followups f JOIN inquiries i ON f.inquiry_id=i.id JOIN customers c ON i.customer_id=c.id WHERE i.assigned_to=? AND f.completed=0 AND f.follow_up_date > ? AND f.follow_up_date <= date(?, '+7 days') ORDER BY f.follow_up_date ASC LIMIT 10`).all(userId, today, today);
+
+    // Recent activity (my own actions)
+    const recentActivity = db.prepare(`
+      SELECT a.*, i.type as inquiry_type, c.name as customer_name
+      FROM activity_log a
+      JOIN inquiries i ON a.entity_id = i.id AND a.entity_type = 'inquiry'
+      JOIN customers c ON i.customer_id = c.id
+      WHERE a.user_id = ?
+      ORDER BY a.created_at DESC LIMIT 12
+    `).all(userId);
+
+    // Weekly trend (last 10 weeks)
+    const weeklyTrend = db.prepare(`
+      SELECT strftime('%Y-%W', created_at) as week,
+        COUNT(*) as total,
+        SUM(CASE WHEN disposition='Closed Won' THEN 1 ELSE 0 END) as won
+      FROM inquiries WHERE assigned_to=? AND created_at >= datetime('now','-10 weeks')
+      GROUP BY week ORDER BY week ASC
+    `).all(userId);
+
+    res.json({
+      today: { leads: todayLeads, repeat: todayRepeat, orders: todayOrders },
+      month: { total: monthTotal, won: monthWon, lost: monthLost, win_rate: monthTotal > 0 ? Math.round(monthWon/monthTotal*100) : 0 },
+      year:  { total: yearTotal,  won: yearWon,  win_rate: yearTotal  > 0 ? Math.round(yearWon/yearTotal*100)   : 0 },
+      all:   { total: allTotal,   won: allWon,   win_rate: allTotal   > 0 ? Math.round(allWon/allTotal*100)     : 0 },
+      pipeline, untouched, recentActivity, weeklyTrend,
+      followups: { overdue: overdueFollowups, today: todayFollowups, upcoming: upcomingFollowups },
+    });
+  } catch (err) {
+    console.error('AE analytics error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});

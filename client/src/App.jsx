@@ -10,6 +10,7 @@ import CustomerDetail from './pages/CustomerDetail'
 import Users from './pages/Users'
 import ImportData from './pages/ImportData'
 import Notifications from './pages/Notifications'
+import AEDashboard from './pages/AEDashboard'
 
 export const AuthContext = createContext(null)
 export const useAuth = () => useContext(AuthContext)
@@ -101,7 +102,7 @@ export default function App() {
 
   const renderPage = () => {
     switch (page.name) {
-      case 'dashboard':       return <Dashboard />
+      case 'dashboard':       return user.role === 'ae' ? <AEDashboard /> : <Dashboard />
       case 'leads':           return <InquiryList type="lead" title="Leads" />
       case 'repeat':          return <InquiryList type="repeat" title="Repeat Inquiries" />
       case 'orders':          return <InquiryList type="online_order" title="Online Orders" />
