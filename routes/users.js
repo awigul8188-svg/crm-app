@@ -80,4 +80,20 @@ router.post('/reset-ae-passwords', requireManager, (req, res) => {
   res.json({ results });
 });
 
+// Reset all PURCHASER passwords (purchasing manager + manager can do this)
+router.post('/reset-purchaser-passwords', (req, res) => {
+  if (!['manager','purchasing_manager'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Not authorized' });
+  }
+  const db = getDB();
+  const purchasers = db.prepare("SELECT id, name, username FROM users WHERE role = 'purchaser' ORDER BY name").all();
+  if (!purchasers.length) return res.json({ results: [] });
+  const results = purchasers.map(p => {
+    const newPwd = generatePassword();
+    db.prepare('UPDATE users SET password=?, token_version=COALESCE(token_version,1)+1 WHERE id=?').run(bcrypt.hashSync(newPwd, 10), p.id);
+    return { id: p.id, name: p.name, username: p.username, password: newPwd };
+  });
+  res.json({ results });
+});
+
 module.exports = router;

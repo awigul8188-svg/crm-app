@@ -90,6 +90,15 @@ router.post('/', (req, res) => {
     comment: null,
   });
 
+  // Notify purchasing managers about new parts
+  const validReqCount = (requirements || []).filter(r => r.part_number?.trim()).length;
+  if (validReqCount > 0) {
+    const pms = db.prepare("SELECT id FROM users WHERE role = 'purchasing_manager'").all();
+    const notifInsert = db.prepare("INSERT INTO notifications (user_id, inquiry_id, inquiry_type, customer_name, actor_name, action, comment) VALUES (?,?,?,?,?,?,?)");
+    const partsList = (requirements || []).filter(r => r.part_number?.trim()).map(r => r.part_number).join(', ');
+    pms.forEach(pm => notifInsert.run(pm.id, inquiryId, type + '_parts', customer?.name || 'Unknown', req.user.name, 'New parts added — assign purchaser', partsList));
+  }
+
   res.json({ id: inquiryId });
 });
 

@@ -67,3 +67,17 @@ export const api = {
   markAllRead: () => req('POST', '/notifications/read-all'),
   completeFollowup: (id) => req('PATCH', `/notifications/followup/${id}/complete`),
 };
+
+export const purchasingApi = {
+  getParts:         (params = {}) => { const p = new URLSearchParams(Object.entries(params).filter(([,v]) => v)); return fetch(`/api/purchasing/parts?${p}`, { headers: { Authorization: `Bearer ${localStorage.getItem('crm_token')}` } }).then(r => r.json()); },
+  getInquiryParts:  (id) => fetch(`/api/purchasing/inquiry-parts/${id}`, { headers: { Authorization: `Bearer ${localStorage.getItem('crm_token')}` } }).then(r => r.json()),
+  assign:           (data) => fetch('/api/purchasing/assign', { method:'POST', headers:{ Authorization:`Bearer ${localStorage.getItem('crm_token')}`, 'Content-Type':'application/json' }, body:JSON.stringify(data) }).then(r => r.json()),
+  assignBulk:       (data) => fetch('/api/purchasing/assign-bulk', { method:'POST', headers:{ Authorization:`Bearer ${localStorage.getItem('crm_token')}`, 'Content-Type':'application/json' }, body:JSON.stringify(data) }).then(r => r.json()),
+  unassign:         (reqId) => fetch(`/api/purchasing/assign/${reqId}`, { method:'DELETE', headers:{ Authorization:`Bearer ${localStorage.getItem('crm_token')}` } }).then(r => r.json()),
+  getMyParts:       (params = {}) => { const p = new URLSearchParams(Object.entries(params).filter(([,v]) => v)); return fetch(`/api/purchasing/my-parts?${p}`, { headers: { Authorization: `Bearer ${localStorage.getItem('crm_token')}` } }).then(r => r.json()); },
+  submitQuote:      (data) => fetch('/api/purchasing/quote', { method:'POST', headers:{ Authorization:`Bearer ${localStorage.getItem('crm_token')}`, 'Content-Type':'application/json' }, body:JSON.stringify(data) }).then(r => r.json()),
+  getQuotes:        (params = {}) => { const p = new URLSearchParams(Object.entries(params).filter(([,v]) => v)); return fetch(`/api/purchasing/quotes?${p}`, { headers: { Authorization: `Bearer ${localStorage.getItem('crm_token')}` } }).then(r => r.json()); },
+  getStats:         () => fetch('/api/purchasing/stats', { headers: { Authorization: `Bearer ${localStorage.getItem('crm_token')}` } }).then(r => r.json()),
+  getPurchasers:    () => fetch('/api/purchasing/purchasers', { headers: { Authorization: `Bearer ${localStorage.getItem('crm_token')}` } }).then(r => r.json()),
+  resetPurchaserPasswords: () => fetch('/api/users/reset-purchaser-passwords', { method:'POST', headers:{ Authorization:`Bearer ${localStorage.getItem('crm_token')}` } }).then(r => r.json()),
+};
