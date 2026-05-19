@@ -14,12 +14,15 @@ function TALogo({ size = 36 }) {
   )
 }
 
-const NAV = [
+const SALES_NAV = [
   { name: 'dashboard', label: 'Dashboard',       icon: '▣' },
   { name: 'leads',     label: 'Leads',            icon: '◎' },
   { name: 'repeat',    label: 'Repeat Inquiries', icon: '↻' },
   { name: 'orders',    label: 'Online Orders',    icon: '◈' },
   { name: 'customers', label: 'Customers',        icon: '◉' },
+]
+const PURCHASER_NAV = [
+  { name: 'purchasing', label: 'My Parts', icon: '🔩' },
 ]
 
 export default function Layout({ children }) {
@@ -85,7 +88,7 @@ export default function Layout({ children }) {
           <div className="px-3 mb-2.5" style={{ color: 'rgba(255,255,255,0.2)', fontSize: '9px', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
             Main Menu
           </div>
-          {NAV.map(item => (
+          {(user.role === 'purchaser' ? PURCHASER_NAV : user.role === 'purchasing_manager' ? [] : SALES_NAV).map(item => (
             <button key={item.name} onClick={() => navigate(item.name)}
               className={`nav-item ${page.name === item.name ? 'nav-active' : 'nav-inactive'}`}>
               <span className="text-sm w-5 text-center flex-shrink-0">{item.icon}</span>
@@ -115,6 +118,24 @@ export default function Layout({ children }) {
               {[
                 { name: 'import', label: 'Import Data', icon: '📥' },
                 { name: 'users',  label: 'Users',       icon: '⚙' },
+                { name: 'purchasing', label: 'Purchasing', icon: '🔧' },
+              ].map(item => (
+                <button key={item.name} onClick={() => navigate(item.name)}
+                  className={`nav-item ${page.name === item.name ? 'nav-active' : 'nav-inactive'}`}>
+                  <span className="text-sm w-5 text-center">{item.icon}</span>
+                  <span>{item.label}</span>
+                  {page.name === item.name && <span className="ml-auto w-1.5 h-1.5 rounded-full" style={{ background: '#00D4C8' }} />}
+                </button>
+              ))}
+            </>
+          )}
+          {user.role === 'purchasing_manager' && (
+            <>
+              <div className="px-3 mt-5 mb-2.5" style={{ color: 'rgba(255,255,255,0.2)', fontSize: '9px', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                Purchasing
+              </div>
+              {[
+                { name: 'purchasing', label: 'Parts & Quotes', icon: '🔧' },
               ].map(item => (
                 <button key={item.name} onClick={() => navigate(item.name)}
                   className={`nav-item ${page.name === item.name ? 'nav-active' : 'nav-inactive'}`}>

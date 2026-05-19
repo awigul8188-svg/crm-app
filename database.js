@@ -115,3 +115,36 @@ function initializeDB() {
 }
 
 module.exports = { getDB, initializeDB };
+
+// Additional migrations run at startup (safe to re-run - uses IF NOT EXISTS or try/catch)
+function runPurchasingMigrations() {
+  const db = getDB();
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS purchase_assignments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        requirement_id INTEGER NOT NULL REFERENCES requirements(id) ON DELETE CASCADE,
+        purchaser_id INTEGER NOT NULL REFERENCES users(id),
+        assigned_by INTEGER REFERENCES users(id),
+        status TEXT DEFAULT 'pending',
+        assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(requirement_id)
+      );
+      CREATE TABLE IF NOT EXISTS purchase_quotes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        assignment_id INTEGER NOT NULL REFERENCES purchase_assignments(id) ON DELETE CASCADE,
+        requirement_id INTEGER NOT NULL,
+        purchaser_id INTEGER NOT NULL,
+        price TEXT,
+        condition TEXT,
+        lead_time TEXT,
+        supplier_name TEXT,
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+  } catch(e) { console.log('Purchasing migration note:', e.message); }
+}
+
+module.exports.runPurchasingMigrations = runPurchasingMigrations;

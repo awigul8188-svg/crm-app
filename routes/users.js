@@ -28,13 +28,18 @@ router.get('/', (req, res) => {
   res.json(db.prepare('SELECT id, username, name, role, created_at FROM users ORDER BY role DESC, name').all());
 });
 
-router.post('/', requireManager, (req, res) => {
+router.post('/', (req, res) => {
+  if (req.user.role !== 'manager' && req.user.role !== 'purchasing_manager') {
+    return res.status(403).json({ error: 'Managers only' });
+  }
   const { username, password, name, role } = req.body;
   if (!username || !password || !name) return res.status(400).json({ error: 'username, password, and name are required' });
   const db = getDB();
   const hash = bcrypt.hashSync(password, 10);
   try {
-    const result = db.prepare("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, ?)").run(username.toLowerCase().trim(), hash, name.trim(), role || 'ae');
+    // Purchasing managers can only create purchasers
+    const finalRole = req.user.role === 'purchasing_manager' ? 'purchaser' : (role || 'ae');
+    const result = db.prepare("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, ?)").run(username.toLowerCase().trim(), hash, name.trim(), finalRole);
     res.json({ id: result.lastInsertRowid, username: username.toLowerCase(), name, role: role || 'ae' });
   } catch {
     res.status(400).json({ error: 'Username already taken' });

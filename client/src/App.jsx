@@ -11,6 +11,8 @@ import Users from './pages/Users'
 import ImportData from './pages/ImportData'
 import Notifications from './pages/Notifications'
 import AEDashboard from './pages/AEDashboard'
+import PurchasingManagerView from './pages/PurchasingManagerView'
+import PurchaserDashboard from './pages/PurchaserDashboard'
 
 export const AuthContext = createContext(null)
 export const useAuth = () => useContext(AuthContext)
@@ -102,7 +104,11 @@ export default function App() {
 
   const renderPage = () => {
     switch (page.name) {
-      case 'dashboard':       return user.role === 'ae' ? <AEDashboard /> : <Dashboard />
+      case 'dashboard':
+        if (user.role === 'ae') return <AEDashboard />
+        if (user.role === 'purchaser') return <PurchaserDashboard />
+        if (user.role === 'purchasing_manager') return <PurchasingManagerView />
+        return <Dashboard />
       case 'leads':           return <InquiryList type="lead" title="Leads" />
       case 'repeat':          return <InquiryList type="repeat" title="Repeat Inquiries" />
       case 'orders':          return <InquiryList type="online_order" title="Online Orders" />
@@ -112,6 +118,7 @@ export default function App() {
       case 'users':           return user.role === 'manager' ? <Users /> : <Dashboard />
       case 'import':          return user.role === 'manager' ? <ImportData /> : <Dashboard />
       case 'notifications':   return <Notifications />
+      case 'purchasing':      return <PurchasingManagerView />
       default:                return <Dashboard />
     }
   }

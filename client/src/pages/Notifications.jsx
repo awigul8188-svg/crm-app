@@ -151,9 +151,15 @@ export default function Notifications() {
   const followupTotal = data ? data.followups.overdue.length + data.followups.today.length + data.followups.upcoming.length : 0
   const unreadActivity = localActivity.filter(n => !n.read).length
 
+  const quoteNotifs = (data?.activity || []).filter(n => n.inquiry_type === 'quote')
+  const unreadQuotes = quoteNotifs.filter(n => !n.read).length
+  const activityNotifs = (data?.activity || []).filter(n => n.inquiry_type !== 'quote')
+  const unreadActivityFiltered = activityNotifs.filter(n => !n.read).length
+
   const tabs = [
-    ...(user.role === 'manager' ? [{ key: 'activity', label: 'Activity', count: unreadActivity }] : []),
+    ...(user.role === 'manager' || user.role === 'purchasing_manager' ? [{ key: 'activity', label: 'Activity', count: unreadActivityFiltered }] : []),
     { key: 'followups', label: 'Follow-ups', count: followupTotal },
+    ...(['manager','purchasing_manager','ae'].includes(user.role) ? [{ key: 'quotes', label: '🔧 Quotes', count: unreadQuotes }] : []),
   ]
 
   return (
