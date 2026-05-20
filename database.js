@@ -148,3 +148,44 @@ function runPurchasingMigrations() {
 }
 
 module.exports.runPurchasingMigrations = runPurchasingMigrations;
+
+function runPurchasingV2Migrations() {
+  const db = getDB();
+  try {
+    db.exec(`
+      ALTER TABLE purchase_assignments ADD COLUMN urgency TEXT DEFAULT 'normal';
+    `);
+  } catch(e) {}
+  try {
+    db.exec(`ALTER TABLE purchase_assignments ADD COLUMN pm_notes TEXT;`);
+  } catch(e) {}
+  try {
+    db.exec(`ALTER TABLE purchase_assignments ADD COLUMN purchaser_notes TEXT;`);
+  } catch(e) {}
+  try {
+    db.exec(`ALTER TABLE purchase_assignments ADD COLUMN not_in_stock INTEGER DEFAULT 0;`);
+  } catch(e) {}
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS purchaser_followups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        assignment_id INTEGER NOT NULL REFERENCES purchase_assignments(id) ON DELETE CASCADE,
+        purchaser_id INTEGER NOT NULL REFERENCES users(id),
+        note TEXT NOT NULL,
+        follow_up_date DATE,
+        completed INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS part_comments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        assignment_id INTEGER NOT NULL REFERENCES purchase_assignments(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        user_name TEXT,
+        user_role TEXT,
+        comment TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+  } catch(e) { console.log('V2 migration note:', e.message); }
+}
+module.exports.runPurchasingV2Migrations = runPurchasingV2Migrations;
