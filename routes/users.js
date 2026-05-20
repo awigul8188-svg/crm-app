@@ -46,20 +46,46 @@ router.post('/', (req, res) => {
   }
 });
 
-router.put('/:id', requireManager, (req, res) => {
-  const { name, role, password } = req.body;
+router.put('/:id', (req, res) => {
+  // Managers can edit anyone; purchasing managers can only edit purchasers
+  if (!['manager','purchasing_manager'].includes(req.user.role)) return res.status(403).json({ error: 'Not authorized' });
+  const { name, role, password, username } = req.body;
   const db = getDB();
-  if (password) {
-    db.prepare('UPDATE users SET name=?, role=?, password=? WHERE id=?').run(name, role, bcrypt.hashSync(password, 10), req.params.id);
-  } else {
-    db.prepare('UPDATE users SET name=?, role=? WHERE id=?').run(name, role, req.params.id);
+
+  // Purchasing managers can only edit purchasers
+  const target = db.prepare('SELECT role FROM users WHERE id=?').get(req.params.id);
+  if (req.user.role === 'purchasing_manager' && target?.role !== 'purchaser') {
+    return res.status(403).json({ error: 'You can only edit purchasers' });
   }
-  res.json({ success: true });
+
+  // Check username uniqueness if changing
+  if (username) {
+    const existing = db.prepare('SELECT id FROM users WHERE username=? AND id!=?').get(username.toLowerCase().trim(), req.params.id);
+    if (existing) return res.status(400).json({ error: 'Username already taken' });
+  }
+
+  try {
+    if (password && username) {
+      db.prepare('UPDATE users SET name=?, role=?, password=?, username=? WHERE id=?').run(name, role, bcrypt.hashSync(password, 10), username.toLowerCase().trim(), req.params.id);
+    } else if (password) {
+      db.prepare('UPDATE users SET name=?, role=?, password=? WHERE id=?').run(name, role, bcrypt.hashSync(password, 10), req.params.id);
+    } else if (username) {
+      db.prepare('UPDATE users SET name=?, role=?, username=? WHERE id=?').run(name, role, username.toLowerCase().trim(), req.params.id);
+    } else {
+      db.prepare('UPDATE users SET name=?, role=? WHERE id=?').run(name, role, req.params.id);
+    }
+    res.json({ success: true });
+  } catch(e) { res.status(400).json({ error: e.message }); }
 });
 
-router.delete('/:id', requireManager, (req, res) => {
+router.delete('/:id', (req, res) => {
+  if (!['manager','purchasing_manager'].includes(req.user.role)) return res.status(403).json({ error: 'Not authorized' });
   const db = getDB();
   if (parseInt(req.params.id) === req.user.id) return res.status(400).json({ error: "Can't delete yourself" });
+  const target = db.prepare('SELECT role FROM users WHERE id=?').get(req.params.id);
+  if (req.user.role === 'purchasing_manager' && target?.role !== 'purchaser') {
+    return res.status(403).json({ error: 'You can only delete purchasers' });
+  }
   db.prepare('DELETE FROM users WHERE id=?').run(req.params.id);
   res.json({ success: true });
 });
