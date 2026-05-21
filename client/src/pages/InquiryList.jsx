@@ -153,15 +153,15 @@ export default function InquiryList({ type, title }) {
       {/* Filters — all visible */}
       {/* Date range row */}
       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10, flexWrap:'wrap' }}>
-        <span style={{ fontSize:12, fontWeight:600, color:'rgba(255,255,255,0.50)' }}>Date:</span>
+        <span style={{ fontSize:12, fontWeight:600, color:'var(--text-2)' }}>Date:</span>
         <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-          style={{ padding:'7px 10px', border:'1px solid rgba(255,255,255,0.09)', borderRadius:10, fontSize:12, outline:'none', fontFamily:'"Plus Jakarta Sans",sans-serif', color:'var(--text)' }} />
-        <span style={{ color:'rgba(255,255,255,0.38)', fontSize:13 }}>→</span>
+          style={{ padding:'7px 10px', border:'1px solid var(--border)', borderRadius:10, fontSize:12, outline:'none', fontFamily:'"Plus Jakarta Sans",sans-serif', color:'var(--text)' }} />
+        <span style={{ color:'var(--text-3)', fontSize:13 }}>→</span>
         <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-          style={{ padding:'7px 10px', border:'1px solid rgba(255,255,255,0.09)', borderRadius:10, fontSize:12, outline:'none', fontFamily:'"Plus Jakarta Sans",sans-serif', color:'var(--text)' }} />
+          style={{ padding:'7px 10px', border:'1px solid var(--border)', borderRadius:10, fontSize:12, outline:'none', fontFamily:'"Plus Jakarta Sans",sans-serif', color:'var(--text)' }} />
         {(dateFrom || dateTo) && (
           <button onClick={() => { setDateFrom(''); setDateTo('') }}
-            style={{ fontSize:11, color:'rgba(255,255,255,0.38)', background:'none', border:'none', cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>
+            style={{ fontSize:11, color:'var(--text-3)', background:'none', border:'none', cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>
             clear dates
           </button>
         )}

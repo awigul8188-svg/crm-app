@@ -58,7 +58,7 @@ export default function Login() {
           <h1 className="font-display text-5xl font-extrabold text-white leading-[1.05] mb-4 tracking-tight">
             Track every<br />deal. Close<br />faster.
           </h1>
-          <p className="text-sm leading-relaxed max-w-sm" style={{ color: 'rgba(255,255,255,0.45)' }}>
+          <p className="text-sm leading-relaxed max-w-sm" style={{ color: 'var(--text-2)' }}>
             Leads, repeat inquiries, and online orders — all in one place. Real-time analytics for the whole team.
           </p>
 
@@ -66,14 +66,14 @@ export default function Login() {
           <div className="mt-10 flex gap-8">
             {[['◎', 'Leads'], ['↻', 'Repeat'], ['◈', 'Orders'], ['▣', 'Analytics']].map(([icon, label]) => (
               <div key={label} className="text-center">
-                <div className="text-xl mb-1" style={{ color: 'rgba(255,255,255,0.3)' }}>{icon}</div>
-                <div className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.4)' }}>{label}</div>
+                <div className="text-xl mb-1" style={{ color: 'var(--text-2)' }}>{icon}</div>
+                <div className="text-xs font-semibold" style={{ color: 'var(--text-2)' }}>{label}</div>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="relative text-xs" style={{ color: 'rgba(255,255,255,0.15)' }}>
+        <div className="relative text-xs" style={{ color: 'var(--text-2)' }}>
           Beyond Tech · Above Integration
         </div>
       </div>

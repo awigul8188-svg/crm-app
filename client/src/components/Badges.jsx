@@ -27,7 +27,7 @@ const DISPOSITION_STYLES = {
   'Cancelled':     { bg:'rgba(239,68,68,0.12)',   color:'#fca5a5', border:'rgba(239,68,68,0.2)'   },
   'Quoted':        { bg:'rgba(59,130,246,0.15)',  color:'#60a5fa', border:'rgba(59,130,246,0.25)' },
   'Bidding':       { bg:'rgba(139,92,246,0.15)',  color:'#a78bfa', border:'rgba(139,92,246,0.25)' },
-  'Initial Contact':{ bg:'rgba(255,255,255,0.07)', color:'rgba(255,255,255,0.6)', border:'rgba(255,255,255,0.12)' },
+  'Initial Contact':{ bg:'rgba(255,255,255,0.07)', color:'var(--text-2)', border:'rgba(255,255,255,0.12)' },
   'Cold':          { bg:'rgba(100,116,139,0.15)', color:'#94a3b8', border:'rgba(100,116,139,0.25)' },
   'Cold Lead':     { bg:'rgba(100,116,139,0.15)', color:'#94a3b8', border:'rgba(100,116,139,0.25)' },
   'Hold':          { bg:'rgba(245,158,11,0.15)',  color:'#fbbf24', border:'rgba(245,158,11,0.25)' },
@@ -43,12 +43,12 @@ const DISPOSITION_STYLES = {
   'Desi':          { bg:'rgba(236,72,153,0.15)',  color:'#f472b6', border:'rgba(236,72,153,0.25)' },
   'Supplier':      { bg:'rgba(0,212,200,0.12)',   color:'#00D4C8', border:'rgba(0,212,200,0.2)'   },
   'Supplier but working on it': { bg:'rgba(0,212,200,0.1)', color:'#00D4C8', border:'rgba(0,212,200,0.15)' },
-  'Chinese Supplier': { bg:'rgba(255,255,255,0.07)', color:'rgba(255,255,255,0.5)', border:'rgba(255,255,255,0.1)' },
+  'Chinese Supplier': { bg:'rgba(255,255,255,0.07)', color:'var(--text-2)', border:'rgba(255,255,255,0.1)' },
   'Project Cancelled': { bg:'rgba(239,68,68,0.1)', color:'#fca5a5', border:'rgba(239,68,68,0.15)' },
 }
 
 export function DispositionBadge({ disposition }) {
-  const s = DISPOSITION_STYLES[disposition] || { bg:'rgba(255,255,255,0.07)', color:'rgba(255,255,255,0.5)', border:'rgba(255,255,255,0.1)' }
+  const s = DISPOSITION_STYLES[disposition] || { bg:'rgba(255,255,255,0.07)', color:'var(--text-2)', border:'rgba(255,255,255,0.1)' }
   return (
     <span style={{ fontSize:11, fontWeight:700, padding:'3px 9px', borderRadius:20, background:s.bg, color:s.color, border:`1px solid ${s.border}`, whiteSpace:'nowrap', display:'inline-flex', alignItems:'center' }}>
       {disposition || '—'}
@@ -62,7 +62,7 @@ export function TypeBadge({ type }) {
     repeat:       { label: '↻ Repeat',       bg:'rgba(139,92,246,0.15)', color:'#a78bfa', border:'rgba(139,92,246,0.25)' },
     online_order: { label: '◈ Online Order', bg:'rgba(245,158,11,0.15)', color:'#fbbf24', border:'rgba(245,158,11,0.25)' },
   }
-  const t = map[type] || { label: type, bg:'rgba(255,255,255,0.07)', color:'rgba(255,255,255,0.5)', border:'rgba(255,255,255,0.1)' }
+  const t = map[type] || { label: type, bg:'rgba(255,255,255,0.07)', color:'var(--text-2)', border:'rgba(255,255,255,0.1)' }
   return (
     <span style={{ fontSize:11, fontWeight:700, padding:'3px 9px', borderRadius:20, background:t.bg, color:t.color, border:`1px solid ${t.border}`, whiteSpace:'nowrap', display:'inline-flex', alignItems:'center' }}>
       {t.label}
