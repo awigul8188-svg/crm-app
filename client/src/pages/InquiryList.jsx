@@ -62,9 +62,9 @@ function InlineDispositionEdit({ inquiry, dispositions, onSave, onCancel }) {
         style={{
           fontSize: '12px', fontWeight: 600, padding: '4px 8px',
           borderRadius: '8px', border: '2px solid #00D4C8',
-          background: '#fff', cursor: 'pointer', outline: 'none',
+          background: 'var(--card)', cursor: 'pointer', outline: 'none',
           boxShadow: '0 0 0 3px rgba(0,212,200,0.15)',
-          minWidth: '160px', color: '#0f172a',
+          minWidth: '160px', color: 'var(--text)',
           fontFamily: '"Plus Jakarta Sans", sans-serif',
         }}
       >
@@ -153,15 +153,15 @@ export default function InquiryList({ type, title }) {
       {/* Filters — all visible */}
       {/* Date range row */}
       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10, flexWrap:'wrap' }}>
-        <span style={{ fontSize:12, fontWeight:600, color:'#64748b' }}>Date:</span>
+        <span style={{ fontSize:12, fontWeight:600, color:'rgba(255,255,255,0.50)' }}>Date:</span>
         <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-          style={{ padding:'7px 10px', border:'1px solid #e2e8f0', borderRadius:10, fontSize:12, outline:'none', fontFamily:'"Plus Jakarta Sans",sans-serif', color:'#0f172a' }} />
-        <span style={{ color:'#94a3b8', fontSize:13 }}>→</span>
+          style={{ padding:'7px 10px', border:'1px solid rgba(255,255,255,0.09)', borderRadius:10, fontSize:12, outline:'none', fontFamily:'"Plus Jakarta Sans",sans-serif', color:'var(--text)' }} />
+        <span style={{ color:'rgba(255,255,255,0.38)', fontSize:13 }}>→</span>
         <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-          style={{ padding:'7px 10px', border:'1px solid #e2e8f0', borderRadius:10, fontSize:12, outline:'none', fontFamily:'"Plus Jakarta Sans",sans-serif', color:'#0f172a' }} />
+          style={{ padding:'7px 10px', border:'1px solid rgba(255,255,255,0.09)', borderRadius:10, fontSize:12, outline:'none', fontFamily:'"Plus Jakarta Sans",sans-serif', color:'var(--text)' }} />
         {(dateFrom || dateTo) && (
           <button onClick={() => { setDateFrom(''); setDateTo('') }}
-            style={{ fontSize:11, color:'#94a3b8', background:'none', border:'none', cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>
+            style={{ fontSize:11, color:'rgba(255,255,255,0.38)', background:'none', border:'none', cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>
             clear dates
           </button>
         )}
@@ -170,12 +170,12 @@ export default function InquiryList({ type, title }) {
         {/* Search */}
         <div style={{ position: 'relative' }}>
           <input
-            style={{ padding: '9px 12px 9px 34px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '13px', background: '#fff', outline: 'none', width: '220px', fontFamily: '"Plus Jakarta Sans", sans-serif', color: '#0f172a' }}
+            style={{ padding: '9px 12px 9px 34px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.09)', fontSize: '13px', background: 'var(--card)', outline: 'none', width: '220px', fontFamily: '"Plus Jakarta Sans", sans-serif', color: 'var(--text)' }}
             placeholder="Search name, part, email..."
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
-          <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '14px', pointerEvents: 'none' }}>⌕</span>
+          <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.38)', fontSize: '14px', pointerEvents: 'none' }}>⌕</span>
         </div>
 
         <MultiSelect
@@ -231,7 +231,7 @@ export default function InquiryList({ type, title }) {
       )}
 
       {/* Tip for inline editing */}
-      <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+      <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.38)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '5px' }}>
         <span>💡</span> Click any <strong>disposition badge</strong> to edit it inline — no need to open the record
       </div>
 
@@ -278,7 +278,7 @@ export default function InquiryList({ type, title }) {
                           style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                         >
                           <DispositionBadge disposition={inq.disposition} />
-                          <span style={{ color: '#cbd5e1', fontSize: '10px' }}>✎</span>
+                          <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '10px' }}>✎</span>
                         </div>
                       )}
                     </td>

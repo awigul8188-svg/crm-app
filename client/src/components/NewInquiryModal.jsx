@@ -12,13 +12,13 @@ const TYPES = [
   { value: 'online_order', label: '◈ Online Order', color: '#f59e0b' },
 ]
 
-const inp = { width: '100%', boxSizing: 'border-box', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px 14px', fontSize: '13px', color: '#0f172a', fontFamily: '"Plus Jakarta Sans", sans-serif', outline: 'none', transition: 'border 0.15s' }
+const inp = { width: '100%', boxSizing: 'border-box', background: 'var(--card)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '12px', padding: '10px 14px', fontSize: '13px', color: 'var(--text)', fontFamily: '"Plus Jakarta Sans", sans-serif', outline: 'none', transition: 'border 0.15s' }
 const inpFocused = { border: `1px solid ${BRAND}`, boxShadow: `0 0 0 3px rgba(0,212,200,0.12)` }
 
 function Field({ label, children }) {
   return (
     <div style={{ marginBottom: '14px' }}>
-      <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '6px' }}>{label}</div>
+      <div style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.50)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '6px' }}>{label}</div>
       {children}
     </div>
   )
@@ -115,13 +115,13 @@ export default function NewInquiryModal({ defaultType = 'lead', customerId, onCl
 
   const modal = (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#ffffff', borderRadius: '20px', boxShadow: '0 24px 80px rgba(0,0,0,0.25)', width: '100%', maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto', animation: 'modalIn 0.18s ease-out', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', borderRadius: '20px', boxShadow: '0 24px 80px rgba(0,0,0,0.25)', width: '100%', maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto', animation: 'modalIn 0.18s ease-out', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
         <style>{`@keyframes modalIn { from { opacity:0; transform:scale(0.96) translateY(8px); } to { opacity:1; transform:scale(1) translateY(0); } } @keyframes spin { to { transform:rotate(360deg); } }`}</style>
 
         {/* Header */}
-        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, background: '#fff', zIndex: 10, borderRadius: '20px 20px 0 0' }}>
-          <div style={{ fontFamily: '"Bricolage Grotesque", sans-serif', fontWeight: 700, fontSize: '16px', color: '#0f172a' }}>New Inquiry</div>
-          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 10, border: 'none', background: '#f1f5f9', cursor: 'pointer', fontSize: 18, color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, background: 'var(--card)', zIndex: 10, borderRadius: '20px 20px 0 0' }}>
+          <div style={{ fontFamily: '"Bricolage Grotesque", sans-serif', fontWeight: 700, fontSize: '16px', color: 'var(--text)' }}>New Inquiry</div>
+          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 10, border: 'none', background: 'rgba(255,255,255,0.04)', cursor: 'pointer', fontSize: 18, color: 'rgba(255,255,255,0.50)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
         </div>
 
         <div style={{ padding: '20px 24px 24px' }}>
@@ -163,7 +163,7 @@ export default function NewInquiryModal({ defaultType = 'lead', customerId, onCl
               </div>
             }>
               {isNewCustomer ? (
-                <div style={{ background: '#f8fafc', borderRadius: '14px', padding: '14px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '14px', padding: '14px', border: '1px solid rgba(255,255,255,0.09)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <SInput value={custName} onChange={e => setCustName(e.target.value)} placeholder="Full name *" />
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                     <SInput value={custEmail} onChange={e => setCustEmail(e.target.value)} placeholder="Email" type="email" />
@@ -245,7 +245,7 @@ export default function NewInquiryModal({ defaultType = 'lead', customerId, onCl
           {error && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '12px', padding: '10px 14px', fontSize: '13px', color: '#dc2626', marginBottom: '14px' }}>⚠ {error}</div>}
 
           <div style={{ display: 'flex', gap: '10px' }}>
-            <button onClick={onClose} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', background: '#fff', color: '#475569', fontWeight: 600, fontSize: '14px', cursor: 'pointer', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Cancel</button>
+            <button onClick={onClose} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.09)', background: 'var(--card)', color: 'rgba(255,255,255,0.65)', fontWeight: 600, fontSize: '14px', cursor: 'pointer', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Cancel</button>
             <button onClick={handleSubmit} disabled={saving} style={{ flex: 2, padding: '12px', borderRadius: '12px', border: 'none', background: saving ? '#94a3b8' : BRAND, color: '#0d0d0d', fontWeight: 700, fontSize: '14px', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: '"Plus Jakarta Sans", sans-serif', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
               {saving ? <><div style={{ width: 14, height: 14, borderRadius: '50%', border: '2px solid #0d0d0d', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />Creating...</> : `Create ${type === 'lead' ? 'Lead' : type === 'repeat' ? 'Repeat Inquiry' : 'Online Order'}`}
             </button>
