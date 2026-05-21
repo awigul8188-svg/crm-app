@@ -15,6 +15,7 @@ import PurchasingManagerView from './pages/PurchasingManagerView'
 import PurchaserDashboard from './pages/PurchaserDashboard'
 
 export const AuthContext = createContext(null)
+export const ThemeContext = createContext({ theme: 'dark', toggle: () => {} })
 export const useAuth = () => useContext(AuthContext)
 export const NavContext = createContext(null)
 export const useNav = () => useContext(NavContext)
@@ -62,6 +63,18 @@ function RingtonePlayer({ userId }) {
   return null // invisible component
 }
 
+export function ThemeProvider({ children }) {
+  const [theme, setTheme] = useState(() => localStorage.getItem('crm_theme') || 'dark')
+  const toggle = () => setTheme(t => {
+    const next = t === 'dark' ? 'light' : 'dark'
+    localStorage.setItem('crm_theme', next)
+    document.documentElement.setAttribute('data-theme', next)
+    return next
+  })
+  useEffect(() => { document.documentElement.setAttribute('data-theme', theme) }, [theme])
+  return <ThemeContext.Provider value={{ theme, toggle }}>{children}</ThemeContext.Provider>
+}
+
 export default function App() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -90,7 +103,7 @@ export default function App() {
   const navigate = (name, params = {}) => setPage({ name, params })
 
   if (loading) return (
-    <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#f8fafc' }}>
+    <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--bg)' }}>
       <div style={{ width:32, height:32, borderRadius:'50%', border:'2px solid #00D4C8', borderTopColor:'transparent', animation:'spin 0.8s linear infinite' }} />
       <style>{`@keyframes spin { to { transform:rotate(360deg); } }`}</style>
     </div>
@@ -124,6 +137,7 @@ export default function App() {
   }
 
   return (
+    <ThemeProvider>
     <AuthContext.Provider value={{ user, login, logout }}>
       <NavContext.Provider value={{ page, navigate }}>
         {/* Ringtone poller — only for AEs */}
@@ -133,5 +147,6 @@ export default function App() {
         </Layout>
       </NavContext.Provider>
     </AuthContext.Provider>
+    </ThemeProvider>
   )
 }

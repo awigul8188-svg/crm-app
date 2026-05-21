@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../App'
 import { useNav } from '../App'
+import { ThemeContext } from '../App'
+import { useContext } from 'react'
 import { api } from '../api'
 
 function TALogo({ size = 36 }) {
@@ -35,6 +37,7 @@ const ROLE_LABELS = {
 export default function Layout({ children }) {
   const { user, logout } = useAuth()
   const { page, navigate } = useNav()
+  const { theme, toggle } = useContext(ThemeContext)
   const [notifCount, setNotifCount] = useState(0)
   const [avatarUrl, setAvatarUrl] = useState(null)
 
@@ -193,6 +196,34 @@ export default function Layout({ children }) {
               <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 1 }}>{ROLE_LABELS[user.role] || user.role}</div>
             </div>
           </div>
+          {/* Theme toggle */}
+          <button onClick={toggle}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '8px 12px', borderRadius: 10, border: 'none',
+              background: 'rgba(255,255,255,0.06)', cursor: 'pointer',
+              width: '100%', marginBottom: 6, transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => e.currentTarget.style.background='rgba(255,255,255,0.1)'}
+            onMouseLeave={e => e.currentTarget.style.background='rgba(255,255,255,0.06)'}
+          >
+            <div style={{
+              width: 36, height: 20, borderRadius: 10,
+              background: theme === 'dark' ? 'rgba(255,255,255,0.15)' : 'var(--brand)',
+              position: 'relative', transition: 'background 0.25s', flexShrink: 0,
+            }}>
+              <div style={{
+                width: 14, height: 14, borderRadius: 7, background: '#fff',
+                position: 'absolute', top: 3,
+                left: theme === 'dark' ? 3 : 19,
+                transition: 'left 0.25s',
+                boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
+              }} />
+            </div>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>
+              {theme === 'dark' ? '🌙 Dark' : '☀️ Light'}
+            </span>
+          </button>
           <button onClick={logout} className="nav-item nav-inactive" style={{ marginTop: 2 }}>
             <span style={{ fontSize: 13, width: 20, textAlign: 'center' }}>⎋</span>
             <span style={{ fontSize: 12 }}>Sign out</span>

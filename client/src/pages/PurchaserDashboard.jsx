@@ -6,9 +6,9 @@ import { formatDate, formatDateShort, timeAgo } from '../components/Badges'
 
 const BRAND = '#00D4C8'
 const T = { lead:{ icon:'◎', label:'Lead', color:'#3b82f6' }, repeat:{ icon:'↻', label:'Repeat', color:'#6366f1' }, online_order:{ icon:'◈', label:'Order', color:'#f59e0b' } }
-const URGENCY = { critical:{ label:'🔴 Critical', color:'#ef4444', bg:'#fef2f2', border:'#fecaca' }, high:{ label:'🟠 High', color:'#f97316', bg:'#fff7ed', border:'#fed7aa' }, normal:{ label:'🟡 Normal', color:'rgba(255,255,255,0.50)', bg:'#f8fafc', border:'#e2e8f0' }, low:{ label:'🟢 Low', color:'#10b981', bg:'#f0fdf4', border:'#bbf7d0' } }
+const URGENCY = { critical:{ label:'🔴 Critical', color:'#ef4444', bg:'#fef2f2', border:'#fecaca' }, high:{ label:'🟠 High', color:'#f97316', bg:'#fff7ed', border:'#fed7aa' }, normal:{ label:'🟡 Normal', color:'rgba(255,255,255,0.50)', bg:'var(--card-2)', border:'#e2e8f0' }, low:{ label:'🟢 Low', color:'#10b981', bg:'#f0fdf4', border:'#bbf7d0' } }
 const CONDITIONS = ['New','Used','Refurbished','For Parts','Other']
-const inp = { width:'100%', boxSizing:'border-box', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:'12px', padding:'10px 14px', fontSize:'13px', color:'#fff', fontFamily:'"Plus Jakarta Sans",sans-serif', outline:'none', transition:'border 0.15s' }
+const inp = { width:'100%', boxSizing:'border-box', background:'var(--input-bg)', border:'1px solid var(--input-border)', borderRadius:'12px', padding:'10px 14px', fontSize:'13px', color:'var(--card)', fontFamily:'"Plus Jakarta Sans",sans-serif', outline:'none', transition:'border 0.15s' }
 const inpF = { border:`1px solid ${BRAND}`, boxShadow:`0 0 0 3px rgba(0,212,200,0.12)` }
 
 const PRESETS = [{ label:'Today',v:'today' },{ label:'Week',v:'week' },{ label:'Month',v:'month' },{ label:'All',v:'all' },{ label:'Custom',v:'custom' }]
@@ -118,11 +118,11 @@ function PartDetailModal({ assignmentId, onClose, onSaved }) {
         <style>{`@keyframes modalIn{from{opacity:0;transform:scale(0.96) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
         {/* Header */}
-        <div style={{ padding:'16px 22px 12px', borderBottom:'1px solid rgba(255,255,255,0.06)', flexShrink:0, background: part.is_delayed?'#fff5f5':part.not_in_stock?'#f8fafc':'#fff', borderRadius:'20px 20px 0 0' }}>
+        <div style={{ padding:'16px 22px 12px', borderBottom:'1px solid rgba(255,255,255,0.06)', flexShrink:0, background: part.is_delayed?'#fff5f5':part.not_in_stock?'var(--card-2)':'var(--card)', borderRadius:'20px 20px 0 0' }}>
           <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between' }}>
             <div>
               <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4, flexWrap:'wrap' }}>
-                <span style={{ fontFamily:'monospace', fontWeight:800, fontSize:16, color:'#fff' }}>{part.part_number}</span>
+                <span style={{ fontFamily:'monospace', fontWeight:800, fontSize:16, color:'var(--card)' }}>{part.part_number}</span>
                 <span style={{ fontSize:12, fontWeight:600, color:tInfo?.color, background:`${tInfo?.color}15`, padding:'2px 8px', borderRadius:6 }}>{tInfo?.icon} {tInfo?.label}</span>
                 <span style={{ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:12, background:urgInfo.bg, color:urgInfo.color, border:`1px solid ${urgInfo.border}` }}>{urgInfo.label}</span>
                 {part.is_delayed && <span style={{ fontSize:11, fontWeight:700, color:'#dc2626', background:'#fef2f2', padding:'2px 8px', borderRadius:12 }}>⚠️ Delayed {part.working_days_pending}d</span>}
@@ -169,7 +169,7 @@ function PartDetailModal({ assignmentId, onClose, onSaved }) {
               <div style={{ marginBottom:12 }}>
                 <div style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.50)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6 }}>Condition *</div>
                 <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:condition==='Other'?8:0 }}>
-                  {CONDITIONS.map(c => <button key={c} type="button" onClick={()=>setCondition(c)} style={{ padding:'6px 12px', borderRadius:10, border:`2px solid ${condition===c?BRAND:'#e2e8f0'}`, background:condition===c?`${BRAND}12`:'#fff', color:condition===c?'#00b8ad':'#64748b', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', transition:'all 0.15s' }}>{c}</button>)}
+                  {CONDITIONS.map(c => <button key={c} type="button" onClick={()=>setCondition(c)} style={{ padding:'6px 12px', borderRadius:10, border:`2px solid ${condition===c?BRAND:'#e2e8f0'}`, background:condition===c?`${BRAND}12`:'var(--card)', color:condition===c?'#00b8ad':'#64748b', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', transition:'all 0.15s' }}>{c}</button>)}
                 </div>
                 {condition==='Other' && <SInput value={customCond} onChange={e=>setCustomCond(e.target.value)} placeholder="Specify condition..." />}
               </div>
@@ -218,10 +218,10 @@ function PartDetailModal({ assignmentId, onClose, onSaved }) {
                     const isMe = c.user_id === user.id
                     return (
                       <div key={c.id} style={{ display:'flex', flexDirection:isMe?'row-reverse':'row', gap:8 }}>
-                        <div style={{ width:28, height:28, borderRadius:8, background:isMe?`${BRAND}20`:'#f1f5f9', color:isMe?BRAND:'#64748b', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:11, flexShrink:0 }}>{c.user_name?.[0]?.toUpperCase()}</div>
+                        <div style={{ width:28, height:28, borderRadius:8, background:isMe?`${BRAND}20`:'var(--card-2)', color:isMe?BRAND:'#64748b', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:11, flexShrink:0 }}>{c.user_name?.[0]?.toUpperCase()}</div>
                         <div style={{ maxWidth:'75%' }}>
                           <div style={{ fontSize:10, color:'rgba(255,255,255,0.38)', marginBottom:3, textAlign:isMe?'right':'left' }}>{c.user_name} ({c.user_role}) · {timeAgo(c.created_at)}</div>
-                          <div style={{ background:isMe?`${BRAND}15`:'#f8fafc', borderRadius:isMe?'12px 12px 4px 12px':'12px 12px 12px 4px', padding:'8px 12px', fontSize:13, color:'#fff', border:`1px solid ${isMe?`${BRAND}30`:'#f1f5f9'}` }}>
+                          <div style={{ background:isMe?`${BRAND}15`:'var(--card-2)', borderRadius:isMe?'12px 12px 4px 12px':'12px 12px 12px 4px', padding:'8px 12px', fontSize:13, color:'var(--card)', border:`1px solid ${isMe?`${BRAND}30`:'var(--card-2)'}` }}>
                             {c.comment}
                           </div>
                         </div>
@@ -246,13 +246,13 @@ function PartDetailModal({ assignmentId, onClose, onSaved }) {
               {!part.followups?.length ? <div style={{ textAlign:'center', color:'rgba(255,255,255,0.38)', padding:24, fontSize:13 }}>No follow-ups yet</div> : (
                 <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                   {part.followups.map(fu => (
-                    <div key={fu.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', background:fu.completed?'#f8fafc':'#fff', borderRadius:12, border:`1px solid ${fu.completed?'#f1f5f9':new Date(fu.follow_up_date)<new Date()?'#fecaca':'#f1f5f9'}`, opacity:fu.completed?0.6:1 }}>
+                    <div key={fu.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', background:fu.completed?'var(--card-2)':'var(--card)', borderRadius:12, border:`1px solid ${fu.completed?'var(--card-2)':new Date(fu.follow_up_date)<new Date()?'#fecaca':'var(--card-2)'}`, opacity:fu.completed?0.6:1 }}>
                       <button onClick={() => completeFollowup(fu.id)} disabled={fu.completed}
                         style={{ width:22, height:22, borderRadius:6, border:`2px solid ${fu.completed?BRAND:'#cbd5e1'}`, background:fu.completed?BRAND:'transparent', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                         {fu.completed && <span style={{ color:'white', fontSize:11 }}>✓</span>}
                       </button>
                       <div style={{ flex:1 }}>
-                        <div style={{ fontSize:13, fontWeight:500, color:'#fff', textDecoration:fu.completed?'line-through':'' }}>{fu.note}</div>
+                        <div style={{ fontSize:13, fontWeight:500, color:'var(--card)', textDecoration:fu.completed?'line-through':'' }}>{fu.note}</div>
                         {fu.follow_up_date && <div style={{ fontSize:11, color: new Date(fu.follow_up_date)<new Date()&&!fu.completed?'#ef4444':BRAND, fontWeight:600, marginTop:2 }}>📅 {formatDate(fu.follow_up_date)}</div>}
                       </div>
                     </div>
@@ -272,13 +272,13 @@ function PartDetailModal({ assignmentId, onClose, onSaved }) {
 function PartCard({ part, onClick }) {
   const tInfo = T[part.inquiry_type]; const urgInfo = URGENCY[part.urgency||'normal']
   return (
-    <div onClick={onClick} style={{ background:part.is_delayed?'#fff5f5':part.not_in_stock?'#fafafa':'#fff', borderRadius:14, border:`1px solid ${part.is_delayed?'#fecaca':part.not_in_stock?'#e2e8f0':part.urgency==='critical'?'#fecaca':part.urgency==='high'?'#fed7aa':'#f1f5f9'}`, padding:'14px 18px', cursor:'pointer', transition:'all 0.15s', display:'flex', alignItems:'flex-start', gap:14, flexWrap:'wrap' }}
+    <div onClick={onClick} style={{ background:part.is_delayed?'#fff5f5':part.not_in_stock?'var(--card-2)':'var(--card)', borderRadius:14, border:`1px solid ${part.is_delayed?'#fecaca':part.not_in_stock?'#e2e8f0':part.urgency==='critical'?'#fecaca':part.urgency==='high'?'#fed7aa':'var(--card-2)'}`, padding:'14px 18px', cursor:'pointer', transition:'all 0.15s', display:'flex', alignItems:'flex-start', gap:14, flexWrap:'wrap' }}
       onMouseEnter={e=>{ e.currentTarget.style.borderColor=BRAND; e.currentTarget.style.boxShadow=`0 2px 12px rgba(0,212,200,0.1)` }}
-      onMouseLeave={e=>{ e.currentTarget.style.borderColor=part.is_delayed?'#fecaca':part.not_in_stock?'#e2e8f0':part.urgency==='critical'?'#fecaca':part.urgency==='high'?'#fed7aa':'#f1f5f9'; e.currentTarget.style.boxShadow='none' }}>
+      onMouseLeave={e=>{ e.currentTarget.style.borderColor=part.is_delayed?'#fecaca':part.not_in_stock?'#e2e8f0':part.urgency==='critical'?'#fecaca':part.urgency==='high'?'#fed7aa':'var(--card-2)'; e.currentTarget.style.boxShadow='none' }}>
       <div style={{ width:42, height:42, borderRadius:10, background:`${tInfo?.color}15`, color:tInfo?.color, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>{tInfo?.icon}</div>
       <div style={{ flex:1, minWidth:180 }}>
         <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:4 }}>
-          <span style={{ fontFamily:'monospace', fontWeight:800, fontSize:15, color:'#fff' }}>{part.part_number}</span>
+          <span style={{ fontFamily:'monospace', fontWeight:800, fontSize:15, color:'var(--card)' }}>{part.part_number}</span>
           <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:12, background:urgInfo.bg, color:urgInfo.color, border:`1px solid ${urgInfo.border}` }}>{urgInfo.label}</span>
           {part.is_delayed && <span style={{ fontSize:11, fontWeight:700, color:'#dc2626' }}>⚠️ {part.working_days_pending}d overdue</span>}
           {part.not_in_stock && <span style={{ fontSize:11, fontWeight:700, color:'#ef4444', background:'#fef2f2', padding:'2px 6px', borderRadius:6 }}>❌ Not In Stock</span>}
@@ -348,14 +348,14 @@ export default function PurchaserDashboard() {
 
       <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:20, flexWrap:'wrap', gap:12 }}>
         <div>
-          <h1 style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:800, fontSize:24, color:'#fff', margin:0 }}>{greeting()}, {user.name} 👋</h1>
+          <h1 style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:800, fontSize:24, color:'var(--card)', margin:0 }}>{greeting()}, {user.name} 👋</h1>
           <p style={{ color:'rgba(255,255,255,0.38)', fontSize:13, marginTop:3 }}>Your assigned parts and quoting dashboard</p>
         </div>
       </div>
 
       {/* Date filter */}
       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:16, flexWrap:'wrap' }}>
-        <div style={{ display:'flex', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:10, padding:3, gap:2 }}>
+        <div style={{ display:'flex', background:'var(--input-bg)', border:'1px solid var(--input-border)', borderRadius:10, padding:3, gap:2 }}>
           {PRESETS.map(r => <button key={r.v} onClick={()=>setPreset(r.v)} style={{ padding:'5px 12px', borderRadius:7, border:'none', background:preset===r.v?BRAND:'transparent', color:preset===r.v?'#0d0d0d':'#64748b', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', transition:'all 0.15s' }}>{r.label}</button>)}
         </div>
         {preset==='custom' && <>
@@ -366,7 +366,7 @@ export default function PurchaserDashboard() {
         {['lead','repeat','online_order'].includes(activeTab) && (
           <div style={{ display:'flex', gap:6, marginLeft:'auto' }}>
             {[['','All'],['pending','Pending'],['quoted','Quoted'],['not_in_stock','Not In Stock']].map(([v,l]) => (
-              <button key={v} onClick={()=>setStatusFilter(v)} style={{ padding:'6px 12px', borderRadius:8, border:`1px solid ${statusFilter===v?BRAND:'#e2e8f0'}`, background:statusFilter===v?`${BRAND}12`:'#fff', color:statusFilter===v?'#00b8ad':'#64748b', fontSize:11, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>{l}</button>
+              <button key={v} onClick={()=>setStatusFilter(v)} style={{ padding:'6px 12px', borderRadius:8, border:`1px solid ${statusFilter===v?BRAND:'#e2e8f0'}`, background:statusFilter===v?`${BRAND}12`:'var(--card)', color:statusFilter===v?'#00b8ad':'#64748b', fontSize:11, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>{l}</button>
             ))}
           </div>
         )}
@@ -374,7 +374,7 @@ export default function PurchaserDashboard() {
 
       {/* Tabs */}
       <div style={{ display:'flex', gap:2, background:'rgba(255,255,255,0.04)', borderRadius:12, padding:3, marginBottom:20, flexWrap:'wrap' }}>
-        {tabs.map(t => <button key={t.key} onClick={()=>setActiveTab(t.key)} style={{ padding:'8px 14px', borderRadius:9, border:'none', background:activeTab===t.key?'#fff':'transparent', color:activeTab===t.key?'#0f172a':'#64748b', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', boxShadow:activeTab===t.key?'0 1px 4px rgba(0,0,0,0.08)':'none', transition:'all 0.15s', whiteSpace:'nowrap' }}>{t.label}</button>)}
+        {tabs.map(t => <button key={t.key} onClick={()=>setActiveTab(t.key)} style={{ padding:'8px 14px', borderRadius:9, border:'none', background:activeTab===t.key?'var(--card)':'transparent', color:activeTab===t.key?'#0f172a':'#64748b', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', boxShadow:activeTab===t.key?'0 1px 4px rgba(0,0,0,0.08)':'none', transition:'all 0.15s', whiteSpace:'nowrap' }}>{t.label}</button>)}
       </div>
 
       {/* Dashboard */}
@@ -382,7 +382,7 @@ export default function PurchaserDashboard() {
         <div>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:12, marginBottom:20 }}>
             {[['Assigned',stats?.myAssigned,'#6366f1','📋'],['Pending',stats?.myPending,'#f59e0b','⏳'],['Quoted',stats?.myQuoted,'#10b981','✅'],['Today',stats?.myToday,BRAND,'⚡'],['This Week',stats?.myWeek,'#3b82f6','📅'],['Delayed',stats?.myDelayed,'#dc2626','⚠️'],['Not In Stock',stats?.myNotInStock,'#94a3b8','❌']].map(([l,v,c,ic]) => (
-              <div key={l} style={{ background:'var(--card)', borderRadius:12, border:`1px solid ${l==='Delayed'&&v>0?'#fecaca':'#f1f5f9'}`, padding:'12px 14px', position:'relative', overflow:'hidden', background:l==='Delayed'&&v>0?'#fff5f5':'#fff' }}>
+              <div key={l} style={{ background:'var(--card)', borderRadius:12, border:`1px solid ${l==='Delayed'&&v>0?'#fecaca':'var(--card-2)'}`, padding:'12px 14px', position:'relative', overflow:'hidden', background:l==='Delayed'&&v>0?'#fff5f5':'var(--card)' }}>
                 <div style={{ position:'absolute', top:0, left:0, width:3, height:'100%', background:c, borderRadius:'12px 0 0 12px' }} />
                 <div style={{ fontSize:9, fontWeight:700, color:'rgba(255,255,255,0.38)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:4 }}>{l}</div>
                 <div style={{ fontSize:20, fontWeight:800, color:l==='Delayed'&&v>0?'#dc2626':'#0f172a', fontFamily:'"Bricolage Grotesque",sans-serif' }}>{v??'—'}</div>
@@ -393,7 +393,7 @@ export default function PurchaserDashboard() {
           {/* Performance */}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, marginBottom:20 }}>
             <div style={{ background:'var(--card)', borderRadius:14, border:'1px solid rgba(255,255,255,0.07)', padding:20 }}>
-              <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:700, fontSize:14, color:'#fff', marginBottom:14 }}>Performance Metrics</div>
+              <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:700, fontSize:14, color:'var(--card)', marginBottom:14 }}>Performance Metrics</div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
                 <div style={{ background:'rgba(255,255,255,0.04)', borderRadius:10, padding:'12px 14px', textAlign:'center' }}>
                   <div style={{ fontSize:9, fontWeight:700, color:'rgba(255,255,255,0.38)', textTransform:'uppercase', marginBottom:4 }}>Avg Quote Time</div>
@@ -427,7 +427,7 @@ export default function PurchaserDashboard() {
 
             {/* Follow-ups */}
             <div style={{ background:'var(--card)', borderRadius:14, border:'1px solid rgba(255,255,255,0.07)', padding:20 }}>
-              <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:700, fontSize:14, color:'#fff', marginBottom:14 }}>📅 My Follow-ups</div>
+              <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:700, fontSize:14, color:'var(--card)', marginBottom:14 }}>📅 My Follow-ups</div>
               {stats?.followups?.overdue?.length===0 && stats?.followups?.today?.length===0 && stats?.followups?.upcoming?.length===0
                 ? <div style={{ textAlign:'center', color:'rgba(255,255,255,0.38)', padding:24, fontSize:13 }}>✅ All caught up!</div>
                 : (
@@ -436,7 +436,7 @@ export default function PurchaserDashboard() {
                       <div key={fu.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0', borderBottom:'1px solid rgba(255,255,255,0.04)' }}>
                         <div style={{ width:6, height:6, borderRadius:'50%', flexShrink:0, background:fu.urgency==='overdue'?'#ef4444':fu.urgency==='today'?'#f59e0b':BRAND }} />
                         <div style={{ flex:1 }}>
-                          <div style={{ fontSize:12, fontWeight:600, color:'#fff' }}>{fu.part_number}</div>
+                          <div style={{ fontSize:12, fontWeight:600, color:'var(--card)' }}>{fu.part_number}</div>
                           <div style={{ fontSize:11, color:'rgba(255,255,255,0.50)' }}>{fu.note}</div>
                         </div>
                         <div style={{ fontSize:11, fontWeight:700, color:fu.urgency==='overdue'?'#ef4444':fu.urgency==='today'?'#f59e0b':BRAND, flexShrink:0 }}>{formatDate(fu.follow_up_date)}</div>
@@ -478,7 +478,7 @@ export default function PurchaserDashboard() {
                   {section.items.map(fu => (
                     <div key={fu.id} style={{ background:'var(--card)', borderRadius:12, border:'1px solid rgba(255,255,255,0.07)', padding:'12px 16px', display:'flex', alignItems:'center', gap:10 }}>
                       <div style={{ flex:1 }}>
-                        <div style={{ fontFamily:'monospace', fontWeight:700, fontSize:13, color:'#fff' }}>{fu.part_number}</div>
+                        <div style={{ fontFamily:'monospace', fontWeight:700, fontSize:13, color:'var(--card)' }}>{fu.part_number}</div>
                         <div style={{ fontSize:12, color:'rgba(255,255,255,0.50)', marginTop:2 }}>{fu.note}</div>
                       </div>
                       <div style={{ fontSize:11, fontWeight:700, color:section.color, flexShrink:0 }}>{formatDate(fu.follow_up_date)}</div>
@@ -502,12 +502,12 @@ export default function PurchaserDashboard() {
         <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
           {!stats?.myNotifications?.length ? <div style={{ background:'var(--card)', borderRadius:14, border:'1px solid rgba(255,255,255,0.07)', padding:48, textAlign:'center', color:'rgba(255,255,255,0.38)' }}>No notifications yet</div> :
             stats.myNotifications.map(n => (
-              <div key={n.id} style={{ background:n.read?'#fff':'rgba(0,212,200,0.04)', border:`1px solid ${n.read?'#f1f5f9':'rgba(0,212,200,0.2)'}`, borderRadius:14, padding:'14px 16px', display:'flex', gap:12, alignItems:'flex-start' }}>
+              <div key={n.id} style={{ background:n.read?'var(--card)':'rgba(0,212,200,0.04)', border:`1px solid ${n.read?'var(--card-2)':'rgba(0,212,200,0.2)'}`, borderRadius:14, padding:'14px 16px', display:'flex', gap:12, alignItems:'flex-start' }}>
                 <div style={{ width:36, height:36, borderRadius:10, background:n.inquiry_type==='part_assigned'?`${BRAND}20`:n.inquiry_type==='part_reassigned'?'#fef2f2':'#f0fdf4', color:n.inquiry_type==='part_assigned'?BRAND:n.inquiry_type==='part_reassigned'?'#dc2626':'#16a34a', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>
                   {n.inquiry_type==='part_assigned'?'🔩':n.inquiry_type==='part_reassigned'?'↩':'✅'}
                 </div>
                 <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:700, fontSize:13, color:'#fff', marginBottom:2 }}>{n.action}</div>
+                  <div style={{ fontWeight:700, fontSize:13, color:'var(--card)', marginBottom:2 }}>{n.action}</div>
                   {n.comment && <div style={{ fontSize:12, color:'rgba(255,255,255,0.65)', fontFamily:'monospace', background:'rgba(255,255,255,0.04)', padding:'3px 8px', borderRadius:6, marginBottom:3 }}>{n.comment}</div>}
                   <div style={{ fontSize:11, color:'rgba(255,255,255,0.38)' }}>{n.actor_name} · {timeAgo(n.created_at)}</div>
                 </div>

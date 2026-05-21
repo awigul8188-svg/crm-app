@@ -68,7 +68,7 @@ export default function SearchableCustomerSelect({ customers, value, onChange, p
           {selected && (
             <span
               onClick={(e) => { e.stopPropagation(); onChange(''); }}
-              style={{ width: 16, height: 16, background: '#e2e8f0', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: 'rgba(255,255,255,0.50)', cursor: 'pointer' }}
+              style={{ width: 16, height: 16, background: 'var(--border-2)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: 'rgba(255,255,255,0.50)', cursor: 'pointer' }}
             >×</span>
           )}
           <span style={{ color: 'rgba(255,255,255,0.38)', fontSize: '10px', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▾</span>
@@ -123,13 +123,13 @@ export default function SearchableCustomerSelect({ customers, value, onChange, p
                     borderBottom: '1px solid rgba(255,255,255,0.04)',
                     transition: 'background 0.1s',
                   }}
-                  onMouseEnter={e => { if (String(c.id) !== String(value)) e.currentTarget.style.background = '#f8fafc' }}
+                  onMouseEnter={e => { if (String(c.id) !== String(value)) e.currentTarget.style.background = 'var(--card-2)' }}
                   onMouseLeave={e => { e.currentTarget.style.background = String(c.id) === String(value) ? `${BRAND}12` : 'transparent' }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <div style={{
                       width: '28px', height: '28px', borderRadius: '8px', flexShrink: 0,
-                      background: String(c.id) === String(value) ? BRAND : '#f1f5f9',
+                      background: String(c.id) === String(value) ? BRAND : 'var(--card-2)',
                       color: String(c.id) === String(value) ? '#0d0d0d' : '#64748b',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: '11px', fontWeight: 700,

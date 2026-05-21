@@ -7,8 +7,8 @@ import Modal from '../components/Modal'
 
 const BRAND = '#00D4C8'
 const T = { lead:{ icon:'◎', label:'Lead', color:'#3b82f6' }, repeat:{ icon:'↻', label:'Repeat', color:'#6366f1' }, online_order:{ icon:'◈', label:'Order', color:'#f59e0b' } }
-const URGENCY = { critical:{ label:'Critical', color:'#ef4444', bg:'#fef2f2', border:'#fecaca' }, high:{ label:'High', color:'#f97316', bg:'#fff7ed', border:'#fed7aa' }, normal:{ label:'Normal', color:'rgba(255,255,255,0.50)', bg:'#f8fafc', border:'#e2e8f0' }, low:{ label:'Low', color:'#10b981', bg:'#f0fdf4', border:'#bbf7d0' } }
-const inp = { width:'100%', boxSizing:'border-box', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:'10px', padding:'8px 12px', fontSize:'12px', color:'#fff', fontFamily:'"Plus Jakarta Sans",sans-serif', outline:'none' }
+const URGENCY = { critical:{ label:'Critical', color:'#ef4444', bg:'#fef2f2', border:'#fecaca' }, high:{ label:'High', color:'#f97316', bg:'#fff7ed', border:'#fed7aa' }, normal:{ label:'Normal', color:'rgba(255,255,255,0.50)', bg:'var(--card-2)', border:'#e2e8f0' }, low:{ label:'Low', color:'#10b981', bg:'#f0fdf4', border:'#bbf7d0' } }
+const inp = { width:'100%', boxSizing:'border-box', background:'var(--input-bg)', border:'1px solid var(--input-border)', borderRadius:'10px', padding:'8px 12px', fontSize:'12px', color:'var(--card)', fontFamily:'"Plus Jakarta Sans",sans-serif', outline:'none' }
 
 const PRESETS = [{ label:'Today',v:'today' },{ label:'Week',v:'week' },{ label:'Month',v:'month' },{ label:'All',v:'all' },{ label:'Custom',v:'custom' }]
 function getDateRange(preset, from, to) {
@@ -27,7 +27,7 @@ function UrgencyBadge({ urgency }) {
 
 function StatCard({ label, value, color, icon, sub, warn }) {
   return (
-    <div style={{ background:'var(--card)', borderRadius:14, border:`1px solid ${warn?'#fecaca':'#f1f5f9'}`, padding:'14px 18px', position:'relative', overflow:'hidden', background:warn?'#fff5f5':'#fff' }}>
+    <div style={{ background:'var(--card)', borderRadius:14, border:`1px solid ${warn?'#fecaca':'var(--card-2)'}`, padding:'14px 18px', position:'relative', overflow:'hidden', background:warn?'#fff5f5':'var(--card)' }}>
       <div style={{ position:'absolute', top:0, left:0, width:3, height:'100%', background:color, borderRadius:'14px 0 0 14px' }} />
       <div style={{ position:'absolute', top:8, right:10, fontSize:16, opacity:0.12 }}>{icon}</div>
       <div style={{ fontSize:10, fontWeight:700, color:warn?'#dc2626':'#94a3b8', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:5 }}>{label}</div>
@@ -58,11 +58,11 @@ function AssignCell({ part, purchasers, onAssign }) {
   }, [])
   return (
     <div ref={ref} style={{ position:'relative' }}>
-      <button onClick={() => setOpen(o=>!o)} style={{ padding:'4px 10px', borderRadius:8, border:`1px solid ${part.purchaser_id?BRAND+'40':'#e2e8f0'}`, background:part.purchaser_id?`${BRAND}10`:'#f8fafc', color:part.purchaser_id?'#00b8ad':'#64748b', fontSize:11, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', whiteSpace:'nowrap' }}>
+      <button onClick={() => setOpen(o=>!o)} style={{ padding:'4px 10px', borderRadius:8, border:`1px solid ${part.purchaser_id?BRAND+'40':'#e2e8f0'}`, background:part.purchaser_id?`${BRAND}10`:'var(--card-2)', color:part.purchaser_id?'#00b8ad':'#64748b', fontSize:11, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', whiteSpace:'nowrap' }}>
         {part.purchaser_name||'+ Assign'} ▾
       </button>
       {open && (
-        <div style={{ position:'absolute', top:'calc(100% + 4px)', left:0, zIndex:9999, background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:12, boxShadow:'0 8px 24px rgba(0,0,0,0.12)', minWidth:160, overflow:'hidden' }}>
+        <div style={{ position:'absolute', top:'calc(100% + 4px)', left:0, zIndex:9999, background:'var(--input-bg)', border:'1px solid var(--input-border)', borderRadius:12, boxShadow:'0 8px 24px rgba(0,0,0,0.12)', minWidth:160, overflow:'hidden' }}>
           {purchasers.map(p => (
             <div key={p.id} onClick={() => { onAssign(part.requirement_id, p.id); setOpen(false) }}
               style={{ padding:'8px 14px', cursor:'pointer', fontSize:12, color:p.id===part.purchaser_id?BRAND:'#0f172a', fontWeight:p.id===part.purchaser_id?700:400, display:'flex', gap:6, alignItems:'center' }}
@@ -112,7 +112,7 @@ function InquiryAssignModal({ inquiryId, onClose, onSaved }) {
           <div>
             <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
               <span style={{ color:tInfo?.color, fontWeight:600, fontSize:13 }}>{tInfo?.icon} {tInfo?.label}</span>
-              <span style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:700, fontSize:16, color:'#fff' }}>{inquiry?.customer_name}</span>
+              <span style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:700, fontSize:16, color:'var(--card)' }}>{inquiry?.customer_name}</span>
             </div>
             <div style={{ fontSize:12, color:'rgba(255,255,255,0.50)' }}>AE: {inquiry?.ae_name||'—'} · {formatDateShort(inquiry?.created_at)} · {parts.length} part{parts.length!==1?'s':''}</div>
           </div>
@@ -120,9 +120,9 @@ function InquiryAssignModal({ inquiryId, onClose, onSaved }) {
         </div>
         <div style={{ overflowY:'auto', flex:1, padding:'16px 24px' }}>
           {parts.map(part => (
-            <div key={part.requirement_id} style={{ background: part.is_delayed?'#fff5f5':'#f8fafc', borderRadius:12, padding:'14px 16px', border:`1px solid ${part.is_delayed?'#fecaca':'#f1f5f9'}`, marginBottom:10 }}>
+            <div key={part.requirement_id} style={{ background: part.is_delayed?'#fff5f5':'var(--card-2)', borderRadius:12, padding:'14px 16px', border:`1px solid ${part.is_delayed?'#fecaca':'var(--card-2)'}`, marginBottom:10 }}>
               <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10, flexWrap:'wrap' }}>
-                <span style={{ fontFamily:'monospace', fontWeight:800, fontSize:14, color:'#fff' }}>{part.part_number}</span>
+                <span style={{ fontFamily:'monospace', fontWeight:800, fontSize:14, color:'var(--card)' }}>{part.part_number}</span>
                 <span style={{ fontSize:12, color:'rgba(255,255,255,0.50)' }}>Qty: {part.quantity||'—'}</span>
                 {part.selling_price && inquiry?.type==='online_order' && <span style={{ fontWeight:700, color:'#10b981', fontSize:12 }}>Selling: ${part.selling_price}</span>}
                 {part.is_delayed && <span style={{ fontSize:11, color:'#dc2626', fontWeight:700 }}>⚠️ Delayed</span>}
@@ -192,18 +192,18 @@ function PartsTable({ type, purchasers, dateRange, onRefresh }) {
         <div style={{ background:'var(--card)', borderRadius:14, border:'1px solid rgba(255,255,255,0.07)', overflow:'hidden' }}>
           <div style={{ overflowX:'auto' }}>
             <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
-              <thead><tr style={{ background:'rgba(255,255,255,0.04)', borderBottom:'2px solid rgba(255,255,255,0.09)' }}>
+              <thead><tr style={{ background:'var(--card-2)', borderBottom:'2px solid var(--border-2)' }}>
                 {['Urgency','Part Number','Qty','Customer','AE',...(type==='online_order'?['Selling']:[]),'Date','Assign','Status','PM Notes','Quote'].map(h => (
                   <th key={h} style={{ textAlign:'left', padding:'9px 12px', fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.50)', textTransform:'uppercase', letterSpacing:'0.06em', whiteSpace:'nowrap' }}>{h}</th>
                 ))}
               </tr></thead>
               <tbody>
                 {filtered.map((p, i) => (
-                  <tr key={p.requirement_id} style={{ borderBottom:'1px solid rgba(255,255,255,0.06)', background:p.is_delayed?'#fff5f5':p.is_over_selling?'#fff7ed':i%2===0?'#fff':'#fafbfc' }}>
+                  <tr key={p.requirement_id} style={{ borderBottom:'1px solid rgba(255,255,255,0.06)', background:p.is_delayed?'#fff5f5':p.is_over_selling?'#fff7ed':i%2===0?'var(--card)':'var(--row-alt)' }}>
                     <td style={{ padding:'9px 12px' }}><UrgencyBadge urgency={p.urgency} /></td>
                     <td style={{ padding:'9px 12px' }}>
                       <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                        <span style={{ fontFamily:'monospace', fontWeight:700, color:'#fff' }}>{p.part_number}</span>
+                        <span style={{ fontFamily:'monospace', fontWeight:700, color:'var(--card)' }}>{p.part_number}</span>
                         {p.is_delayed && <span title="Delayed >4 working days" style={{ fontSize:10, color:'#dc2626' }}>⚠️</span>}
                         {p.not_in_stock && <span style={{ fontSize:10, color:'#ef4444', background:'#fef2f2', padding:'1px 5px', borderRadius:4, fontWeight:700 }}>OUT</span>}
                       </div>
@@ -291,18 +291,18 @@ export default function PurchasingManagerView() {
 
       <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:20, flexWrap:'wrap', gap:12 }}>
         <div>
-          <h1 style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:800, fontSize:24, color:'#fff', margin:0 }}>🔧 Purchasing Dashboard</h1>
+          <h1 style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:800, fontSize:24, color:'var(--card)', margin:0 }}>🔧 Purchasing Dashboard</h1>
           <p style={{ color:'rgba(255,255,255,0.38)', fontSize:13, marginTop:3 }}>Manage part assignments, track quotes, monitor performance</p>
         </div>
         <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-          <button onClick={handleResetPasswords} disabled={resetting} style={{ padding:'7px 13px', borderRadius:10, border:'1px solid #fecaca', background:'#fff5f5', color:'#dc2626', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>🔑 Reset Passwords</button>
+          <button onClick={handleResetPasswords} disabled={resetting} style={{ padding:'7px 13px', borderRadius:10, border:'1px solid var(--danger-border)', background:'var(--danger)', color:'var(--danger-text)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>🔑 Reset Passwords</button>
           <button onClick={() => setShowNewUser(true)} style={{ padding:'7px 16px', borderRadius:10, border:'none', background:BRAND, color:'#0d0d0d', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>+ Add Purchaser</button>
         </div>
       </div>
 
       {/* Date filter */}
       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:16, flexWrap:'wrap' }}>
-        <div style={{ display:'flex', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:10, padding:3, gap:2 }}>
+        <div style={{ display:'flex', background:'var(--input-bg)', border:'1px solid var(--input-border)', borderRadius:10, padding:3, gap:2 }}>
           {PRESETS.map(r => <button key={r.v} onClick={() => setPreset(r.v)} style={{ padding:'5px 12px', borderRadius:7, border:'none', background:preset===r.v?BRAND:'transparent', color:preset===r.v?'#0d0d0d':'#64748b', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', transition:'all 0.15s' }}>{r.label}</button>)}
         </div>
         {preset==='custom' && <>
@@ -314,7 +314,7 @@ export default function PurchasingManagerView() {
 
       {/* Tabs */}
       <div style={{ display:'flex', gap:2, background:'rgba(255,255,255,0.04)', borderRadius:12, padding:3, marginBottom:20, flexWrap:'wrap' }}>
-        {tabs.map(t => <button key={t.key} onClick={() => setActiveTab(t.key)} style={{ padding:'8px 14px', borderRadius:9, border:'none', background:activeTab===t.key?'#fff':'transparent', color:activeTab===t.key?'#0f172a':'#64748b', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', boxShadow:activeTab===t.key?'0 1px 4px rgba(0,0,0,0.08)':'none', transition:'all 0.15s', whiteSpace:'nowrap' }}>{t.label}</button>)}
+        {tabs.map(t => <button key={t.key} onClick={() => setActiveTab(t.key)} style={{ padding:'8px 14px', borderRadius:9, border:'none', background:activeTab===t.key?'var(--card)':'transparent', color:activeTab===t.key?'#0f172a':'#64748b', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', boxShadow:activeTab===t.key?'0 1px 4px rgba(0,0,0,0.08)':'none', transition:'all 0.15s', whiteSpace:'nowrap' }}>{t.label}</button>)}
       </div>
 
       {/* Dashboard tab */}
@@ -341,7 +341,7 @@ export default function PurchasingManagerView() {
               <div style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.38)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6 }}>Avg Quote Price</div>
               <div style={{ fontSize:26, fontWeight:800, color:BRAND, fontFamily:'"Bricolage Grotesque",sans-serif' }}>${parseFloat(ms.avgQuotePrice||0).toFixed(2)}</div>
             </div>
-            <div style={{ background: ms.overSellingCount>0?'#fff5f5':'#fff', borderRadius:14, border:`1px solid ${ms.overSellingCount>0?'#fecaca':'#f1f5f9'}`, padding:'16px 20px' }}>
+            <div style={{ background: ms.overSellingCount>0?'#fff5f5':'var(--card)', borderRadius:14, border:`1px solid ${ms.overSellingCount>0?'#fecaca':'var(--card-2)'}`, padding:'16px 20px' }}>
               <div style={{ fontSize:10, fontWeight:700, color:ms.overSellingCount>0?'#dc2626':'#94a3b8', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6 }}>⚠️ Over Selling Price</div>
               <div style={{ fontSize:26, fontWeight:800, color:ms.overSellingCount>0?'#dc2626':'#0f172a', fontFamily:'"Bricolage Grotesque",sans-serif' }}>{ms.overSellingCount}</div>
               <div style={{ fontSize:11, color:ms.overSellingCount>0?'#ef4444':'#94a3b8', marginTop:3 }}>{ms.overSellingCount>0?'Quotes exceed order value':'All quotes within range'}</div>
@@ -351,14 +351,14 @@ export default function PurchasingManagerView() {
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, marginBottom:20 }}>
             {/* By type */}
             <div style={{ background:'var(--card)', borderRadius:14, border:'1px solid rgba(255,255,255,0.07)', padding:20 }}>
-              <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:700, fontSize:14, color:'#fff', marginBottom:14 }}>Parts by Type</div>
+              <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:700, fontSize:14, color:'var(--card)', marginBottom:14 }}>Parts by Type</div>
               {['lead','repeat','online_order'].map(type => {
                 const d = ms.byType?.find(t=>t.type===type)||{ total:0, unassigned:0, pending:0, quoted:0, not_in_stock:0 }; const tInfo = T[type]
                 return (
                   <div key={type} style={{ marginBottom:14 }}>
                     <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
                       <span style={{ fontSize:13, fontWeight:600, color:tInfo.color }}>{tInfo.icon} {tInfo.label}s</span>
-                      <span style={{ fontWeight:800, fontSize:16, color:'#fff', fontFamily:'"Bricolage Grotesque",sans-serif' }}>{d.total}</span>
+                      <span style={{ fontWeight:800, fontSize:16, color:'var(--card)', fontFamily:'"Bricolage Grotesque",sans-serif' }}>{d.total}</span>
                     </div>
                     <div style={{ display:'flex', gap:4 }}>
                       {[['Unassigned',d.unassigned,'#ef4444'],['Pending',d.pending,'#f59e0b'],['Quoted',d.quoted,'#10b981'],['No Stock',d.not_in_stock,'#94a3b8']].map(([l,v,c]) => (
@@ -377,12 +377,12 @@ export default function PurchasingManagerView() {
 
             {/* Purchaser performance */}
             <div style={{ background:'var(--card)', borderRadius:14, border:'1px solid rgba(255,255,255,0.07)', padding:20 }}>
-              <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:700, fontSize:14, color:'#fff', marginBottom:14 }}>Purchaser Performance</div>
+              <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:700, fontSize:14, color:'var(--card)', marginBottom:14 }}>Purchaser Performance</div>
               {!ms.byPurchaser?.length ? <div style={{ textAlign:'center', color:'rgba(255,255,255,0.38)', padding:24, fontSize:13 }}>No purchasers assigned yet</div> : ms.byPurchaser.map(p => (
                 <div key={p.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px solid rgba(255,255,255,0.04)' }}>
                   <div style={{ width:30, height:30, borderRadius:8, background:`${BRAND}20`, color:BRAND, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:12, flexShrink:0 }}>{p.name[0]}</div>
                   <div style={{ flex:1 }}>
-                    <div style={{ fontWeight:600, fontSize:13, color:'#fff' }}>{p.name}</div>
+                    <div style={{ fontWeight:600, fontSize:13, color:'var(--card)' }}>{p.name}</div>
                     <div style={{ height:4, background:'rgba(255,255,255,0.04)', borderRadius:4, marginTop:3 }}>
                       <div style={{ height:'100%', borderRadius:4, background:'#10b981', width:`${p.assigned>0?Math.round(p.quoted_count/p.assigned*100):0}%` }} />
                     </div>
@@ -398,7 +398,7 @@ export default function PurchasingManagerView() {
 
           {/* Recent quotes */}
           <div style={{ background:'var(--card)', borderRadius:14, border:'1px solid rgba(255,255,255,0.07)', padding:20 }}>
-            <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:700, fontSize:14, color:'#fff', marginBottom:14 }}>Recent Quotes</div>
+            <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:700, fontSize:14, color:'var(--card)', marginBottom:14 }}>Recent Quotes</div>
             {!ms.recentQuotes?.length ? <div style={{ textAlign:'center', color:'rgba(255,255,255,0.38)', padding:24 }}>No quotes yet</div> :
               ms.recentQuotes.map((q, i) => {
                 const isOver = q.selling_price && parseFloat(String(q.price||'0').replace(/[$,]/g,'')) > parseFloat(String(q.selling_price).replace(/[$,]/g,''))
@@ -407,7 +407,7 @@ export default function PurchasingManagerView() {
                     <span style={{ fontSize:13, color:T[q.inquiry_type]?.color }}>{T[q.inquiry_type]?.icon}</span>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ display:'flex', gap:6 }}>
-                        <span style={{ fontFamily:'monospace', fontWeight:700, fontSize:12, color:'#fff' }}>{q.part_number}</span>
+                        <span style={{ fontFamily:'monospace', fontWeight:700, fontSize:12, color:'var(--card)' }}>{q.part_number}</span>
                         <span style={{ fontSize:12, color:'rgba(255,255,255,0.50)' }}>· {q.customer_name}</span>
                         {isOver && <span style={{ fontSize:11, color:'#dc2626', fontWeight:700 }}>⚠️ Over selling</span>}
                       </div>
@@ -444,13 +444,13 @@ export default function PurchasingManagerView() {
                 const type = notif.inquiry_type?.replace('_parts',''); const tInfo = T[type]||{ icon:'🔩', color:BRAND }
                 return (
                   <div key={notif.id} onClick={() => { api.markNotificationRead(notif.id).catch(()=>{}); setNotifications(prev=>prev.map(n=>n.id===notif.id?{...n,read:1}:n)); if(notif.inquiry_id) setAssignInquiryId(notif.inquiry_id) }}
-                    style={{ background:notif.read?'#fff':'rgba(0,212,200,0.04)', border:`1px solid ${notif.read?'#f1f5f9':'rgba(0,212,200,0.2)'}`, borderRadius:14, padding:'14px 18px', cursor:'pointer', display:'flex', gap:12, alignItems:'center', transition:'all 0.15s' }}
+                    style={{ background:notif.read?'var(--card)':'rgba(0,212,200,0.04)', border:`1px solid ${notif.read?'var(--card-2)':'rgba(0,212,200,0.2)'}`, borderRadius:14, padding:'14px 18px', cursor:'pointer', display:'flex', gap:12, alignItems:'center', transition:'all 0.15s' }}
                     onMouseEnter={e=>{ e.currentTarget.style.borderColor=BRAND; e.currentTarget.style.boxShadow=`0 2px 12px rgba(0,212,200,0.1)` }}
-                    onMouseLeave={e=>{ e.currentTarget.style.borderColor=notif.read?'#f1f5f9':'rgba(0,212,200,0.2)'; e.currentTarget.style.boxShadow='none' }}>
+                    onMouseLeave={e=>{ e.currentTarget.style.borderColor=notif.read?'var(--card-2)':'rgba(0,212,200,0.2)'; e.currentTarget.style.boxShadow='none' }}>
                     <div style={{ width:38, height:38, borderRadius:10, background:`${tInfo.color}15`, color:tInfo.color, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>{tInfo.icon}</div>
                     <div style={{ flex:1 }}>
                       <div style={{ display:'flex', gap:8, marginBottom:3, flexWrap:'wrap' }}>
-                        <span style={{ fontWeight:700, fontSize:13, color:'#fff' }}>{notif.actor_name}</span>
+                        <span style={{ fontWeight:700, fontSize:13, color:'var(--card)' }}>{notif.actor_name}</span>
                         <span style={{ fontSize:13, color:'rgba(255,255,255,0.65)' }}>added parts to</span>
                         <span style={{ fontWeight:600, color:tInfo.color }}>{notif.customer_name}</span>
                       </div>
@@ -538,16 +538,16 @@ function QuotesTable({ dateRange }) {
         <div style={{ background:'var(--card)', borderRadius:14, border:'1px solid rgba(255,255,255,0.07)', overflow:'hidden' }}>
           <div style={{ overflowX:'auto' }}>
             <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
-              <thead><tr style={{ background:'rgba(255,255,255,0.04)', borderBottom:'2px solid rgba(255,255,255,0.09)' }}>
+              <thead><tr style={{ background:'var(--card-2)', borderBottom:'2px solid var(--border-2)' }}>
                 {['Date','Part','Qty','Customer','Type','AE','Purchaser','Price','Selling','Δ','Condition','Lead Time','Supplier'].map(h => (
                   <th key={h} style={{ textAlign:'left', padding:'9px 12px', fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.50)', textTransform:'uppercase', letterSpacing:'0.06em', whiteSpace:'nowrap' }}>{h}</th>
                 ))}
               </tr></thead>
               <tbody>
                 {quotes.map((q, i) => (
-                  <tr key={q.id} style={{ borderBottom:'1px solid rgba(255,255,255,0.06)', background:q.is_over_selling?'#fff5f5':i%2===0?'#fff':'#fafbfc' }}>
+                  <tr key={q.id} style={{ borderBottom:'1px solid rgba(255,255,255,0.06)', background:q.is_over_selling?'#fff5f5':i%2===0?'var(--card)':'var(--row-alt)' }}>
                     <td style={{ padding:'9px 12px', color:'rgba(255,255,255,0.38)', fontSize:11, whiteSpace:'nowrap' }}>{formatDateShort(q.updated_at)}</td>
-                    <td style={{ padding:'9px 12px', fontFamily:'monospace', fontWeight:700, color:'#fff' }}>{q.part_number}</td>
+                    <td style={{ padding:'9px 12px', fontFamily:'monospace', fontWeight:700, color:'var(--card)' }}>{q.part_number}</td>
                     <td style={{ padding:'9px 12px', color:'rgba(255,255,255,0.65)' }}>{q.quantity||'—'}</td>
                     <td style={{ padding:'9px 12px', fontWeight:500, whiteSpace:'nowrap' }}>{q.customer_name}</td>
                     <td style={{ padding:'9px 12px' }}><span style={{ color:T[q.inquiry_type]?.color, fontSize:13 }}>{T[q.inquiry_type]?.icon}</span></td>

@@ -59,7 +59,7 @@ export default function MultiSelect({ label, options, selected, onChange, placeh
         {selected.length > 0 && (
           <span
             onClick={(e) => { e.stopPropagation(); clearAll() }}
-            style={{ width: '16px', height: '16px', background: '#e2e8f0', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', cursor: 'pointer', color: 'rgba(255,255,255,0.50)', flexShrink: 0 }}
+            style={{ width: '16px', height: '16px', background: 'var(--border-2)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', cursor: 'pointer', color: 'rgba(255,255,255,0.50)', flexShrink: 0 }}
           >×</span>
         )}
         <span style={{ color: 'rgba(255,255,255,0.38)', fontSize: '10px', flexShrink: 0, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▾</span>
@@ -110,7 +110,7 @@ export default function MultiSelect({ label, options, selected, onChange, placeh
                     transition: 'background 0.1s',
                     fontSize: '13px',
                   }}
-                  onMouseEnter={e => { if (!checked) e.currentTarget.style.background = '#f8fafc' }}
+                  onMouseEnter={e => { if (!checked) e.currentTarget.style.background = 'var(--card-2)' }}
                   onMouseLeave={e => { e.currentTarget.style.background = checked ? 'rgba(0,212,200,0.06)' : 'transparent' }}
                 >
                   {/* Checkbox */}

@@ -48,18 +48,18 @@ function MetricCard({ label, value, sub, color = BRAND, prefix = '', suffix = ''
   return (
     <div onClick={onClick} style={{ background:'var(--card)', borderRadius:16, border:'1px solid rgba(255,255,255,0.07)', padding:'16px 20px', position:'relative', overflow:'hidden', cursor: onClick ? 'pointer' : 'default', transition:'all 0.15s' }}
       onMouseEnter={e => { if (onClick) { e.currentTarget.style.borderColor = color; e.currentTarget.style.boxShadow = `0 4px 16px ${color}20` }}}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = '#f1f5f9'; e.currentTarget.style.boxShadow = 'none' }}>
+      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--card-2)'; e.currentTarget.style.boxShadow = 'none' }}>
       <div style={{ position:'absolute', top:0, left:0, width:3, height:'100%', background: color, borderRadius:'16px 0 0 16px' }} />
       {onClick && <div style={{ position:'absolute', top:10, right:12, fontSize:10, color:'rgba(255,255,255,0.38)' }}>click to view ↗</div>}
       <div style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.38)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:8 }}>{label}</div>
-      <div style={{ fontSize:28, fontWeight:800, color:'#fff', fontFamily:'"Bricolage Grotesque", sans-serif' }}>{prefix}{typeof value === 'number' ? value.toLocaleString() : (value ?? '—')}{suffix}</div>
+      <div style={{ fontSize:28, fontWeight:800, color:'var(--card)', fontFamily:'"Bricolage Grotesque", sans-serif' }}>{prefix}{typeof value === 'number' ? value.toLocaleString() : (value ?? '—')}{suffix}</div>
       {sub && <div style={{ fontSize:12, color:'rgba(255,255,255,0.38)', marginTop:4 }}>{sub}</div>}
     </div>
   )
 }
 
 function SectionTitle({ children }) {
-  return <div style={{ fontFamily:'"Bricolage Grotesque", sans-serif', fontWeight:700, fontSize:14, color:'#fff', marginBottom:14 }}>{children}</div>
+  return <div style={{ fontFamily:'"Bricolage Grotesque", sans-serif', fontWeight:700, fontSize:14, color:'var(--card)', marginBottom:14 }}>{children}</div>
 }
 
 // ── Drilldown Modal ─────────────────────────────────────────────
@@ -88,7 +88,7 @@ function DrilldownModal({ title, type, filters, onClose }) {
         <style>{`@keyframes modalIn { from{opacity:0;transform:scale(0.96) translateY(8px)} to{opacity:1;transform:scale(1) translateY(0)} }`}</style>
         <div style={{ padding:'18px 24px', borderBottom:'1px solid rgba(255,255,255,0.06)', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
           <div>
-            <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:700, fontSize:16, color:'#fff' }}>{title}</div>
+            <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:700, fontSize:16, color:'var(--card)' }}>{title}</div>
             <div style={{ fontSize:12, color:'rgba(255,255,255,0.38)', marginTop:2 }}>{loading ? 'Loading...' : `${rows.length} records — click any row to open`}</div>
           </div>
           <button onClick={onClose} style={{ width:32, height:32, borderRadius:10, border:'none', background:'rgba(255,255,255,0.04)', cursor:'pointer', fontSize:18, color:'rgba(255,255,255,0.50)', display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
@@ -111,11 +111,11 @@ function DrilldownModal({ title, type, filters, onClose }) {
               </thead>
               <tbody>
                 {rows.map((r, i) => (
-                  <tr key={r.id} onClick={() => handleRowClick(r.id)} style={{ borderBottom:'1px solid rgba(255,255,255,0.06)', cursor:'pointer', background: i%2===0 ? '#fff':'#fafbfc', transition:'background 0.1s' }}
+                  <tr key={r.id} onClick={() => handleRowClick(r.id)} style={{ borderBottom:'1px solid rgba(255,255,255,0.06)', cursor:'pointer', background: i%2===0 ? 'var(--card)':'var(--card-2)', transition:'background 0.1s' }}
                     onMouseEnter={e => e.currentTarget.style.background = `${BRAND}08`}
-                    onMouseLeave={e => e.currentTarget.style.background = i%2===0 ? '#fff':'#fafbfc'}>
+                    onMouseLeave={e => e.currentTarget.style.background = i%2===0 ? 'var(--card)':'var(--card-2)'}>
                     <td style={{ padding:'10px 16px', color:'rgba(255,255,255,0.50)', whiteSpace:'nowrap', fontFamily:'monospace', fontSize:12 }}>{formatDateShort(r.created_at)}</td>
-                    <td style={{ padding:'10px 16px', fontWeight:600, color:'#fff' }}>{r.customer_name}</td>
+                    <td style={{ padding:'10px 16px', fontWeight:600, color:'var(--card)' }}>{r.customer_name}</td>
                     <td style={{ padding:'10px 16px', color:'rgba(255,255,255,0.50)', fontSize:12 }}>{r.customer_company||'—'}</td>
                     <td style={{ padding:'10px 16px', color:'rgba(255,255,255,0.65)' }}>{r.assigned_name||'—'}</td>
                     <td style={{ padding:'10px 16px' }}><DispositionBadge disposition={r.disposition} /></td>
@@ -145,7 +145,7 @@ function TopList({ data, label, color, showCompany, onDrilldown }) {
         <SectionTitle>{label}</SectionTitle>
         <div style={{ display:'flex', gap:2, background:'rgba(255,255,255,0.04)', borderRadius:8, padding:3 }}>
           {[['day','Today'],['month','Month'],['year','Year']].map(([val,lbl]) => (
-            <button key={val} onClick={() => setPeriod(val)} style={{ padding:'4px 10px', borderRadius:6, border:'none', background:period===val?'#fff':'transparent', color:period===val?'#0f172a':'#64748b', fontSize:11, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', boxShadow:period===val?'0 1px 3px rgba(0,0,0,0.08)':'none', transition:'all 0.12s' }}>{lbl}</button>
+            <button key={val} onClick={() => setPeriod(val)} style={{ padding:'4px 10px', borderRadius:6, border:'none', background:period===val?'var(--card)':'transparent', color:period===val?'#0f172a':'#64748b', fontSize:11, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', boxShadow:period===val?'0 1px 3px rgba(0,0,0,0.08)':'none', transition:'all 0.12s' }}>{lbl}</button>
           ))}
         </div>
       </div>
@@ -155,10 +155,10 @@ function TopList({ data, label, color, showCompany, onDrilldown }) {
         <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
           {rows.map((row, i) => (
             <div key={row.name+i} style={{ display:'flex', alignItems:'center', gap:10 }}>
-              <div style={{ width:22, height:22, borderRadius:6, background:i===0?color:'#f1f5f9', color:i===0?'#fff':'#94a3b8', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, flexShrink:0 }}>{i+1}</div>
+              <div style={{ width:22, height:22, borderRadius:6, background:i===0?color:'var(--card-2)', color:i===0?'var(--card)':'#94a3b8', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, flexShrink:0 }}>{i+1}</div>
               <div style={{ flex:1, minWidth:0 }}>
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:3 }}>
-                  <div><span style={{ fontSize:13, fontWeight:600, color:'#fff' }}>{row.name||'Unknown'}</span>
+                  <div><span style={{ fontSize:13, fontWeight:600, color:'var(--card)' }}>{row.name||'Unknown'}</span>
                     {showCompany && row.company && <span style={{ fontSize:11, color:'rgba(255,255,255,0.38)', marginLeft:6 }}>· {row.company}</span>}
                   </div>
                   <span style={{ fontSize:13, fontWeight:700, color:i===0?color:'rgba(255,255,255,0.65)', flexShrink:0, marginLeft:8 }}>{row.count}</span>
@@ -184,7 +184,7 @@ function FilterBar({ preset, setPreset, customFrom, setCustomFrom, customTo, set
     <div style={{ marginBottom:20 }}>
       {/* Date presets */}
       <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:12, flexWrap:'wrap' }}>
-        <div style={{ display:'flex', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:12, padding:4, gap:2 }}>
+        <div style={{ display:'flex', background:'var(--input-bg)', border:'1px solid var(--input-border)', borderRadius:12, padding:4, gap:2 }}>
           {PRESETS.map(r => (
             <button key={r.value} onClick={() => setPreset(r.value)} style={{ padding:'6px 12px', borderRadius:8, border:'none', background:preset===r.value?BRAND:'transparent', color:preset===r.value?'#0d0d0d':'#64748b', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', transition:'all 0.15s', whiteSpace:'nowrap' }}>{r.label}</button>
           ))}
@@ -248,13 +248,13 @@ function OverviewTab({ filters, users, onDrilldown }) {
         <div style={{ background:'var(--card)', borderRadius:16, border:'1px solid rgba(255,255,255,0.07)', padding:20 }}>
           <SectionTitle>Activity Trend</SectionTitle>
           {trendData.length === 0 ? <div style={{ height:180, display:'flex', alignItems:'center', justifyContent:'center', color:'rgba(255,255,255,0.38)' }}>No data</div> : (
-            <ResponsiveContainer width="100%" height={200}><BarChart data={trendData} barSize={6} barGap={2}><XAxis dataKey="date" tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} /><Tooltip content={<Tip />} /><Bar dataKey="lead" name="Leads" fill="#3b82f6" radius={[3,3,0,0]} /><Bar dataKey="repeat" name="Repeat" fill="#6366f1" radius={[3,3,0,0]} /><Bar dataKey="online_order" name="Orders" fill="#f59e0b" radius={[3,3,0,0]} /></BarChart></ResponsiveContainer>
+            <ResponsiveContainer width="100%" height={200}><BarChart data={trendData} barSize={6} barGap={2}><XAxis dataKey="date" tick={{ fontSize:10, fill:'var(--chart-axis)' }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize:10, fill:'var(--chart-axis)' }} axisLine={false} tickLine={false} allowDecimals={false} /><Tooltip content={<Tip />} /><Bar dataKey="lead" name="Leads" fill="#3b82f6" radius={[3,3,0,0]} /><Bar dataKey="repeat" name="Repeat" fill="#6366f1" radius={[3,3,0,0]} /><Bar dataKey="online_order" name="Orders" fill="#f59e0b" radius={[3,3,0,0]} /></BarChart></ResponsiveContainer>
           )}
         </div>
         <div style={{ background:'var(--card)', borderRadius:16, border:'1px solid rgba(255,255,255,0.07)', padding:20 }}>
           <SectionTitle>By Team Member</SectionTitle>
           {!data?.byPerson?.filter(p=>p.name)?.length ? <div style={{ height:180, display:'flex', alignItems:'center', justifyContent:'center', color:'rgba(255,255,255,0.38)' }}>No data</div> : (
-            <ResponsiveContainer width="100%" height={200}><BarChart data={data.byPerson.filter(p=>p.name)} layout="vertical" barSize={12}><XAxis type="number" tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} /><YAxis type="category" dataKey="name" tick={{ fontSize:11, fill:'#475569' }} axisLine={false} tickLine={false} width={55} /><Tooltip content={<Tip />} /><Bar dataKey="count" name="Total" fill={BRAND} radius={[0,4,4,0]} /></BarChart></ResponsiveContainer>
+            <ResponsiveContainer width="100%" height={200}><BarChart data={data.byPerson.filter(p=>p.name)} layout="vertical" barSize={12}><XAxis type="number" tick={{ fontSize:10, fill:'var(--chart-axis)' }} axisLine={false} tickLine={false} allowDecimals={false} /><YAxis type="category" dataKey="name" tick={{ fontSize:11, fill:'var(--text-2)' }} axisLine={false} tickLine={false} width={55} /><Tooltip content={<Tip />} /><Bar dataKey="count" name="Total" fill={BRAND} radius={[0,4,4,0]} /></BarChart></ResponsiveContainer>
           )}
         </div>
       </div>
@@ -263,7 +263,7 @@ function OverviewTab({ filters, users, onDrilldown }) {
           <SectionTitle>📅 Upcoming Follow-ups</SectionTitle>
           {data.upcomingFollowups.map(fu => (
             <div key={fu.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid rgba(255,255,255,0.04)' }}>
-              <div><div style={{ fontWeight:600, fontSize:14, color:'#fff' }}>{fu.customer_name}</div><div style={{ fontSize:12, color:'rgba(255,255,255,0.38)' }}>{fu.note}</div></div>
+              <div><div style={{ fontWeight:600, fontSize:14, color:'var(--card)' }}>{fu.customer_name}</div><div style={{ fontSize:12, color:'rgba(255,255,255,0.38)' }}>{fu.note}</div></div>
               <div style={{ textAlign:'right' }}><div style={{ fontSize:12, fontWeight:700, color:BRAND }}>{formatDate(fu.follow_up_date)}</div><div style={{ fontSize:11, color:'rgba(255,255,255,0.38)' }}>{fu.assigned_name}</div></div>
             </div>
           ))}
@@ -338,7 +338,7 @@ function LeadsTab({ filters, onDrilldown }) {
         <div style={{ background:'var(--card)', borderRadius:16, border:'1px solid rgba(255,255,255,0.07)', padding:20 }}>
           <SectionTitle>Lead Trend — Won vs Total</SectionTitle>
           {trendData.length === 0 ? <div style={{ height:180, display:'flex', alignItems:'center', justifyContent:'center', color:'rgba(255,255,255,0.38)' }}>No data</div> : (
-            <ResponsiveContainer width="100%" height={200}><BarChart data={trendData} barSize={8} barGap={2}><XAxis dataKey="date" tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} /><Tooltip content={<Tip />} /><Bar dataKey="total" name="Total" fill="#3b82f6" radius={[3,3,0,0]} /><Bar dataKey="won" name="Won" fill="#10b981" radius={[3,3,0,0]} /></BarChart></ResponsiveContainer>
+            <ResponsiveContainer width="100%" height={200}><BarChart data={trendData} barSize={8} barGap={2}><XAxis dataKey="date" tick={{ fontSize:10, fill:'var(--chart-axis)' }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize:10, fill:'var(--chart-axis)' }} axisLine={false} tickLine={false} allowDecimals={false} /><Tooltip content={<Tip />} /><Bar dataKey="total" name="Total" fill="#3b82f6" radius={[3,3,0,0]} /><Bar dataKey="won" name="Won" fill="#10b981" radius={[3,3,0,0]} /></BarChart></ResponsiveContainer>
           )}
         </div>
         <div style={{ background:'var(--card)', borderRadius:16, border:'1px solid rgba(255,255,255,0.07)', padding:20 }}>
@@ -348,7 +348,7 @@ function LeadsTab({ filters, onDrilldown }) {
               <div key={s.source} style={{ cursor:'pointer' }} onClick={() => drill(`Source: ${s.source}`, { lead_source: s.source })}>
                 <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:3 }}>
                   <span style={{ color:'rgba(255,255,255,0.65)', fontWeight:500 }}>{s.source}</span>
-                  <span style={{ fontWeight:700, color:'#fff' }}>{s.count}</span>
+                  <span style={{ fontWeight:700, color:'var(--card)' }}>{s.count}</span>
                 </div>
                 <div style={{ height:5, background:'rgba(255,255,255,0.04)', borderRadius:4 }}>
                   <div style={{ height:'100%', borderRadius:4, background:CHART_COLORS[i%CHART_COLORS.length], width:`${p.total>0?Math.round(s.count/p.total*100):0}%` }} />
@@ -366,11 +366,11 @@ function LeadsTab({ filters, onDrilldown }) {
             const pct = p.total>0 ? Math.round(d.count/p.total*100) : 0
             return (
               <div key={d.disposition} onClick={() => drill(`${d.disposition}`, { disposition: d.disposition })} style={{ background:'rgba(255,255,255,0.04)', borderRadius:12, padding:'12px 14px', border:'1px solid rgba(255,255,255,0.07)', cursor:'pointer', transition:'all 0.15s' }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor=CHART_COLORS[i%CHART_COLORS.length]; e.currentTarget.style.background='#fff' }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor='#f1f5f9'; e.currentTarget.style.background='#f8fafc' }}>
+                onMouseEnter={e => { e.currentTarget.style.borderColor=CHART_COLORS[i%CHART_COLORS.length]; e.currentTarget.style.background='var(--card)' }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor='var(--card-2)'; e.currentTarget.style.background='var(--card-2)' }}>
                 <div style={{ fontSize:11, color:'rgba(255,255,255,0.50)', fontWeight:500, marginBottom:6, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.disposition}</div>
-                <div style={{ fontSize:22, fontWeight:800, color:'#fff', fontFamily:'"Bricolage Grotesque",sans-serif' }}>{d.count}</div>
-                <div style={{ height:3, background:'#e2e8f0', borderRadius:4, marginTop:8 }}>
+                <div style={{ fontSize:22, fontWeight:800, color:'var(--card)', fontFamily:'"Bricolage Grotesque",sans-serif' }}>{d.count}</div>
+                <div style={{ height:3, background:'var(--border-2)', borderRadius:4, marginTop:8 }}>
                   <div style={{ height:'100%', borderRadius:4, background:CHART_COLORS[i%CHART_COLORS.length], width:`${pct}%` }} />
                 </div>
                 <div style={{ fontSize:10, color:'rgba(255,255,255,0.38)', marginTop:4 }}>{pct}% of total</div>
@@ -399,16 +399,16 @@ function LeadsTab({ filters, onDrilldown }) {
                 const wr = ae.total>0 ? Math.round(ae.won/ae.total*100) : 0
                 const topSrc = (aeSourceMap[ae.name]||[])[0]?.source || '—'
                 return (
-                  <tr key={ae.id||ae.name} onClick={() => drill(`${ae.name}'s Leads`, { assigned_to: String(ae.id) })} style={{ background:i%2===0?'#fff':'#fafbfc', borderBottom:'1px solid rgba(255,255,255,0.06)', cursor:'pointer', transition:'background 0.1s' }}
+                  <tr key={ae.id||ae.name} onClick={() => drill(`${ae.name}'s Leads`, { assigned_to: String(ae.id) })} style={{ background:i%2===0?'var(--card)':'var(--row-alt)', borderBottom:'1px solid rgba(255,255,255,0.06)', cursor:'pointer', transition:'background 0.1s' }}
                     onMouseEnter={e => e.currentTarget.style.background=`${BRAND}08`}
-                    onMouseLeave={e => e.currentTarget.style.background=i%2===0?'#fff':'#fafbfc'}>
+                    onMouseLeave={e => e.currentTarget.style.background=i%2===0?'var(--card)':'var(--row-alt)'}>
                     <td style={{ padding:'12px 10px' }}>
                       <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                         {ae.avatar_url ? <img src={ae.avatar_url} alt={ae.name} style={{ width:28, height:28, borderRadius:8, objectFit:'cover', flexShrink:0 }} /> : <div style={{ width:28, height:28, borderRadius:8, background:`${CHART_COLORS[i]}25`, color:CHART_COLORS[i], display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:12, flexShrink:0 }}>{ae.name?.[0]}</div>}
-                        <span style={{ fontWeight:700, color:'#fff', whiteSpace:'nowrap' }}>{ae.name}</span>
+                        <span style={{ fontWeight:700, color:'var(--card)', whiteSpace:'nowrap' }}>{ae.name}</span>
                       </div>
                     </td>
-                    <td style={{ padding:'12px 10px', textAlign:'center', fontWeight:700, color:'#fff' }}>{ae.total}</td>
+                    <td style={{ padding:'12px 10px', textAlign:'center', fontWeight:700, color:'var(--card)' }}>{ae.total}</td>
                     <td style={{ padding:'12px 10px', textAlign:'center', color:'rgba(255,255,255,0.65)' }}>{ae.today}</td>
                     <td style={{ padding:'12px 10px', textAlign:'center', color:'rgba(255,255,255,0.65)' }}>{ae.this_month}</td>
                     <td style={{ padding:'12px 10px', textAlign:'center', fontWeight:700, color:'#10b981' }}>{ae.won}</td>
@@ -472,7 +472,7 @@ function RepeatTab({ filters, onDrilldown }) {
               <div key={d.disposition} onClick={() => drill(d.disposition, { disposition: d.disposition })} style={{ cursor:'pointer' }}>
                 <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:3 }}>
                   <span style={{ color:'rgba(255,255,255,0.65)', fontWeight:500 }}>{d.disposition||'Unknown'}</span>
-                  <span style={{ fontWeight:700, color:'#fff' }}>{d.count}</span>
+                  <span style={{ fontWeight:700, color:'var(--card)' }}>{d.count}</span>
                 </div>
                 <div style={{ height:5, background:'rgba(255,255,255,0.04)', borderRadius:4 }}>
                   <div style={{ height:'100%', borderRadius:4, background:CHART_COLORS[i%CHART_COLORS.length], width:`${p.total>0?Math.round(d.count/p.total*100):0}%` }} />
@@ -483,13 +483,13 @@ function RepeatTab({ filters, onDrilldown }) {
         </div>
         <div style={{ background:'var(--card)', borderRadius:16, border:'1px solid rgba(255,255,255,0.07)', padding:20 }}>
           <SectionTitle>Inquiries by Rep</SectionTitle>
-          <ResponsiveContainer width="100%" height={220}><BarChart data={(data.byPerson||[]).filter(p=>p.name)} layout="vertical" barSize={14}><XAxis type="number" tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} /><YAxis type="category" dataKey="name" tick={{ fontSize:11, fill:'#475569' }} axisLine={false} tickLine={false} width={55} /><Tooltip content={<Tip />} /><Bar dataKey="count" name="Inquiries" fill="#6366f1" radius={[0,4,4,0]} /></BarChart></ResponsiveContainer>
+          <ResponsiveContainer width="100%" height={220}><BarChart data={(data.byPerson||[]).filter(p=>p.name)} layout="vertical" barSize={14}><XAxis type="number" tick={{ fontSize:10, fill:'var(--chart-axis)' }} axisLine={false} tickLine={false} allowDecimals={false} /><YAxis type="category" dataKey="name" tick={{ fontSize:11, fill:'var(--text-2)' }} axisLine={false} tickLine={false} width={55} /><Tooltip content={<Tip />} /><Bar dataKey="count" name="Inquiries" fill="#6366f1" radius={[0,4,4,0]} /></BarChart></ResponsiveContainer>
         </div>
       </div>
 
       <div style={{ background:'var(--card)', borderRadius:16, border:'1px solid rgba(255,255,255,0.07)', padding:20 }}>
         <SectionTitle>Volume Trend</SectionTitle>
-        <ResponsiveContainer width="100%" height={180}><LineChart data={(data.trend||[]).map(t => ({ ...t, date: t.date?.slice(5) }))}><XAxis dataKey="date" tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} /><Tooltip content={<Tip />} /><Line type="monotone" dataKey="total" name="Inquiries" stroke="#6366f1" strokeWidth={2} dot={false} /></LineChart></ResponsiveContainer>
+        <ResponsiveContainer width="100%" height={180}><LineChart data={(data.trend||[]).map(t => ({ ...t, date: t.date?.slice(5) }))}><XAxis dataKey="date" tick={{ fontSize:10, fill:'var(--chart-axis)' }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize:10, fill:'var(--chart-axis)' }} axisLine={false} tickLine={false} allowDecimals={false} /><Tooltip content={<Tip />} /><Line type="monotone" dataKey="total" name="Inquiries" stroke="#6366f1" strokeWidth={2} dot={false} /></LineChart></ResponsiveContainer>
       </div>
     </div>
   )
@@ -527,7 +527,7 @@ function OrdersTab({ filters, onDrilldown }) {
         <div style={{ background:'var(--card)', borderRadius:16, border:'1px solid rgba(255,255,255,0.07)', padding:20 }}>
           <SectionTitle>Processed vs Cancelled Trend</SectionTitle>
           {!data.trend?.length ? <div style={{ height:160, display:'flex', alignItems:'center', justifyContent:'center', color:'rgba(255,255,255,0.38)' }}>No data</div> : (
-            <ResponsiveContainer width="100%" height={180}><BarChart data={data.trend.map(t => ({ ...t, date: t.date?.slice(5) }))} barSize={8}><XAxis dataKey="date" tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} /><Tooltip content={<Tip />} /><Bar dataKey="processed" name="Processed" fill="#10b981" radius={[3,3,0,0]} /><Bar dataKey="cancelled" name="Cancelled" fill="#ef4444" radius={[3,3,0,0]} /></BarChart></ResponsiveContainer>
+            <ResponsiveContainer width="100%" height={180}><BarChart data={data.trend.map(t => ({ ...t, date: t.date?.slice(5) }))} barSize={8}><XAxis dataKey="date" tick={{ fontSize:10, fill:'var(--chart-axis)' }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize:10, fill:'var(--chart-axis)' }} axisLine={false} tickLine={false} allowDecimals={false} /><Tooltip content={<Tip />} /><Bar dataKey="processed" name="Processed" fill="#10b981" radius={[3,3,0,0]} /><Bar dataKey="cancelled" name="Cancelled" fill="#ef4444" radius={[3,3,0,0]} /></BarChart></ResponsiveContainer>
           )}
         </div>
         <div style={{ background:'var(--card)', borderRadius:16, border:'1px solid rgba(255,255,255,0.07)', padding:20 }}>
@@ -535,7 +535,7 @@ function OrdersTab({ filters, onDrilldown }) {
           <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
             {(data.bySource||[]).filter(s=>s.source).map((s,i) => (
               <div key={s.source} style={{ cursor:'pointer' }} onClick={() => drill(`Source: ${s.source}`)}>
-                <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:4 }}><span style={{ color:'rgba(255,255,255,0.65)', fontWeight:500 }}>{s.source}</span><span style={{ fontWeight:700, color:'#fff' }}>{s.count}</span></div>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:4 }}><span style={{ color:'rgba(255,255,255,0.65)', fontWeight:500 }}>{s.source}</span><span style={{ fontWeight:700, color:'var(--card)' }}>{s.count}</span></div>
                 <div style={{ height:6, background:'rgba(255,255,255,0.04)', borderRadius:4 }}><div style={{ height:'100%', borderRadius:4, background:CHART_COLORS[i], width:`${p.total>0?Math.round(s.count/p.total*100):0}%` }} /></div>
               </div>
             ))}
@@ -550,10 +550,10 @@ function OrdersTab({ filters, onDrilldown }) {
             {(data.byPerson||[]).filter(p=>p.name).map((p,i) => {
               const rate = p.count>0?Math.round((p.processed||0)/p.count*100):0
               return (
-                <tr key={p.name} onClick={() => drill(`${p.name}'s Orders`)} style={{ borderBottom:'1px solid rgba(255,255,255,0.06)', cursor:'pointer', background:i%2===0?'#fff':'#fafbfc' }}
+                <tr key={p.name} onClick={() => drill(`${p.name}'s Orders`)} style={{ borderBottom:'1px solid rgba(255,255,255,0.06)', cursor:'pointer', background:i%2===0?'var(--card)':'var(--row-alt)' }}
                   onMouseEnter={e => e.currentTarget.style.background=`${BRAND}08`}
-                  onMouseLeave={e => e.currentTarget.style.background=i%2===0?'#fff':'#fafbfc'}>
-                  <td style={{ padding:'10px 10px', fontWeight:600, color:'#fff' }}>{p.name}</td>
+                  onMouseLeave={e => e.currentTarget.style.background=i%2===0?'var(--card)':'var(--row-alt)'}>
+                  <td style={{ padding:'10px 10px', fontWeight:600, color:'var(--card)' }}>{p.name}</td>
                   <td style={{ padding:'10px 10px', textAlign:'right', color:'rgba(255,255,255,0.65)' }}>{p.count}</td>
                   <td style={{ padding:'10px 10px', textAlign:'right', color:'#10b981', fontWeight:600 }}>{p.processed||0}</td>
                   <td style={{ padding:'10px 10px', textAlign:'right' }}><span style={{ padding:'3px 10px', borderRadius:20, fontSize:12, fontWeight:700, background:rate>=50?'#f0fdf4':rate>=25?'#fff7ed':'#fef2f2', color:rate>=50?'#16a34a':rate>=25?'#d97706':'#dc2626' }}>{rate}%</span></td>
@@ -617,7 +617,7 @@ export default function Dashboard() {
       {/* Tabs */}
       <div style={{ display:'flex', gap:2, background:'rgba(255,255,255,0.04)', borderRadius:14, padding:4, marginBottom:24, width:'fit-content' }}>
         {tabs.map(tab => (
-          <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{ padding:'9px 18px', borderRadius:10, border:'none', background:activeTab===tab.key?'#fff':'transparent', color:activeTab===tab.key?'#0f172a':'#64748b', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', boxShadow:activeTab===tab.key?'0 1px 4px rgba(0,0,0,0.08)':'none', transition:'all 0.15s', whiteSpace:'nowrap' }}>{tab.label}</button>
+          <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{ padding:'9px 18px', borderRadius:10, border:'none', background:activeTab===tab.key?'var(--card)':'transparent', color:activeTab===tab.key?'#0f172a':'#64748b', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', boxShadow:activeTab===tab.key?'0 1px 4px rgba(0,0,0,0.08)':'none', transition:'all 0.15s', whiteSpace:'nowrap' }}>{tab.label}</button>
         ))}
       </div>
 

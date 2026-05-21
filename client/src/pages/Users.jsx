@@ -4,7 +4,7 @@ import { useAuth } from '../App'
 import Modal from '../components/Modal'
 
 const BRAND = '#00D4C8'
-const inp = { width:'100%', boxSizing:'border-box', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:'12px', padding:'10px 14px', fontSize:'13px', color:'#fff', fontFamily:'"Plus Jakarta Sans", sans-serif', outline:'none' }
+const inp = { width:'100%', boxSizing:'border-box', background:'var(--input-bg)', border:'1px solid var(--input-border)', borderRadius:'12px', padding:'10px 14px', fontSize:'13px', color:'var(--card)', fontFamily:'"Plus Jakarta Sans", sans-serif', outline:'none' }
 
 const ROLE_INFO = {
   manager:            { label:'Manager',              color:'#7c3aed', bg:'#f5f3ff', border:'#ddd6fe' },
@@ -21,7 +21,7 @@ const SECTIONS = [
 ]
 
 function RoleBadge({ role }) {
-  const r = ROLE_INFO[role] || { label: role, color:'rgba(255,255,255,0.50)', bg:'#f8fafc', border:'#e2e8f0' }
+  const r = ROLE_INFO[role] || { label: role, color:'rgba(255,255,255,0.50)', bg:'var(--card-2)', border:'#e2e8f0' }
   return (
     <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:r.bg, color:r.color, border:`1px solid ${r.border}`, whiteSpace:'nowrap' }}>
       {r.label}
@@ -43,9 +43,45 @@ export default function Users() {
   const [resetType, setResetType] = useState('ae')
   const [copiedAll, setCopiedAll] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
+  const [ringtoneStates, setRingtoneStates] = useState({}) // userId -> { active, url }
+  const [uploadingRingtone, setUploadingRingtone] = useState(null)
+
+  const loadRingtoneStates = async () => {
+    try {
+      const token = localStorage.getItem('crm_token')
+      const res = await fetch('/api/ringtone/all', { headers: { Authorization: `Bearer ${token}` } })
+      const data = await res.json()
+      const map = {}
+      data.forEach(u => { map[u.id] = { active: u.ringtone_active, url: u.ringtone_url } })
+      setRingtoneStates(map)
+    } catch(e) {}
+  }
+
+  const handleRingtoneUpload = async (userId, file) => {
+    setUploadingRingtone(userId)
+    try {
+      const token = localStorage.getItem('crm_token')
+      const form = new FormData()
+      form.append('file', file)
+      await fetch(`/api/upload/ringtone/${userId}`, { method:'POST', headers:{ Authorization:`Bearer ${token}` }, body: form })
+      loadRingtoneStates()
+    } catch(e) {} finally { setUploadingRingtone(null) }
+  }
+
+  const handleRingtonePlay = async (userId) => {
+    const token = localStorage.getItem('crm_token')
+    await fetch(`/api/ringtone/${userId}/play`, { method:'POST', headers:{ Authorization:`Bearer ${token}` } })
+    setRingtoneStates(prev => ({ ...prev, [userId]: { ...prev[userId], active: 1 } }))
+  }
+
+  const handleRingtoneStop = async (userId) => {
+    const token = localStorage.getItem('crm_token')
+    await fetch(`/api/ringtone/${userId}/stop`, { method:'POST', headers:{ Authorization:`Bearer ${token}` } })
+    setRingtoneStates(prev => ({ ...prev, [userId]: { ...prev[userId], active: 0 } }))
+  }
 
   const load = () => api.getUsers().then(u => { setUsers(u); setLoading(false) })
-  useEffect(() => { load() }, [])
+  useEffect(() => { load(); if (user.role === 'manager') loadRingtoneStates() }, [])
 
   const reset = () => { setForm({ username:'', password:'', name:'', role:'ae' }); setError('') }
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -131,18 +167,18 @@ export default function Users() {
           {user.role === 'manager' && (
             <>
               <button onClick={() => handleResetPasswords('ae')} disabled={resetting}
-                style={{ padding:'8px 14px', borderRadius:12, background:'#fff5f5', border:'1px solid #fecaca', color:'#dc2626', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans", sans-serif' }}>
+                style={{ padding:'8px 14px', borderRadius:12, background:'var(--danger)', border:'1px solid var(--danger-border)', color:'var(--danger-text)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans", sans-serif' }}>
                 🔑 Reset AE Passwords
               </button>
               <button onClick={() => handleResetPasswords('purchaser')} disabled={resetting}
-                style={{ padding:'8px 14px', borderRadius:12, background:'#fff7ed', border:'1px solid #fed7aa', color:'#d97706', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans", sans-serif' }}>
+                style={{ padding:'8px 14px', borderRadius:12, background:'var(--warn)', border:'1px solid rgba(245,158,11,0.3)', color:'var(--warn-text)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans", sans-serif' }}>
                 🔑 Reset Purchaser Passwords
               </button>
             </>
           )}
           {user.role === 'purchasing_manager' && (
             <button onClick={() => handleResetPasswords('purchaser')} disabled={resetting}
-              style={{ padding:'8px 14px', borderRadius:12, background:'#fff7ed', border:'1px solid #fed7aa', color:'#d97706', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans", sans-serif' }}>
+              style={{ padding:'8px 14px', borderRadius:12, background:'var(--warn)', border:'1px solid rgba(245,158,11,0.3)', color:'var(--warn-text)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans", sans-serif' }}>
               🔑 Reset Purchaser Passwords
             </button>
           )}
@@ -183,7 +219,7 @@ export default function Users() {
                       <tbody>
                         {sectionUsers.map(u => (
                           <tr key={u.id} style={{ borderBottom:'1px solid rgba(255,255,255,0.06)', transition:'background 0.1s' }}
-                            onMouseEnter={e => e.currentTarget.style.background='#fafbfc'}
+                            onMouseEnter={e => e.currentTarget.style.background='var(--card-2)'}
                             onMouseLeave={e => e.currentTarget.style.background='transparent'}>
                             <td style={{ padding:'12px 16px' }}>
                               <div style={{ display:'flex', alignItems:'center', gap:10 }}>
@@ -192,7 +228,7 @@ export default function Users() {
                                   : <div style={{ width:34, height:34, borderRadius:8, background:`${BRAND}20`, color:BRAND, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:13, flexShrink:0 }}>{u.name[0].toUpperCase()}</div>
                                 }
                                 <div>
-                                  <div style={{ fontWeight:600, fontSize:14, color:'#fff' }}>
+                                  <div style={{ fontWeight:600, fontSize:14, color:'var(--card)' }}>
                                     {u.name}
                                     {u.id === user.id && <span style={{ marginLeft:6, fontSize:11, color:'rgba(255,255,255,0.38)' }}>(you)</span>}
                                   </div>

@@ -21,7 +21,7 @@ function FollowUpCard({ fu, onComplete, onNavigate }) {
       onClick={() => onNavigate('inquiry-detail', { id: fu.inquiry_id })}
       style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '14px 16px', background: 'var(--card)', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.07)', cursor: 'pointer', transition: 'all 0.15s', marginBottom: '8px' }}
       onMouseEnter={e => { e.currentTarget.style.borderColor = BRAND; e.currentTarget.style.boxShadow = `0 2px 12px rgba(0,212,200,0.1)` }}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = '#f1f5f9'; e.currentTarget.style.boxShadow = 'none' }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--card-2)'; e.currentTarget.style.boxShadow = 'none' }}
     >
       <div style={{ width: 36, height: 36, borderRadius: '10px', background: `${BRAND}18`, color: BRAND, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '13px', flexShrink: 0 }}>
         {fu.customer_name?.[0]?.toUpperCase() || '?'}
@@ -71,12 +71,12 @@ function ActivityCard({ notif, onNavigate, onRead }) {
       style={{
         display: 'flex', alignItems: 'flex-start', gap: '12px',
         padding: '14px 16px', borderRadius: '14px', cursor: 'pointer',
-        background: notif.read ? '#fff' : `${BRAND}06`,
-        border: `1px solid ${notif.read ? '#f1f5f9' : `${BRAND}30`}`,
+        background: notif.read ? 'var(--card)' : `${BRAND}06`,
+        border: `1px solid ${notif.read ? 'var(--card-2)' : `${BRAND}30`}`,
         transition: 'all 0.15s', marginBottom: '8px', position: 'relative',
       }}
       onMouseEnter={e => { e.currentTarget.style.borderColor = BRAND; e.currentTarget.style.boxShadow = `0 2px 12px rgba(0,212,200,0.1)` }}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = notif.read ? '#f1f5f9' : `${BRAND}30`; e.currentTarget.style.boxShadow = 'none' }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = notif.read ? 'var(--card-2)' : `${BRAND}30`; e.currentTarget.style.boxShadow = 'none' }}
     >
       {/* Unread dot */}
       {!notif.read && (
@@ -191,7 +191,7 @@ export default function Notifications() {
           <button key={tab.key} onClick={() => setActiveTab(tab.key)}
             style={{
               flex: 1, padding: '9px 16px', borderRadius: '10px', border: 'none',
-              background: activeTab === tab.key ? '#fff' : 'transparent',
+              background: activeTab === tab.key ? 'var(--card)' : 'transparent',
               color: activeTab === tab.key ? '#0f172a' : '#64748b',
               fontSize: '13px', fontWeight: 600, cursor: 'pointer',
               boxShadow: activeTab === tab.key ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
