@@ -39,7 +39,7 @@ export default function CustomerDetail({ id }) {
   if (!customer) return <div className="p-8 text-ink-400">Customer not found.</div>
 
   return (
-    <div className="p-8 max-w-5xl fade-in">
+    <div className="p-8 max-w-5xl fade-in" style={{ overflowY:"auto", flex:1 }}>
       <button onClick={() => navigate('customers')} className="flex items-center gap-1.5 text-xs text-ink-400 hover:text-ink-600 font-semibold mb-5 transition-colors">← Customers</button>
 
       <div className="card p-6 mb-5">
@@ -112,9 +112,9 @@ export default function CustomerDetail({ id }) {
                   <td className="table-cell"><DispositionBadge disposition={inq.disposition} /></td>
                   <td className="table-cell">
                     <div className="flex flex-wrap gap-1">
-                      {inq.requirements?.slice(0,2).map((r,i)=><span key={i} className="badge bg-slate-50 text-ink-600 border-slate-200 font-mono">{r.part_number} ×{r.quantity}</span>)}
-                      {inq.requirements?.length > 2 && <span className="badge bg-slate-50 text-ink-400 border-slate-100">+{inq.requirements.length-2}</span>}
-                      {!inq.requirements?.length && <span className="text-ink-300 text-sm">—</span>}
+                      {inq.requirements?.slice(0,2).map((r,i)=><span key={i} style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:8, background:'var(--card-2)', color:'var(--text-2)', border:'1px solid var(--border)', fontFamily:'monospace', display:'inline-block', marginRight:4 }}>{r.part_number} ×{r.quantity}</span>)}
+                      {inq.requirements?.length > 2 && <span style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:8, background:'var(--brand-dim)', color:'var(--brand)', border:'1px solid rgba(0,212,200,0.2)' }}>+{inq.requirements.length-2}</span>}
+                      {!inq.requirements?.length && <span style={{ color:'var(--text-4)', fontSize:13 }}>—</span>}
                     </div>
                   </td>
                   <td className="table-cell font-medium text-ink-700">{inq.assigned_name||'—'}</td>

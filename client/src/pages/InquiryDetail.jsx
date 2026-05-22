@@ -136,7 +136,7 @@ export default function InquiryDetail({ id }) {
 
           {/* Activity / Followups */}
           <div className="card overflow-hidden">
-            <div className="flex border-b border-slate-100">
+            <div className="flex" style={{borderBottom:"1px solid var(--border)"}}>
               {[['activity','💬 Activity'],['followups',`📅 Follow-ups${pendingFu > 0 ? ` (${pendingFu})` : ''}`]].map(([tab, label]) => (
                 <button key={tab} onClick={() => setActiveTab(tab)}
                   className={`px-5 py-3.5 text-sm font-semibold transition-all border-b-2 -mb-px ${activeTab===tab ? 'text-brand-600 border-brand-500' : 'text-ink-400 border-transparent hover:text-ink-600'}`}>
@@ -155,7 +155,7 @@ export default function InquiryDetail({ id }) {
                     {!inquiry.activity?.length && <p className="text-sm text-ink-300 text-center py-6">No activity yet</p>}
                     {inquiry.activity?.map(a => (
                       <div key={a.id} className="flex gap-3">
-                        <div className="w-8 h-8 rounded-xl bg-surface-100 border border-slate-200 flex items-center justify-center text-xs font-bold text-ink-600 flex-shrink-0">{a.user_name?.[0]?.toUpperCase()||'?'}</div>
+                        <div className="w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold flex-shrink-0" style={{background:"var(--card-2)", border:"1px solid var(--border)", color:"var(--text-2)"}}>{a.user_name?.[0]?.toUpperCase()||'?'}</div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-sm font-semibold text-ink-800">{a.user_name}</span>
@@ -187,7 +187,7 @@ export default function InquiryDetail({ id }) {
                   <div className="space-y-2">
                     {!inquiry.followups?.length && <p className="text-sm text-ink-300 text-center py-6">No follow-ups yet</p>}
                     {inquiry.followups?.map(fu => (
-                      <div key={fu.id} className={`flex items-start gap-3 p-3.5 rounded-xl border transition-all ${fu.completed ? 'bg-slate-50 opacity-60' : 'bg-white hover:border-brand-200'}`}>
+                      <div key={fu.id} className={`flex items-start gap-3 p-3.5 rounded-xl border transition-all ${fu.completed ? 'opacity-50' : ''}`}>
                         <button onClick={() => toggleFollowup(fu)} className="mt-0.5 flex-shrink-0">
                           <div className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all ${fu.completed ? 'bg-brand-500 border-brand-500' : 'border-ink-300 hover:border-brand-400'}`}>
                             {fu.completed && <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
@@ -243,7 +243,7 @@ export default function InquiryDetail({ id }) {
                         <option value="">—</option>
                         {VERIFICATION_OPTIONS.map(v=><option key={v}>{v}</option>)}
                       </select>
-                    : <span className={`badge ${inquiry.order_ref === 'Verified' ? 'bg-green-50 text-green-700 border-green-200' : inquiry.order_ref === 'Not Verified' ? 'bg-red-50 text-red-500 border-red-200' : 'bg-gray-100 text-gray-500 border-gray-200'}`}>
+                    : <span className={`badge`}>
                         {inquiry.order_ref || '—'}
                       </span>}
                 </Detail>

@@ -4,13 +4,13 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+        sans:    ['"Plus Jakarta Sans"', 'sans-serif'],
         display: ['"Bricolage Grotesque"', 'sans-serif'],
-        mono: ['"JetBrains Mono"', 'monospace'],
+        mono:    ['"JetBrains Mono"', 'monospace'],
       },
       colors: {
         brand: {
-          50:  'rgba(0,212,200,0.08)',
+          50:  'var(--brand-dim)',
           100: 'rgba(0,212,200,0.15)',
           200: 'rgba(0,212,200,0.25)',
           300: '#00e5d8',
@@ -21,38 +21,30 @@ export default {
           800: '#007a73',
           900: '#005c57',
         },
-        dark: {
-          950: '#060609',
-          900: '#0d0d14',
-          800: '#13131f',
-          700: '#1a1a2a',
-          600: '#222236',
-          500: '#2c2c42',
-          400: '#383854',
-        },
-        // Light surface tokens — now pointing to dark values
+        // Surface — point to CSS variables (theme-aware)
         surface: {
-          50:  '#0d0d14',
-          100: '#13131f',
-          200: '#1a1a2a',
+          50:  'var(--bg)',
+          100: 'var(--card)',
+          200: 'var(--card-2)',
         },
-        // Text tokens — flipped to light-on-dark
+        // Ink text tokens — CSS variables so they switch with theme
         ink: {
-          900: '#ffffff',
-          800: 'rgba(255,255,255,0.87)',
-          700: 'rgba(255,255,255,0.70)',
-          500: 'rgba(255,255,255,0.50)',
-          400: 'rgba(255,255,255,0.35)',
-          300: 'rgba(255,255,255,0.20)',
-          200: 'rgba(255,255,255,0.10)',
-        }
+          900: 'var(--text)',
+          800: 'var(--text)',
+          700: 'var(--text-2)',
+          600: 'var(--text-2)',
+          500: 'var(--text-2)',
+          400: 'var(--text-3)',
+          300: 'var(--text-4)',
+          200: 'var(--text-4)',
+        },
       },
       boxShadow: {
-        'card':       '0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06)',
-        'card-hover': '0 4px 24px rgba(0,0,0,0.5), 0 0 0 1px rgba(0,212,200,0.2)',
-        'modal':      '0 32px 100px rgba(0,0,0,0.6)',
-        'glow':       '0 0 30px rgba(0,212,200,0.25)',
-        'glow-lg':    '0 0 60px rgba(0,212,200,0.2)',
+        card:      '0 1px 3px rgba(0,0,0,0.08), 0 0 0 1px var(--border)',
+        'card-hover': '0 4px 24px rgba(0,0,0,0.12), 0 0 0 1px var(--brand)',
+        modal:     '0 32px 100px rgba(0,0,0,0.5)',
+        glow:      '0 0 30px var(--brand-glow)',
+        'glow-lg': '0 0 60px var(--brand-glow)',
       }
     }
   },

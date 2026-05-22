@@ -235,8 +235,8 @@ export default function Layout({ children }) {
       </aside>
 
       {/* ── Main content ────────────────────────────────── */}
-      <main className="main-content" style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
-        <div style={{ position: 'relative', zIndex: 1, minHeight: '100%' }}>
+      <main className="main-content" style={{ flex: 1, overflowY: 'hidden', position: 'relative', display:'flex', flexDirection:'column' }}>
+        <div style={{ position: 'relative', zIndex: 1, flex:1, overflowY:'auto', display:'flex', flexDirection:'column' }}>
           {children}
         </div>
       </main>

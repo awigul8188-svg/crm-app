@@ -290,3 +290,30 @@ select option { background: var(--card-2); color: var(--text); }
   background: #fff;
   border-color: #e2e8f0;
 }
+
+/* ─────────────────────────────────────────────────────────
+   FOLLOWUP ROW + MISC OVERRIDES
+───────────────────────────────────────────────────────── */
+/* InquiryDetail followup rows */
+.followup-row {
+  background: var(--card);
+  border-color: var(--border);
+}
+.followup-row:hover {
+  border-color: var(--brand);
+}
+
+/* CustomerDetail inline parts fix */
+[data-theme="light"] .part-chip {
+  background: var(--card-2);
+  color: var(--text-2);
+  border-color: var(--border);
+}
+
+/* Make sure bg-white Tailwind class adapts to theme */
+.bg-white {
+  background-color: var(--card) !important;
+}
+.text-white {
+  color: var(--text) !important;
+}

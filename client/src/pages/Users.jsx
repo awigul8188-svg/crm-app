@@ -154,7 +154,7 @@ export default function Users() {
   )
 
   return (
-    <div className="p-8 fade-in">
+    <div className="p-8 fade-in" style={{ overflowY:'auto', flex:1 }}>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>

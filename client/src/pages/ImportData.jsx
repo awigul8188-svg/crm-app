@@ -134,7 +134,7 @@ export default function ImportData() {
           {result.errors?.length > 0 && (
             <div className="mt-3">
               <div className="text-xs font-bold text-ink-500 uppercase tracking-widest mb-2">Rows with issues:</div>
-              <div className="bg-white rounded-xl border p-3 max-h-48 overflow-y-auto space-y-1">
+              <div className="rounded-xl p-3 max-h-48 overflow-y-auto space-y-1" style={{background:"var(--card-2)", border:"1px solid var(--border)"}}>
                 {result.errors.map((e, i) => (
                   <div key={i} className="text-xs text-red-600 font-mono">{e}</div>
                 ))}

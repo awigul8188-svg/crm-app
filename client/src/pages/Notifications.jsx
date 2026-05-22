@@ -163,7 +163,7 @@ export default function Notifications() {
   ]
 
   return (
-    <div className="p-8 max-w-3xl fade-in">
+    <div className="p-8 max-w-3xl fade-in" style={{ overflowY:"auto", flex:1 }}>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>

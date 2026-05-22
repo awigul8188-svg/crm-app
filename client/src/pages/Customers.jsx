@@ -46,7 +46,7 @@ export default function Customers() {
   const displayed = customers.filter(c => !filterSources.length || filterSources.includes(c.lead_source))
 
   return (
-    <div className="p-8 fade-in">
+    <div className="p-8 fade-in" style={{ overflowY:'auto', flex:1 }}>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="font-display font-bold text-2xl text-ink-900">◉ Customers</h1>
