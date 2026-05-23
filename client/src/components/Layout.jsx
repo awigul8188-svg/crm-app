@@ -6,16 +6,7 @@ import { useContext } from 'react'
 import { api } from '../api'
 import GlobalSearch from './GlobalSearch'
 
-function TALogo({ size = 36 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <polygon points="20,2 46,2 46,14 32,14 32,10 20,10" fill="white"/>
-      <rect x="32" y="14" width="14" height="16" fill="white"/>
-      <rect x="2" y="14" width="28" height="22" fill="#00D4C8"/>
-      <rect x="20" y="36" width="26" height="10" fill="white"/>
-    </svg>
-  )
-}
+
 
 const SALES_NAV = [
   { name: 'dashboard', label: 'Dashboard',    icon: '▣' },
@@ -100,15 +91,13 @@ export default function Layout({ children }) {
         }} />
 
         {/* Logo area */}
-        <div style={{ padding: '24px 20px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)', position: 'relative' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: 10, overflow: 'hidden',
-              background: 'rgba(0,212,200,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              border: '1px solid rgba(0,212,200,0.2)',
-            }}>
-              <TALogo size={26} />
-            </div>
+        <div style={{ padding: '20px 16px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)', position: 'relative' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+            <img
+              src={theme === 'dark' ? '/logo-white.png' : '/logo-black.png'}
+              alt="Tech Atlantix"
+              style={{ height: 36, width: 'auto', objectFit: 'contain', flexShrink: 0 }}
+            />
             <div>
               <div style={{ fontFamily: '"Bricolage Grotesque", sans-serif', fontWeight: 800, fontSize: 13, color: '#fff', letterSpacing: '0.04em', lineHeight: 1.1 }}>TECH</div>
               <div style={{ fontFamily: '"Bricolage Grotesque", sans-serif', fontWeight: 800, fontSize: 13, letterSpacing: '0.04em', lineHeight: 1.1, background: 'var(--gradient-green)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>ATLANTIX</div>

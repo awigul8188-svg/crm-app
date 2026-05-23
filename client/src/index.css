@@ -310,10 +310,4 @@ select option { background: var(--card-2); color: var(--text); }
   border-color: var(--border);
 }
 
-/* Make sure bg-white Tailwind class adapts to theme */
-.bg-white {
-  background-color: var(--card) !important;
-}
-.text-white {
-  color: var(--text) !important;
-}
+/* bg-white and text-white kept as standard Tailwind values */
