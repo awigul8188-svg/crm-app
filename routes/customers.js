@@ -51,3 +51,37 @@ router.delete('/:id', requireManager, (req, res) => {
 });
 
 module.exports = router;
+
+// Global search across customers + inquiries
+router.get('/search', (req, res) => {
+  const db = getDB();
+  const q = (req.query.q || '').trim();
+  if (q.length < 2) return res.json({ customers: [], inquiries: [] });
+
+  const like = `%${q}%`;
+  const userId = req.user.id;
+  const isManager = req.user.role === 'manager';
+
+  const customers = db.prepare(`
+    SELECT id, name, company, email, phone FROM customers
+    WHERE name LIKE ? OR company LIKE ? OR email LIKE ? OR phone LIKE ?
+    LIMIT 6
+  `).all(like, like, like, like);
+
+  const inqWhere = isManager
+    ? `WHERE (c.name LIKE ? OR c.company LIKE ? OR c.email LIKE ? OR r.part_number LIKE ?) GROUP BY i.id`
+    : `WHERE i.assigned_to = ${userId} AND (c.name LIKE ? OR c.company LIKE ? OR c.email LIKE ? OR r.part_number LIKE ?) GROUP BY i.id`;
+
+  const inquiries = db.prepare(`
+    SELECT i.id, i.type, i.disposition, i.created_at,
+      c.name as customer_name, c.company as customer_company,
+      GROUP_CONCAT(r.part_number, ', ') as parts
+    FROM inquiries i
+    JOIN customers c ON i.customer_id = c.id
+    LEFT JOIN requirements r ON r.inquiry_id = i.id
+    ${inqWhere}
+    ORDER BY i.created_at DESC LIMIT 8
+  `).all(like, like, like, like);
+
+  res.json({ customers, inquiries });
+});

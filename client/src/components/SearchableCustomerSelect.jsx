@@ -59,19 +59,19 @@ export default function SearchableCustomerSelect({ customers, value, onChange, p
         {selected ? (
           <div style={{ flex: 1, overflow: 'hidden' }}>
             <span style={{ fontWeight: 600, color: 'var(--text)' }}>{selected.name}</span>
-            {selected.company && <span style={{ color: 'rgba(255,255,255,0.38)', marginLeft: '6px', fontSize: '12px' }}>— {selected.company}</span>}
+            {selected.company && <span style={{ color: 'var(--text-3)', marginLeft: '6px', fontSize: '12px' }}>— {selected.company}</span>}
           </div>
         ) : (
-          <span style={{ color: 'rgba(255,255,255,0.38)' }}>{placeholder}</span>
+          <span style={{ color: 'var(--text-3)' }}>{placeholder}</span>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
           {selected && (
             <span
               onClick={(e) => { e.stopPropagation(); onChange(''); }}
-              style={{ width: 16, height: 16, background: 'var(--border-2)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: 'rgba(255,255,255,0.50)', cursor: 'pointer' }}
+              style={{ width: 16, height: 16, background: 'var(--border-2)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: 'var(--text-2)', cursor: 'pointer' }}
             >×</span>
           )}
-          <span style={{ color: 'rgba(255,255,255,0.38)', fontSize: '10px', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▾</span>
+          <span style={{ color: 'var(--text-3)', fontSize: '10px', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▾</span>
         </div>
       </div>
 
@@ -80,15 +80,15 @@ export default function SearchableCustomerSelect({ customers, value, onChange, p
         <div style={{
           position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
           zIndex: 99999, background: 'var(--card)',
-          border: '1px solid rgba(255,255,255,0.09)', borderRadius: '14px',
+          border: '1px solid var(--border)', borderRadius: '14px',
           boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
           maxHeight: '280px', display: 'flex', flexDirection: 'column',
           overflow: 'hidden',
         }}>
           {/* Search input */}
-          <div style={{ padding: '10px', borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
+          <div style={{ padding: '10px', borderBottom: '1px solid var(--input-bg)', flexShrink: 0 }}>
             <div style={{ position: 'relative' }}>
-              <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.38)', fontSize: '14px' }}>⌕</span>
+              <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)', fontSize: '14px' }}>⌕</span>
               <input
                 ref={inputRef}
                 value={query}
@@ -98,7 +98,7 @@ export default function SearchableCustomerSelect({ customers, value, onChange, p
                 style={{
                   width: '100%', boxSizing: 'border-box',
                   padding: '8px 10px 8px 30px',
-                  border: '1px solid rgba(255,255,255,0.09)', borderRadius: '10px',
+                  border: '1px solid var(--border)', borderRadius: '10px',
                   fontSize: '13px', outline: 'none',
                   fontFamily: '"Plus Jakarta Sans", sans-serif',
                 }}
@@ -109,7 +109,7 @@ export default function SearchableCustomerSelect({ customers, value, onChange, p
           {/* Results */}
           <div style={{ overflowY: 'auto', flex: 1 }}>
             {filtered.length === 0 ? (
-              <div style={{ padding: '16px', textAlign: 'center', color: 'rgba(255,255,255,0.38)', fontSize: '13px' }}>
+              <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-3)', fontSize: '13px' }}>
                 No customers found for "{query}"
               </div>
             ) : (
@@ -120,7 +120,7 @@ export default function SearchableCustomerSelect({ customers, value, onChange, p
                   style={{
                     padding: '10px 14px', cursor: 'pointer',
                     background: String(c.id) === String(value) ? `${BRAND}12` : 'transparent',
-                    borderBottom: '1px solid rgba(255,255,255,0.04)',
+                    borderBottom: '1px solid var(--card-2)',
                     transition: 'background 0.1s',
                   }}
                   onMouseEnter={e => { if (String(c.id) !== String(value)) e.currentTarget.style.background = 'var(--card-2)' }}
@@ -138,7 +138,7 @@ export default function SearchableCustomerSelect({ customers, value, onChange, p
                     </div>
                     <div>
                       <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text)' }}>{c.name}</div>
-                      <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.38)' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-3)' }}>
                         {[c.company, c.email].filter(Boolean).join(' · ') || 'No details'}
                       </div>
                     </div>
@@ -153,7 +153,7 @@ export default function SearchableCustomerSelect({ customers, value, onChange, p
 
           {/* Count */}
           {filtered.length > 0 && (
-            <div style={{ padding: '6px 14px', borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: '11px', color: 'rgba(255,255,255,0.38)', flexShrink: 0, background: 'rgba(255,255,255,0.03)' }}>
+            <div style={{ padding: '6px 14px', borderTop: '1px solid var(--input-bg)', fontSize: '11px', color: 'var(--text-3)', flexShrink: 0, background: 'rgba(255,255,255,0.03)' }}>
               {filtered.length} customer{filtered.length !== 1 ? 's' : ''}{query ? ` matching "${query}"` : ''}
             </div>
           )}

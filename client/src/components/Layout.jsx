@@ -4,6 +4,7 @@ import { useNav } from '../App'
 import { ThemeContext } from '../App'
 import { useContext } from 'react'
 import { api } from '../api'
+import GlobalSearch from './GlobalSearch'
 
 function TALogo({ size = 36 }) {
   return (
@@ -38,10 +39,19 @@ export default function Layout({ children }) {
   const { user, logout } = useAuth()
   const { page, navigate } = useNav()
   const { theme, toggle } = useContext(ThemeContext)
+  const [showSearch, setShowSearch] = useState(false)
   const [notifCount, setNotifCount] = useState(0)
   const [avatarUrl, setAvatarUrl] = useState(null)
 
   const loadNotifs = () => api.getNotifications().then(n => setNotifCount(n.total)).catch(() => {})
+
+  useEffect(() => {
+    const handleKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setShowSearch(true) }
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [])
 
   useEffect(() => {
     loadNotifs()
@@ -105,16 +115,19 @@ export default function Layout({ children }) {
             </div>
           </div>
 
-          {/* Search bar style hint */}
-          <div style={{
+          {/* Search bar — opens GlobalSearch */}
+          <div onClick={() => setShowSearch(true)} style={{
             display: 'flex', alignItems: 'center', gap: 8,
             background: 'rgba(255,255,255,0.05)',
             border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 10, padding: '8px 12px', cursor: 'default',
-          }}>
-            <span style={{ fontSize: 12, opacity: 0.3 }}>⌕</span>
-            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.22)', fontWeight: 500 }}>Search anything...</span>
-            <span style={{ marginLeft: 'auto', fontSize: 10, color: 'rgba(255,255,255,0.18)', fontWeight: 600, background: 'rgba(255,255,255,0.06)', padding: '2px 6px', borderRadius: 5 }}>⌘K</span>
+            borderRadius: 10, padding: '8px 12px', cursor: 'pointer',
+            transition: 'all 0.15s',
+          }}
+            onMouseEnter={e => { e.currentTarget.style.background='rgba(255,255,255,0.09)'; e.currentTarget.style.borderColor='rgba(0,212,200,0.3)' }}
+            onMouseLeave={e => { e.currentTarget.style.background='rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor='rgba(255,255,255,0.08)' }}>
+            <span style={{ fontSize: 13, opacity: 0.5 }}>⌕</span>
+            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.30)', fontWeight: 500, flex:1 }}>Search anything...</span>
+            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.22)', fontWeight: 600, background: 'rgba(255,255,255,0.07)', padding: '2px 6px', borderRadius: 5 }}>⌘K</span>
           </div>
         </div>
 
