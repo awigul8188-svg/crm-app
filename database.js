@@ -337,7 +337,7 @@ module.exports.runNFTMigrations = runNFTMigrations;
 
 function runNFTV2Migrations() {
   const db = getDB();
-  const bcrypt = require('bcrypt');
+  const bcrypt = require('bcryptjs');
   try {
     db.exec(`
       CREATE TABLE IF NOT EXISTS nft_users (

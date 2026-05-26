@@ -27,7 +27,7 @@ function UrgencyBadge({ urgency }) {
 
 function StatCard({ label, value, color, icon, sub, warn }) {
   return (
-    <div style={{ background:'var(--card)', borderRadius:14, border:`1px solid ${warn?'#fecaca':'var(--card-2)'}`, padding:'14px 18px', position:'relative', overflow:'hidden', background:warn?'#fff5f5':'var(--card)' }}>
+    <div style={{ borderRadius:14, border:`1px solid ${warn?'#fecaca':'var(--card-2)'}`, padding:'14px 18px', position:'relative', overflow:'hidden', background:warn?'#fff5f5':'var(--card)' }}>
       <div style={{ position:'absolute', top:0, left:0, width:3, height:'100%', background:color, borderRadius:'14px 0 0 14px' }} />
       <div style={{ position:'absolute', top:8, right:10, fontSize:16, opacity:0.12 }}>{icon}</div>
       <div style={{ fontSize:10, fontWeight:700, color:warn?'#dc2626':'#94a3b8', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:5 }}>{label}</div>

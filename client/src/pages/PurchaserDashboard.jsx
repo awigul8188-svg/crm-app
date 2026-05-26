@@ -382,7 +382,7 @@ export default function PurchaserDashboard() {
         <div>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:12, marginBottom:20 }}>
             {[['Assigned',stats?.myAssigned,'#6366f1','📋'],['Pending',stats?.myPending,'#f59e0b','⏳'],['Quoted',stats?.myQuoted,'#10b981','✅'],['Today',stats?.myToday,BRAND,'⚡'],['This Week',stats?.myWeek,'#3b82f6','📅'],['Delayed',stats?.myDelayed,'#dc2626','⚠️'],['Not In Stock',stats?.myNotInStock,'#94a3b8','❌']].map(([l,v,c,ic]) => (
-              <div key={l} style={{ background:'var(--card)', borderRadius:12, border:`1px solid ${l==='Delayed'&&v>0?'#fecaca':'var(--card-2)'}`, padding:'12px 14px', position:'relative', overflow:'hidden', background:l==='Delayed'&&v>0?'#fff5f5':'var(--card)' }}>
+              <div key={l} style={{ borderRadius:12, border:`1px solid ${l==='Delayed'&&v>0?'#fecaca':'var(--card-2)'}`, padding:'12px 14px', position:'relative', overflow:'hidden', background:l==='Delayed'&&v>0?'#fff5f5':'var(--card)' }}>
                 <div style={{ position:'absolute', top:0, left:0, width:3, height:'100%', background:c, borderRadius:'12px 0 0 12px' }} />
                 <div style={{ fontSize:9, fontWeight:700, color:'var(--text-3)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:4 }}>{l}</div>
                 <div style={{ fontSize:20, fontWeight:800, color:l==='Delayed'&&v>0?'#dc2626':'#0f172a', fontFamily:'"Bricolage Grotesque",sans-serif' }}>{v??'—'}</div>
