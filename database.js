@@ -189,3 +189,148 @@ function runPurchasingV2Migrations() {
   } catch(e) { console.log('V2 migration note:', e.message); }
 }
 module.exports.runPurchasingV2Migrations = runPurchasingV2Migrations;
+
+function runNFTMigrations() {
+  const db = getDB();
+  const tables = [
+    `CREATE TABLE IF NOT EXISTS nft_profiles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+      real_name TEXT NOT NULL,
+      job_title TEXT DEFAULT 'Account Executive',
+      department TEXT DEFAULT 'Sales',
+      photo_url TEXT,
+      phone TEXT,
+      hire_date DATE,
+      nft_role TEXT DEFAULT 'employee',
+      bio TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS nft_salary (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      base_salary REAL DEFAULT 0,
+      month TEXT NOT NULL,
+      bonus REAL DEFAULT 0,
+      notes TEXT,
+      created_by INTEGER REFERENCES users(id),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, month)
+    )`,
+    `CREATE TABLE IF NOT EXISTS nft_targets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      quarter TEXT NOT NULL,
+      sales_target REAL DEFAULT 0,
+      gp_target REAL DEFAULT 0,
+      sales_achieved REAL DEFAULT 0,
+      gp_achieved REAL DEFAULT 0,
+      created_by INTEGER REFERENCES users(id),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, quarter)
+    )`,
+    `CREATE TABLE IF NOT EXISTS nft_biodata (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      doc_type TEXT NOT NULL,
+      doc_name TEXT NOT NULL,
+      file_url TEXT NOT NULL,
+      file_size INTEGER DEFAULT 0,
+      uploaded_by INTEGER REFERENCES users(id),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS nft_kiosk_menu (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      category TEXT DEFAULT 'Food',
+      price REAL NOT NULL,
+      description TEXT,
+      available INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS nft_kiosk_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      items TEXT NOT NULL,
+      total_amount REAL DEFAULT 0,
+      status TEXT DEFAULT 'pending',
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS nft_shop_products (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT,
+      price REAL NOT NULL,
+      inventory INTEGER DEFAULT 0,
+      category TEXT DEFAULT 'Merchandise',
+      available INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS nft_shop_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      items TEXT NOT NULL,
+      total_amount REAL DEFAULT 0,
+      status TEXT DEFAULT 'pending',
+      deduction_status TEXT DEFAULT 'pending',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS nft_conversations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT DEFAULT 'dm',
+      name TEXT,
+      participants TEXT NOT NULL,
+      created_by INTEGER REFERENCES users(id),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS nft_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      conversation_id INTEGER NOT NULL REFERENCES nft_conversations(id) ON DELETE CASCADE,
+      sender_id INTEGER NOT NULL REFERENCES users(id),
+      content TEXT,
+      file_url TEXT,
+      file_name TEXT,
+      file_size INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS nft_news (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      image_url TEXT,
+      author_id INTEGER REFERENCES users(id),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS nft_cars (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT,
+      image_url TEXT,
+      required_sales_target REAL DEFAULT 0,
+      sort_order INTEGER DEFAULT 0
+    )`,
+    `CREATE TABLE IF NOT EXISTS nft_car_assignments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      car_id INTEGER NOT NULL REFERENCES nft_cars(id),
+      achieved_at DATE,
+      notes TEXT
+    )`
+  ];
+  tables.forEach(sql => { try { db.exec(sql); } catch(e) { console.log('NFT migration:', e.message); } });
+
+  // Seed default NFT profiles if none exist
+  const count = db.prepare('SELECT COUNT(*) as c FROM nft_profiles').get().c;
+  if (count === 0) {
+    const users = db.prepare("SELECT id, name FROM users WHERE role IN ('ae','manager')").all();
+    const nameMap = { ryan:'Usman Azeem', ethan:'Hammad Asif', eddie:'Awais Gul Khan', justin:'Ahmed Naseem', hector:'Ahmed Shafay', aman:'Aman' };
+    const ins = db.prepare('INSERT OR IGNORE INTO nft_profiles (user_id, real_name, nft_role) VALUES (?,?,?)');
+    users.forEach(u => {
+      const realName = nameMap[u.name?.toLowerCase()] || u.name;
+      const role = u.name?.toLowerCase() === 'eddie' || u.name?.toLowerCase() === 'ethan' ? 'manager' : 'employee';
+      ins.run(u.id, realName, role);
+    });
+  }
+}
+module.exports.runNFTMigrations = runNFTMigrations;

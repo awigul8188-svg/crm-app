@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, createContext, useContext } from 'react'
+import NFTApp from './pages/nft/NFTApp'
 import { api } from './api'
 import Login from './pages/Login'
 import Layout from './components/Layout'
@@ -76,6 +77,10 @@ export function ThemeProvider({ children }) {
 }
 
 export default function App() {
+  // If URL hash starts with #nft, render the NFT portal fullscreen
+  if (window.location.hash.startsWith('#nft')) {
+    return <NFTApp />
+  }
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState({ name: 'dashboard', params: {} })

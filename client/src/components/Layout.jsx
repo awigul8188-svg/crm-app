@@ -239,6 +239,22 @@ export default function Layout({ children }) {
       {/* ── Main content ────────────────────────────────── */}
       <main className="main-content" style={{ flex: 1, overflowY: 'hidden', position: 'relative', display:'flex', flexDirection:'column' }}>
         <div style={{ position: 'relative', zIndex: 1, flex:1, overflowY:'auto', display:'flex', flexDirection:'column' }}>
+          {/* NFT Employee Hub Banner */}
+          <div id="nft-banner" onClick={() => window.open(window.location.origin + '/#nft', '_blank', 'noopener,noreferrer')}
+            style={{ flexShrink:0, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 28px', background:'linear-gradient(135deg, rgba(0,229,204,0.12) 0%, rgba(124,58,237,0.12) 100%)', borderBottom:'1px solid rgba(0,229,204,0.15)', cursor:'pointer', transition:'all 0.15s', userSelect:'none' }}
+            onMouseEnter={e => e.currentTarget.style.background='linear-gradient(135deg, rgba(0,229,204,0.18) 0%, rgba(124,58,237,0.18) 100%)'}
+            onMouseLeave={e => e.currentTarget.style.background='linear-gradient(135deg, rgba(0,229,204,0.12) 0%, rgba(124,58,237,0.12) 100%)'}>
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <div style={{ width:28, height:28, borderRadius:8, background:'linear-gradient(135deg,#00E5CC,#7C3AED)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:900, fontSize:12, color:'#fff', flexShrink:0 }}>N</div>
+              <div>
+                <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:800, fontSize:13, color:'#fff', lineHeight:1.1 }}>NebulaForge Technologies</div>
+                <div style={{ fontSize:11, color:'rgba(255,255,255,0.45)', lineHeight:1.1 }}>Employee Hub · Kiosk · Shop · Messages</div>
+              </div>
+            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, fontWeight:700, color:'#00E5CC' }}>
+              Open Portal <span style={{ fontSize:14 }}>↗</span>
+            </div>
+          </div>
           {children}
         </div>
       </main>
