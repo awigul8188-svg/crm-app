@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { C } from './NFTApp'
+import { C } from './NFTContext'
 
 export default function NFTLogin({ onLogin }) {
   const [username, setUsername] = useState('')

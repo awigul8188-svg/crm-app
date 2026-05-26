@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNFT, C } from './NFTApp'
+import { useNFT, C } from './NFTContext'
 export default function NFTNews() {
   const { user, headers } = useNFT()
   const canPost = ['manager','hr'].includes(user?.role)

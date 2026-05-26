@@ -1,4 +1,4 @@
-import { C } from './NFTApp'
+import { C } from './NFTContext'
 export default function NFTCars() {
   return (
     <div style={{ padding:28, maxWidth:900 }}>

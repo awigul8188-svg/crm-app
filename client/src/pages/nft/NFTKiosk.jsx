@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNFT, C } from './NFTApp'
+import { useNFT, C } from './NFTContext'
 const CATS = ['All','Food','Snacks','Drinks']
 const inp = { width:'100%', padding:'9px 12px', borderRadius:10, border:`1.5px solid ${C.border}`, background:'#fff', color:C.dark, fontSize:13, fontFamily:'"Plus Jakarta Sans",sans-serif', outline:'none', boxSizing:'border-box' }
 const STATUS_COLOR = { pending:C.pink, preparing:C.lavender, ready:C.tealDark, delivered:'#6b7280' }

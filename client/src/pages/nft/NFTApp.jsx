@@ -1,4 +1,6 @@
-import { useState, useEffect, createContext, useContext } from 'react'
+import { useState, useEffect } from 'react'
+import { C, NFTCtx, useNFT } from './NFTContext'
+export { C, NFTCtx, useNFT } // re-export for pages that import from NFTApp
 import NFTLogin from './NFTLogin'
 import NFTDashboard from './NFTDashboard'
 import NFTProfile from './NFTProfile'
@@ -9,24 +11,6 @@ import NFTMessages from './NFTMessages'
 import NFTNews from './NFTNews'
 import NFTCars from './NFTCars'
 import NFTAdmin from './NFTAdmin'
-
-// Brand colors
-export const C = {
-  teal:    '#6ce5c6',
-  tealDark:'#3db99a',
-  black:   '#020202',
-  dark:    '#1f1f1f',
-  pink:    '#ec6daa',
-  lavender:'#9999e9',
-  gray:    '#6a646a',
-  bg:      '#f6f7f9',
-  card:    '#ffffff',
-  border:  '#e8e8ec',
-  border2: '#d0d0d8',
-}
-
-export const NFTCtx = createContext({})
-export const useNFT = () => useContext(NFTCtx)
 
 const NAV = [
   { key:'dashboard', icon:'▣', label:'Dashboard'    },

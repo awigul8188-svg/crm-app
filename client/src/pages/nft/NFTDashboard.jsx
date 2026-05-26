@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNFT, C } from './NFTApp'
+import { useNFT, C } from './NFTContext'
 
 function StatCard({ label, value, sub, accent, icon }) {
   return (

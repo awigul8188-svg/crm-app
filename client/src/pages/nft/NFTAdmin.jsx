@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNFT, C } from './NFTApp'
+import { useNFT, C } from './NFTContext'
 const inp = { width:'100%', padding:'9px 12px', borderRadius:10, border:`1.5px solid ${C.border}`, background:'#fff', color:C.dark, fontSize:13, fontFamily:'"Plus Jakarta Sans",sans-serif', outline:'none', boxSizing:'border-box' }
 const btn = { padding:'9px 20px', borderRadius:10, border:'none', background:C.teal, color:C.black, fontWeight:700, fontSize:13, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }
 const lbl = { fontSize:10, fontWeight:700, color:C.gray, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6, display:'block' }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNFT, C } from './NFTApp'
+import { useNFT, C } from './NFTContext'
 const inp = { flex:1, padding:'10px 14px', borderRadius:12, border:`1.5px solid ${C.border}`, background:'#fff', color:C.dark, fontSize:13, fontFamily:'"Plus Jakarta Sans",sans-serif', outline:'none', transition:'border-color 0.15s' }
 export default function NFTMessages() {
   const { user, headers } = useNFT()
