@@ -334,3 +334,46 @@ function runNFTMigrations() {
   }
 }
 module.exports.runNFTMigrations = runNFTMigrations;
+
+function runNFTV2Migrations() {
+  const db = getDB();
+  const bcrypt = require('bcrypt');
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS nft_users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        real_name TEXT NOT NULL,
+        role TEXT DEFAULT 'employee',
+        job_title TEXT,
+        department TEXT DEFAULT 'Sales',
+        photo_url TEXT,
+        phone TEXT,
+        hire_date DATE,
+        bio TEXT,
+        token_version INTEGER DEFAULT 1,
+        created_by INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    // Update NFT tables to allow null or nft_user references
+    // Seed managers if not present
+    const count = db.prepare("SELECT COUNT(*) as c FROM nft_users WHERE role='manager'").get().c;
+    if (count === 0) {
+      const hash = bcrypt.hashSync('Admin@123', 10);
+      db.prepare("INSERT OR IGNORE INTO nft_users (username, password, real_name, role, job_title) VALUES (?,?,?,?,?)").run('awais', hash, 'Awais Gul Khan', 'manager', 'Managing Director');
+      db.prepare("INSERT OR IGNORE INTO nft_users (username, password, real_name, role, job_title) VALUES (?,?,?,?,?)").run('hammad', hash, 'Hammad Asif', 'manager', 'Manager');
+      // Seed employees
+      const employees = [
+        ['usman', 'Usman Azeem', 'Account Executive'],
+        ['ahmed_naseem', 'Ahmed Naseem', 'Account Executive'],
+        ['ahmed_shafay', 'Ahmed Shafay', 'Account Executive'],
+        ['aman', 'Aman', 'Account Executive'],
+      ];
+      const empHash = bcrypt.hashSync('Team@123', 10);
+      employees.forEach(([u, n, t]) => db.prepare("INSERT OR IGNORE INTO nft_users (username, password, real_name, role, job_title) VALUES (?,?,?,?,?)").run(u, empHash, n, 'employee', t));
+    }
+  } catch(e) { console.log('NFT V2 migration note:', e.message); }
+}
+module.exports.runNFTV2Migrations = runNFTV2Migrations;

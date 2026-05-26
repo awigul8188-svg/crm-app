@@ -3,7 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
-const { initializeDB, runPurchasingMigrations, runPurchasingV2Migrations, runNFTMigrations } = require('./database');
+const { initializeDB, runPurchasingMigrations, runPurchasingV2Migrations, runNFTMigrations, runNFTV2Migrations } = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -69,4 +69,5 @@ initializeDB();
 runPurchasingMigrations();
 runPurchasingV2Migrations();
 runNFTMigrations();
+runNFTV2Migrations();
 server.listen(PORT, () => console.log(`CRM running on port ${PORT}`));

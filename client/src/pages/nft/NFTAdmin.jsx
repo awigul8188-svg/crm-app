@@ -1,64 +1,118 @@
 import { useState, useEffect } from 'react'
-import { useNFT } from './NFTApp'
-const AC='#00E5CC'
+import { useNFT, C } from './NFTApp'
+const inp = { width:'100%', padding:'9px 12px', borderRadius:10, border:`1.5px solid ${C.border}`, background:'#fff', color:C.dark, fontSize:13, fontFamily:'"Plus Jakarta Sans",sans-serif', outline:'none', boxSizing:'border-box' }
+const btn = { padding:'9px 20px', borderRadius:10, border:'none', background:C.teal, color:C.black, fontWeight:700, fontSize:13, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }
+const lbl = { fontSize:10, fontWeight:700, color:C.gray, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6, display:'block' }
 export default function NFTAdmin() {
-  const { user, profile, headers } = useNFT()
-  const [tab, setTab] = useState('salary'); const [users, setUsers] = useState([])
-  const [form, setForm] = useState({ user_id:'', month:new Date().toISOString().slice(0,7), base_salary:'', bonus:'', notes:'' })
+  const { user, headers } = useNFT()
+  const [tab, setTab] = useState('users')
+  const [users, setUsers] = useState([]); const [salaries, setSalaries] = useState([]); const [targets, setTargets] = useState([])
+  const [showNew, setShowNew] = useState(false); const [form, setForm] = useState({ username:'', password:'', real_name:'', role:'employee', job_title:'', department:'' })
+  const [sForm, setSForm] = useState({ user_id:'', month:new Date().toISOString().slice(0,7), base_salary:'', bonus:'', notes:'' })
   const [tForm, setTForm] = useState({ user_id:'', quarter:`${new Date().getFullYear()}-Q${Math.ceil((new Date().getMonth()+1)/3)}`, sales_target:'', gp_target:'', sales_achieved:'', gp_achieved:'' })
-  const [saving, setSaving] = useState(false); const [salaries, setSalaries] = useState([]); const [targets, setTargets] = useState([])
-  const loadData = () => {
-    fetch('/api/nft/profiles', { headers }).then(r=>r.json()).then(d=>setUsers(Array.isArray(d)?d:[]))
+  const [saving, setSaving] = useState(false); const [editUser, setEditUser] = useState(null); const [eForm, setEForm] = useState({})
+  const loadAll = () => {
+    fetch('/api/nft/users', { headers }).then(r=>r.json()).then(d=>setUsers(Array.isArray(d)?d:[]))
     fetch('/api/nft/salary', { headers }).then(r=>r.json()).then(d=>setSalaries(Array.isArray(d)?d:[]))
     fetch('/api/nft/targets', { headers }).then(r=>r.json()).then(d=>setTargets(Array.isArray(d)?d:[]))
   }
-  useEffect(() => { loadData() }, [])
-  const inp = { width:'100%', padding:'9px 12px', borderRadius:10, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.06)', color:'#fff', fontSize:13, fontFamily:'"Plus Jakarta Sans",sans-serif', outline:'none' }
-  const saveSalary = async () => {
+  useEffect(() => { loadAll() }, [])
+  const createUser = async () => {
     setSaving(true)
-    await fetch('/api/nft/salary', { method:'POST', headers:{...headers,'Content-Type':'application/json'}, body:JSON.stringify(form) })
-    setSaving(false); loadData()
+    const r = await fetch('/api/nft/users', { method:'POST', headers:{...headers,'Content-Type':'application/json'}, body:JSON.stringify(form) })
+    const d = await r.json(); if(!r.ok) alert(d.error)
+    setSaving(false); setShowNew(false); setForm({username:'',password:'',real_name:'',role:'employee',job_title:'',department:''}); loadAll()
   }
-  const saveTarget = async () => {
-    setSaving(true)
-    await fetch('/api/nft/targets', { method:'POST', headers:{...headers,'Content-Type':'application/json'}, body:JSON.stringify(tForm) })
-    setSaving(false); loadData()
+  const deleteUser = async (id, name) => {
+    if (!confirm(`Delete ${name}?`)) return
+    await fetch(`/api/nft/users/${id}`, { method:'DELETE', headers }); loadAll()
   }
+  const saveSalary = async () => { setSaving(true); await fetch('/api/nft/salary', { method:'POST', headers:{...headers,'Content-Type':'application/json'}, body:JSON.stringify(sForm) }); setSaving(false); loadAll() }
+  const saveTarget = async () => { setSaving(true); await fetch('/api/nft/targets', { method:'POST', headers:{...headers,'Content-Type':'application/json'}, body:JSON.stringify(tForm) }); setSaving(false); loadAll() }
+  const ROLES = ['hr','finance','admin','employee']
+  const ROLE_COLORS = { manager:`${C.teal}20`, hr:`${C.lavender}20`, finance:`${C.pink}20`, admin:`${C.gray}20`, employee:`#f0f0f0` }
+  const ROLE_TEXT = { manager:C.tealDark, hr:C.lavender, finance:C.pink, admin:C.gray, employee:C.gray }
   return (
-    <div style={{ padding:28, maxWidth:1000 }}>
-      <h1 style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:800, fontSize:22, color:'#fff', marginBottom:20 }}>⚙ Admin Panel</h1>
-      <div style={{ display:'flex', gap:2, background:'rgba(255,255,255,0.06)', borderRadius:10, padding:3, marginBottom:24, width:'fit-content' }}>
-        {['salary','targets','employees'].map(t=><button key={t} onClick={()=>setTab(t)} style={{ padding:'7px 18px', borderRadius:7, border:'none', background:tab===t?AC:'transparent', color:tab===t?'#060610':'rgba(255,255,255,0.5)', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', textTransform:'capitalize' }}>{t}</button>)}
+    <div style={{ padding:28, maxWidth:1100 }}>
+      <h1 style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:900, fontSize:22, color:C.black, marginBottom:20 }}>⚙ Admin Panel</h1>
+      <div style={{ display:'flex', gap:2, background:C.bg, borderRadius:10, padding:3, marginBottom:24, width:'fit-content', border:`1px solid ${C.border}` }}>
+        {['users','salary','targets'].map(t=><button key={t} onClick={()=>setTab(t)} style={{ padding:'7px 18px', borderRadius:7, border:'none', background:tab===t?C.card:'transparent', color:tab===t?C.black:C.gray, fontSize:13, fontWeight:tab===t?700:500, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', boxShadow:tab===t?'0 1px 4px rgba(0,0,0,0.08)':'none', textTransform:'capitalize' }}>{t}</button>)}
       </div>
+      {tab==='users' && (
+        <div>
+          {user?.role==='manager' && <button onClick={()=>setShowNew(!showNew)} style={{ ...btn, marginBottom:16 }}>+ Add User</button>}
+          {showNew && (
+            <div style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, padding:20, marginBottom:20, boxShadow:'0 2px 8px rgba(0,0,0,0.06)' }}>
+              <div style={{ fontWeight:700, fontSize:14, color:C.dark, marginBottom:14 }}>New User</div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:10 }}>
+                {[['Full Name','real_name','text'],['Username','username','text'],['Password','password','password'],['Job Title','job_title','text'],['Department','department','text']].map(([l,k,t])=>(
+                  <div key={k}><label style={lbl}>{l}</label><input type={t} value={form[k]||''} onChange={e=>setForm(f=>({...f,[k]:e.target.value}))} style={inp} /></div>
+                ))}
+                <div><label style={lbl}>Role</label>
+                  <select value={form.role} onChange={e=>setForm(f=>({...f,role:e.target.value}))} style={{ ...inp, cursor:'pointer' }}>
+                    {ROLES.map(r=><option key={r} value={r} style={{ textTransform:'capitalize' }}>{r}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div style={{ display:'flex', gap:8 }}>
+                <button onClick={()=>setShowNew(false)} style={{ padding:'8px 16px', borderRadius:8, border:`1px solid ${C.border}`, background:'#fff', color:C.gray, fontSize:12, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>Cancel</button>
+                <button onClick={createUser} disabled={saving} style={btn}>{saving?'Creating...':'Create User'}</button>
+              </div>
+            </div>
+          )}
+          <div style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, overflow:'hidden', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+              <thead><tr style={{ background:C.bg, borderBottom:`2px solid ${C.border}` }}>
+                {['Name','Username','Role','Job Title','Department','Joined',...(user?.role==='manager'?['Actions']:[])].map(h=><th key={h} style={{ textAlign:'left', padding:'10px 14px', fontSize:10, fontWeight:700, color:C.gray, textTransform:'uppercase', letterSpacing:'0.08em' }}>{h}</th>)}
+              </tr></thead>
+              <tbody>{users.map((u,i)=>(
+                <tr key={u.id} style={{ borderBottom:`1px solid ${C.border}`, background:i%2===0?'#fff':'#fcfcfc' }}>
+                  <td style={{ padding:'11px 14px' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                      {u.photo_url?<img src={u.photo_url} style={{ width:28,height:28,borderRadius:8,objectFit:'cover' }}/>:<div style={{ width:28,height:28,borderRadius:8,background:C.teal,color:C.black,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:12 }}>{u.real_name?.[0]}</div>}
+                      <span style={{ fontWeight:600, color:C.dark }}>{u.real_name}</span>
+                    </div>
+                  </td>
+                  <td style={{ padding:'11px 14px', color:C.gray, fontFamily:'monospace', fontSize:12 }}>{u.username}</td>
+                  <td style={{ padding:'11px 14px' }}><span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:ROLE_COLORS[u.role]||'#f0f0f0', color:ROLE_TEXT[u.role]||C.gray, textTransform:'capitalize' }}>{u.role}</span></td>
+                  <td style={{ padding:'11px 14px', color:C.gray, fontSize:12 }}>{u.job_title||'—'}</td>
+                  <td style={{ padding:'11px 14px', color:C.gray, fontSize:12 }}>{u.department||'—'}</td>
+                  <td style={{ padding:'11px 14px', color:C.gray, fontSize:12 }}>{new Date(u.created_at).toLocaleDateString()}</td>
+                  {user?.role==='manager' && <td style={{ padding:'11px 14px' }}>
+                    {u.role!=='manager' && <button onClick={()=>deleteUser(u.id,u.real_name)} style={{ padding:'4px 12px', borderRadius:8, border:'1px solid #fecaca', background:'#fff5f5', color:'#dc2626', fontSize:11, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>Delete</button>}
+                  </td>}
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </div>
+      )}
       {tab==='salary' && (
         <div>
-          <div style={{ background:'#13131f', borderRadius:14, border:'1px solid rgba(255,255,255,0.08)', padding:20, marginBottom:20 }}>
-            <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:700, fontSize:14, color:'#fff', marginBottom:14 }}>Set Salary</div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:10, marginBottom:10 }}>
-              <select value={form.user_id} onChange={e=>setForm(f=>({...f,user_id:e.target.value}))} style={{ ...inp, cursor:'pointer' }}>
-                <option value="">Select Employee</option>
-                {users.map(u=><option key={u.user_id} value={u.user_id}>{u.real_name}</option>)}
-              </select>
-              <input type="month" value={form.month} onChange={e=>setForm(f=>({...f,month:e.target.value}))} style={inp} />
-              <input type="number" placeholder="Base Salary $" value={form.base_salary} onChange={e=>setForm(f=>({...f,base_salary:e.target.value}))} style={inp} />
-              <input type="number" placeholder="Bonus $" value={form.bonus} onChange={e=>setForm(f=>({...f,bonus:e.target.value}))} style={inp} />
-              <input placeholder="Notes" value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} style={inp} />
+          {['manager','finance'].includes(user?.role) && (
+            <div style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, padding:20, marginBottom:20, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+              <div style={{ fontWeight:700, fontSize:14, color:C.dark, marginBottom:14 }}>Set Salary</div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:10, marginBottom:10 }}>
+                <div><label style={lbl}>Employee</label><select value={sForm.user_id} onChange={e=>setSForm(f=>({...f,user_id:e.target.value}))} style={{ ...inp, cursor:'pointer' }}><option value="">Select</option>{users.map(u=><option key={u.id} value={u.id}>{u.real_name}</option>)}</select></div>
+                <div><label style={lbl}>Month</label><input type="month" value={sForm.month} onChange={e=>setSForm(f=>({...f,month:e.target.value}))} style={inp} /></div>
+                <div><label style={lbl}>Base Salary $</label><input type="number" value={sForm.base_salary} onChange={e=>setSForm(f=>({...f,base_salary:e.target.value}))} style={inp} /></div>
+                <div><label style={lbl}>Bonus $</label><input type="number" value={sForm.bonus} onChange={e=>setSForm(f=>({...f,bonus:e.target.value}))} style={inp} /></div>
+                <div><label style={lbl}>Notes</label><input value={sForm.notes} onChange={e=>setSForm(f=>({...f,notes:e.target.value}))} style={inp} /></div>
+              </div>
+              <button onClick={saveSalary} disabled={saving} style={btn}>{saving?'Saving...':'Save Salary'}</button>
             </div>
-            <button onClick={saveSalary} disabled={saving} style={{ padding:'9px 24px', borderRadius:10, border:'none', background:'linear-gradient(135deg,#00E5CC,#7C3AED)', color:'#fff', fontWeight:700, fontSize:13, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>{saving?'Saving...':'Save Salary'}</button>
-          </div>
-          <div style={{ background:'#13131f', borderRadius:14, border:'1px solid rgba(255,255,255,0.08)', overflow:'hidden' }}>
+          )}
+          <div style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, overflow:'hidden', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
             <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
-              <thead><tr style={{ background:'rgba(255,255,255,0.04)', borderBottom:'1px solid rgba(255,255,255,0.08)' }}>
-                {['Employee','Month','Base Salary','Bonus','Total','Notes'].map(h=><th key={h} style={{ textAlign:'left', padding:'10px 14px', fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.35)', textTransform:'uppercase', letterSpacing:'0.08em' }}>{h}</th>)}
-              </tr></thead>
+              <thead><tr style={{ background:C.bg, borderBottom:`2px solid ${C.border}` }}>{['Employee','Month','Base','Bonus','Total','Notes'].map(h=><th key={h} style={{ textAlign:'left', padding:'10px 14px', fontSize:10, fontWeight:700, color:C.gray, textTransform:'uppercase', letterSpacing:'0.08em' }}>{h}</th>)}</tr></thead>
               <tbody>{salaries.map((s,i)=>(
-                <tr key={s.id} style={{ borderBottom:'1px solid rgba(255,255,255,0.05)', background:i%2===0?'transparent':'rgba(255,255,255,0.02)' }}>
-                  <td style={{ padding:'10px 14px', fontWeight:600, color:'#fff' }}>{s.real_name}</td>
-                  <td style={{ padding:'10px 14px', color:'rgba(255,255,255,0.5)' }}>{s.month}</td>
-                  <td style={{ padding:'10px 14px', color:AC, fontWeight:700 }}>${s.base_salary?.toLocaleString()}</td>
-                  <td style={{ padding:'10px 14px', color:'#f59e0b', fontWeight:700 }}>{s.bonus?`$${s.bonus?.toLocaleString()}`:'—'}</td>
-                  <td style={{ padding:'10px 14px', color:'#10b981', fontWeight:800 }}>${((s.base_salary||0)+(s.bonus||0)).toLocaleString()}</td>
-                  <td style={{ padding:'10px 14px', color:'rgba(255,255,255,0.4)', fontSize:12 }}>{s.notes||'—'}</td>
+                <tr key={s.id} style={{ borderBottom:`1px solid ${C.border}`, background:i%2===0?'#fff':'#fcfcfc' }}>
+                  <td style={{ padding:'10px 14px', fontWeight:600, color:C.dark }}>{s.real_name}</td>
+                  <td style={{ padding:'10px 14px', color:C.gray }}>{s.month}</td>
+                  <td style={{ padding:'10px 14px', fontWeight:700, color:C.tealDark }}>${(s.base_salary||0).toLocaleString()}</td>
+                  <td style={{ padding:'10px 14px', color:C.pink, fontWeight:600 }}>{s.bonus?`$${s.bonus.toLocaleString()}`:'—'}</td>
+                  <td style={{ padding:'10px 14px', fontWeight:800, color:C.dark }}>${((s.base_salary||0)+(s.bonus||0)).toLocaleString()}</td>
+                  <td style={{ padding:'10px 14px', color:C.gray, fontSize:12 }}>{s.notes||'—'}</td>
                 </tr>
               ))}</tbody>
             </table>
@@ -67,65 +121,37 @@ export default function NFTAdmin() {
       )}
       {tab==='targets' && (
         <div>
-          <div style={{ background:'#13131f', borderRadius:14, border:'1px solid rgba(255,255,255,0.08)', padding:20, marginBottom:20 }}>
-            <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:700, fontSize:14, color:'#fff', marginBottom:14 }}>Set Quarterly Targets</div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:10 }}>
-              <select value={tForm.user_id} onChange={e=>setTForm(f=>({...f,user_id:e.target.value}))} style={{ ...inp, cursor:'pointer' }}>
-                <option value="">Select Employee</option>
-                {users.map(u=><option key={u.user_id} value={u.user_id}>{u.real_name}</option>)}
-              </select>
-              <input placeholder="Quarter e.g. 2026-Q1" value={tForm.quarter} onChange={e=>setTForm(f=>({...f,quarter:e.target.value}))} style={inp} />
-              <input type="number" placeholder="Sales Target $" value={tForm.sales_target} onChange={e=>setTForm(f=>({...f,sales_target:e.target.value}))} style={inp} />
-              <input type="number" placeholder="GP Target $" value={tForm.gp_target} onChange={e=>setTForm(f=>({...f,gp_target:e.target.value}))} style={inp} />
-              <input type="number" placeholder="Sales Achieved $" value={tForm.sales_achieved} onChange={e=>setTForm(f=>({...f,sales_achieved:e.target.value}))} style={inp} />
-              <input type="number" placeholder="GP Achieved $" value={tForm.gp_achieved} onChange={e=>setTForm(f=>({...f,gp_achieved:e.target.value}))} style={inp} />
+          {user?.role==='manager' && (
+            <div style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, padding:20, marginBottom:20, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+              <div style={{ fontWeight:700, fontSize:14, color:C.dark, marginBottom:14 }}>Set Targets</div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:10 }}>
+                <div><label style={lbl}>Employee</label><select value={tForm.user_id} onChange={e=>setTForm(f=>({...f,user_id:e.target.value}))} style={{ ...inp, cursor:'pointer' }}><option value="">Select</option>{users.filter(u=>u.role==='employee').map(u=><option key={u.id} value={u.id}>{u.real_name}</option>)}</select></div>
+                <div><label style={lbl}>Quarter</label><input value={tForm.quarter} onChange={e=>setTForm(f=>({...f,quarter:e.target.value}))} style={inp} placeholder="e.g. 2026-Q1" /></div>
+                <div><label style={lbl}>Sales Target $</label><input type="number" value={tForm.sales_target} onChange={e=>setTForm(f=>({...f,sales_target:e.target.value}))} style={inp} /></div>
+                <div><label style={lbl}>GP Target $</label><input type="number" value={tForm.gp_target} onChange={e=>setTForm(f=>({...f,gp_target:e.target.value}))} style={inp} /></div>
+                <div><label style={lbl}>Sales Achieved $</label><input type="number" value={tForm.sales_achieved} onChange={e=>setTForm(f=>({...f,sales_achieved:e.target.value}))} style={inp} /></div>
+                <div><label style={lbl}>GP Achieved $</label><input type="number" value={tForm.gp_achieved} onChange={e=>setTForm(f=>({...f,gp_achieved:e.target.value}))} style={inp} /></div>
+              </div>
+              <button onClick={saveTarget} disabled={saving} style={btn}>{saving?'Saving...':'Save Targets'}</button>
             </div>
-            <button onClick={saveTarget} disabled={saving} style={{ padding:'9px 24px', borderRadius:10, border:'none', background:'linear-gradient(135deg,#00E5CC,#7C3AED)', color:'#fff', fontWeight:700, fontSize:13, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>{saving?'Saving...':'Save Target'}</button>
-          </div>
-          <div style={{ background:'#13131f', borderRadius:14, border:'1px solid rgba(255,255,255,0.08)', overflow:'hidden' }}>
+          )}
+          <div style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, overflow:'hidden', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
             <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
-              <thead><tr style={{ background:'rgba(255,255,255,0.04)', borderBottom:'1px solid rgba(255,255,255,0.08)' }}>
-                {['Employee','Quarter','Sales Target','Sales Achieved','GP Target','GP Achieved'].map(h=><th key={h} style={{ textAlign:'left', padding:'10px 14px', fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.35)', textTransform:'uppercase', letterSpacing:'0.08em' }}>{h}</th>)}
-              </tr></thead>
+              <thead><tr style={{ background:C.bg, borderBottom:`2px solid ${C.border}` }}>{['Employee','Quarter','Sales Target','Sales Achieved','GP Target','GP Achieved'].map(h=><th key={h} style={{ textAlign:'left', padding:'10px 14px', fontSize:10, fontWeight:700, color:C.gray, textTransform:'uppercase', letterSpacing:'0.08em' }}>{h}</th>)}</tr></thead>
               <tbody>{targets.map((t,i)=>{
                 const sp=t.sales_target>0?Math.round(t.sales_achieved/t.sales_target*100):0
                 const gp=t.gp_target>0?Math.round(t.gp_achieved/t.gp_target*100):0
-                return (
-                  <tr key={t.id} style={{ borderBottom:'1px solid rgba(255,255,255,0.05)', background:i%2===0?'transparent':'rgba(255,255,255,0.02)' }}>
-                    <td style={{ padding:'10px 14px', fontWeight:600, color:'#fff' }}>{t.real_name}</td>
-                    <td style={{ padding:'10px 14px', color:'rgba(255,255,255,0.5)' }}>{t.quarter}</td>
-                    <td style={{ padding:'10px 14px', color:'rgba(255,255,255,0.5)' }}>${t.sales_target?.toLocaleString()}</td>
-                    <td style={{ padding:'10px 14px' }}><span style={{ color:sp>=100?'#10b981':AC, fontWeight:700 }}>${t.sales_achieved?.toLocaleString()}</span> <span style={{ color:'rgba(255,255,255,0.3)', fontSize:11 }}>({sp}%)</span></td>
-                    <td style={{ padding:'10px 14px', color:'rgba(255,255,255,0.5)' }}>${t.gp_target?.toLocaleString()}</td>
-                    <td style={{ padding:'10px 14px' }}><span style={{ color:gp>=100?'#10b981':'#f59e0b', fontWeight:700 }}>${t.gp_achieved?.toLocaleString()}</span> <span style={{ color:'rgba(255,255,255,0.3)', fontSize:11 }}>({gp}%)</span></td>
-                  </tr>
-                )
+                return <tr key={t.id} style={{ borderBottom:`1px solid ${C.border}`, background:i%2===0?'#fff':'#fcfcfc' }}>
+                  <td style={{ padding:'10px 14px', fontWeight:600, color:C.dark }}>{t.real_name}</td>
+                  <td style={{ padding:'10px 14px', color:C.gray }}>{t.quarter}</td>
+                  <td style={{ padding:'10px 14px', color:C.gray }}>${(t.sales_target||0).toLocaleString()}</td>
+                  <td style={{ padding:'10px 14px' }}><span style={{ color:sp>=100?C.tealDark:C.dark, fontWeight:700 }}>${(t.sales_achieved||0).toLocaleString()}</span> <span style={{ color:C.gray, fontSize:11 }}>({sp}%)</span></td>
+                  <td style={{ padding:'10px 14px', color:C.gray }}>${(t.gp_target||0).toLocaleString()}</td>
+                  <td style={{ padding:'10px 14px' }}><span style={{ color:gp>=100?C.tealDark:C.pink, fontWeight:700 }}>${(t.gp_achieved||0).toLocaleString()}</span> <span style={{ color:C.gray, fontSize:11 }}>({gp}%)</span></td>
+                </tr>
               })}</tbody>
             </table>
           </div>
-        </div>
-      )}
-      {tab==='employees' && (
-        <div style={{ background:'#13131f', borderRadius:14, border:'1px solid rgba(255,255,255,0.08)', overflow:'hidden' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
-            <thead><tr style={{ background:'rgba(255,255,255,0.04)', borderBottom:'1px solid rgba(255,255,255,0.08)' }}>
-              {['Employee','Job Title','Department','CRM Role','NFT Role'].map(h=><th key={h} style={{ textAlign:'left', padding:'10px 14px', fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.35)', textTransform:'uppercase', letterSpacing:'0.08em' }}>{h}</th>)}
-            </tr></thead>
-            <tbody>{users.map((u,i)=>(
-              <tr key={u.user_id} style={{ borderBottom:'1px solid rgba(255,255,255,0.05)', background:i%2===0?'transparent':'rgba(255,255,255,0.02)' }}>
-                <td style={{ padding:'10px 14px' }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                    {u.photo_url?<img src={u.photo_url} alt="" style={{ width:28, height:28, borderRadius:8, objectFit:'cover' }}/>:<div style={{ width:28, height:28, borderRadius:8, background:'linear-gradient(135deg,#00E5CC,#7C3AED)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:800, fontSize:12, color:'#fff' }}>{u.real_name?.[0]}</div>}
-                    <span style={{ fontWeight:600, color:'#fff' }}>{u.real_name}</span>
-                  </div>
-                </td>
-                <td style={{ padding:'10px 14px', color:'rgba(255,255,255,0.5)' }}>{u.job_title||'—'}</td>
-                <td style={{ padding:'10px 14px', color:'rgba(255,255,255,0.5)' }}>{u.department||'—'}</td>
-                <td style={{ padding:'10px 14px' }}><span style={{ fontSize:11, padding:'2px 8px', borderRadius:20, background:'rgba(0,229,204,0.08)', color:AC, border:`1px solid ${AC}20` }}>{u.crm_role}</span></td>
-                <td style={{ padding:'10px 14px' }}><span style={{ fontSize:11, padding:'2px 8px', borderRadius:20, background:'rgba(124,58,237,0.1)', color:'#a78bfa', border:'1px solid rgba(124,58,237,0.2)' }}>{u.nft_role||'employee'}</span></td>
-              </tr>
-            ))}</tbody>
-          </table>
         </div>
       )}
     </div>
