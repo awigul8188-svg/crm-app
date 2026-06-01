@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../App'
 import { useNav } from '../App'
 import { navItems } from '../rbac'
-import GlobalSearch from './components/GlobalSearch'
+import GlobalSearch from './GlobalSearch'
 
 const BRAND = '#00D4C8'
 const token = () => localStorage.getItem('crm_token')
