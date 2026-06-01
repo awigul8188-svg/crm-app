@@ -82,12 +82,15 @@ router.get('/', (req, res) => {
     const s = `%${search}%`; params.push(s, s, s);
   }
 
-  // Fetch inquiries — simple query, no JSON functions (max SQLite compatibility)
+  // Correlated subqueries for requirements — no IN(...) so no 999-param limit
   const rows = db.prepare(`
     SELECT i.*,
       c.name  as customer_name,  c.company as customer_company,
       c.email as customer_email, c.phone   as customer_phone,
-      ae.name as assigned_name,  ae.id     as ae_id
+      ae.name as assigned_name,  ae.id     as ae_id,
+      (SELECT GROUP_CONCAT(r.part_number,'||') FROM requirements r WHERE r.inquiry_id=i.id) as parts_concat,
+      (SELECT GROUP_CONCAT(r.quantity,   '||') FROM requirements r WHERE r.inquiry_id=i.id) as qty_concat,
+      (SELECT GROUP_CONCAT(r.id,         '||') FROM requirements r WHERE r.inquiry_id=i.id) as req_ids
     FROM inquiries i
     JOIN customers c ON i.customer_id=c.id
     LEFT JOIN users ae ON i.assigned_to=ae.id
@@ -95,20 +98,14 @@ router.get('/', (req, res) => {
     ORDER BY i.created_at DESC
   `).all(...params);
 
-  // Fetch requirements for all returned inquiries in one query (no JSON functions)
-  let requirementsMap = {};
-  if (rows.length > 0) {
-    const ids = rows.map(r => r.id);
-    const reqs = db.prepare(
-      `SELECT inquiry_id, id, part_number, quantity, notes FROM requirements WHERE inquiry_id IN (${ids.map(()=>'?').join(',')})`
-    ).all(...ids);
-    reqs.forEach(r => {
-      if (!requirementsMap[r.inquiry_id]) requirementsMap[r.inquiry_id] = [];
-      requirementsMap[r.inquiry_id].push({ id: r.id, part_number: r.part_number, quantity: r.quantity, notes: r.notes });
-    });
-  }
-
-  const result = rows.map(r => ({ ...r, requirements: requirementsMap[r.id] || [] }));
+  const result = rows.map(r => {
+    const parts = (r.parts_concat||'').split('||').filter(Boolean);
+    const qtys  = (r.qty_concat  ||'').split('||').filter(Boolean);
+    const rids  = (r.req_ids     ||'').split('||').filter(Boolean);
+    const requirements = parts.map((p,i) => ({ id: rids[i]?parseInt(rids[i]):null, part_number:p, quantity:qtys[i]||null }));
+    const { parts_concat, qty_concat, req_ids, ...rest } = r;
+    return { ...rest, requirements };
+  });
   res.json(result);
 });
 
