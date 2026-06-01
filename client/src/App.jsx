@@ -97,6 +97,7 @@ export default function App() {
     // ── Purchaser: only their own parts + dashboard ──────────
     if (role === 'purchaser') {
       if (page === 'notifications') return <Notifications />
+      if (page === 'purchasing')    return <PurchasingManagerView />
       return <PurchaserDashboard />
     }
 
