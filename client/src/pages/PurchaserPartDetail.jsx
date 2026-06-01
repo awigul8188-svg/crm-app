@@ -68,7 +68,7 @@ export default function PurchaserPartDetail({ assignmentId }) {
       {/* Header */}
       <div style={{ display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:20,flexWrap:'wrap',gap:12 }}>
         <div>
-          <h1 style={{ fontFamily:'"Bricolage Grotesque",sans-serif',fontWeight:800,fontSize:24,color:'var(--text)',margin:0,fontFamily:'monospace' }}>{part.part_number}</h1>
+          <h1 style={{ fontFamily:'"Bricolage Grotesque",sans-serif',fontWeight:800,fontSize:24,color:'var(--text)',margin:0 }}>{part.part_number}</h1>
           <div style={{ display:'flex',gap:10,marginTop:8,flexWrap:'wrap' }}>
             <span style={{ fontSize:12,color:'var(--text-3)' }}>Qty: <b style={{ color:'var(--text)' }}>{part.quantity||'—'}</b></span>
             <span style={{ fontSize:12,color:'var(--text-3)' }}>AE: <b style={{ color:'var(--text)' }}>{part.ae_name||'—'}</b></span>

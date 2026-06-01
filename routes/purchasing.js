@@ -160,7 +160,7 @@ router.post('/quote', (req, res) => {
   else { db.prepare('INSERT INTO purchase_quotes (assignment_id,requirement_id,purchaser_id,price,condition,lead_time,supplier_name,notes) VALUES (?,?,?,?,?,?,?,?)').run(assignment_id, a.requirement_id, req.user.id, price, condition, lead_time, supplier_name, notes); }
   db.prepare("UPDATE purchase_assignments SET status='quoted' WHERE id=?").run(assignment_id);
   // Log price change to part_comments timeline
-  const changeNote = oldPrice ? \`Price updated: $\${oldPrice} → $\${price}\` : \`Price quoted: $\${price}\`;
+  const changeNote = oldPrice ? ('Price updated: $' + oldPrice + ' → $' + price) : ('Price quoted: $' + price);
   try { db.prepare('INSERT INTO part_comments (assignment_id,user_id,user_name,user_role,comment) VALUES (?,?,?,?,?)').run(assignment_id, req.user.id, req.user.name, req.user.role, changeNote); } catch(e) {}
   const isOver = a.selling_price && parseFloat(String(price).replace(/[$,]/g,'')) > parseFloat(String(a.selling_price).replace(/[$,]/g,''));
   const msg = `${a.part_number} — ${condition?condition+', ':''}$${price}${lead_time?', '+lead_time:''}${isOver?' ⚠️ OVER selling price':''}`;
