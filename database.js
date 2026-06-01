@@ -16,6 +16,8 @@ function getDB() {
 
 function initializeDB() {
   const db = getDB();
+  const { runTargetsMigration } = require('./migrations/targets')
+  runTargetsMigration(db)
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
