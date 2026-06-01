@@ -12,6 +12,7 @@ export const useNav  = () => useContext(NavCtx)
 import Dashboard            from './pages/Dashboard'
 import AEDashboard          from './pages/AEDashboard'
 import PurchaserPartsView   from './pages/PurchaserPartsView'
+import PMPartDetail          from './pages/PMPartDetail'
 import PurchaserPartDetail  from './pages/PurchaserPartDetail'
 import PurchaserDashboard   from './pages/PurchaserDashboard'
 import PurchasingManagerView from './pages/PurchasingManagerView'
@@ -97,6 +98,11 @@ export default function App() {
     const role = user.role
 
     // ── Purchaser: only their own parts + dashboard ──────────
+    if (page === 'pm-part-detail') {
+      if (role === 'purchasing_manager' || role === 'manager') {
+        return <PMPartDetail assignmentId={pageProps.assignmentId} />
+      }
+    }
     if (page === 'purchaser-part-detail') {
       if (role === 'purchaser') {
         return <PurchaserPartDetail assignmentId={pageProps.assignmentId} />

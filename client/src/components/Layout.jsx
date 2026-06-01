@@ -48,19 +48,21 @@ export default function Layout({ children, page }) {
       { name: 'leads',         label: 'Leads',         icon: '◎' },
       { name: 'repeat',        label: 'Repeat',        icon: '↻' },
       { name: 'orders',        label: 'Orders',        icon: '◈' },
-      { name: 'customers',     label: 'Customers',     icon: '👥' },
       { name: 'notifications', label: 'Notifications', icon: '🔔', badge: notifCount },
     ]
   }
 
   const adminNav = () => {
     if (role === 'purchaser' || role === 'ae') return []
-    const items = [
-      { name: 'users',      label: 'Users',       icon: '⚙' },
-      { name: 'purchasing', label: 'Purchasing',  icon: '📦' },
+    if (role === 'purchasing_manager') return [
+      { name: 'users', label: 'Users (Purchasers)', icon: '⚙' },
     ]
-    if (role === 'manager') items.splice(1, 0, { name: 'import', label: 'Import Data', icon: '📥' })
-    return items
+    // manager
+    return [
+      { name: 'import',     label: 'Import Data', icon: '📥' },
+      { name: 'users',      label: 'Users',        icon: '⚙' },
+      { name: 'purchasing', label: 'Purchasing',   icon: '📦' },
+    ]
   }
 
   const isActive = (name) => {

@@ -43,18 +43,19 @@ const PART_SELECT = `
 
 router.get('/parts', canManage, (req, res) => {
   const db = getDB();
-  const { type, status, purchaser_id, page = 1, from, to } = req.query;
+  const { type, status, urgency, purchaser_id, page = 1, from, to, sort } = req.query;
   let where = "r.part_number != ''"; const params = [];
   if (type) { where += ' AND i.type = ?'; params.push(type); }
   if (status === 'unassigned') where += ' AND pa.id IS NULL';
   else if (status === 'pending') { where += ' AND pa.id IS NOT NULL AND pa.status = ?'; params.push('pending'); }
   else if (status === 'quoted') { where += ' AND pa.status = ?'; params.push('quoted'); }
   else if (status === 'not_in_stock') { where += ' AND pa.not_in_stock = 1'; }
+  if (urgency) { where += ' AND pa.urgency = ?'; params.push(urgency); }
   if (purchaser_id) { where += ' AND pa.purchaser_id = ?'; params.push(purchaser_id); }
   if (from) { where += ' AND date(i.created_at) >= ?'; params.push(from); }
   if (to) { where += ' AND date(i.created_at) <= ?'; params.push(to); }
   const total = db.prepare(`SELECT COUNT(*) as c FROM requirements r JOIN inquiries i ON r.inquiry_id=i.id LEFT JOIN purchase_assignments pa ON pa.requirement_id=r.id WHERE ${where}`).get(...params).c;
-  const parts = db.prepare(`${PART_SELECT} WHERE ${where} ORDER BY CASE pa.urgency WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'normal' THEN 3 ELSE 4 END, r.id DESC LIMIT ${PAGE_SIZE} OFFSET ${pageOffset(page)}`).all(...params);
+  const parts = db.prepare(`${PART_SELECT} WHERE ${where} ORDER BY ${sort==='oldest'?'i.created_at ASC':sort==='urgency'?"CASE pa.urgency WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'normal' THEN 3 ELSE 4 END, i.created_at DESC":'i.created_at DESC'} LIMIT ${PAGE_SIZE} OFFSET ${pageOffset(page)}`).all(...params);
   const enriched = parts.map(p => ({
     ...p,
     working_days_pending: p.assignment_id && p.assignment_status === 'pending' ? workingDaysSince(p.assigned_at) : 0,

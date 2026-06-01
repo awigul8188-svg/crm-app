@@ -80,7 +80,7 @@ export default function Users() {
     setRingtoneStates(prev => ({ ...prev, [userId]: { ...prev[userId], active: 0 } }))
   }
 
-  const load = () => api.getUsers().then(u => { setUsers(u); setLoading(false) })
+  const load = () => api.getUsers().then(u => { setUsers(user?.role==='purchasing_manager'?u.filter(x=>x.role==='purchaser'):u); setLoading(false) })
   useEffect(() => { load(); if (user.role === 'manager') loadRingtoneStates() }, [])
 
   const reset = () => { setForm({ username:'', password:'', name:'', role:'ae' }); setError('') }
