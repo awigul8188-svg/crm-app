@@ -19,23 +19,21 @@ function roleWhere(user, alias = 'i') {
   return { clause: '1=0', params: [] };
 }
 
-// ── GET /api/inquiries/stats ──────────────────────────────────
-// NOTE: must be BEFORE /:id to avoid Express catching 'stats' as an id
+// ── GET /api/inquiries/stats ─────────── must be BEFORE /:id ──
 router.get('/stats', (req, res) => {
   if (ROLE.isPurchaser(req.user)) return res.status(403).json({ error: 'Access denied' });
   const db = getDB();
   const today = new Date().toISOString().split('T')[0];
   const role = roleWhere(req.user);
   const base = role.clause; const p = [...role.params];
-  const total   = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE ${base}`).get(...p).c;
-  const todayC  = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE ${base} AND date(i.created_at)=?`).get(...p, today).c;
-  const wonC    = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE ${base} AND i.disposition IN ('Closed Won','Processed')`).get(...p).c;
-  const activeC = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE ${base} AND i.disposition NOT IN ('Closed Won','Closed Lost','Processed','Cancelled','Fake Lead') AND i.disposition IS NOT NULL`).get(...p).c;
-  res.json({ total, today: todayC, won: wonC, active: activeC });
+  const total  = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE ${base}`).get(...p).c;
+  const todayC = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE ${base} AND date(i.created_at)=?`).get(...p, today).c;
+  const wonC   = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE ${base} AND i.disposition IN ('Closed Won','Processed')`).get(...p).c;
+  const active = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE ${base} AND i.disposition NOT IN ('Closed Won','Closed Lost','Processed','Cancelled','Fake Lead') AND i.disposition IS NOT NULL`).get(...p).c;
+  res.json({ total, today: todayC, won: wonC, active });
 });
 
-// ── GET /api/inquiries/search ──────────────────────────────────
-// Must be BEFORE /:id
+// ── GET /api/inquiries/search ─────────── must be BEFORE /:id ──
 router.get('/search', (req, res) => {
   if (ROLE.isPurchaser(req.user)) return res.status(403).json({ error: 'Access denied' });
   const { q } = req.query;
@@ -52,7 +50,7 @@ router.get('/search', (req, res) => {
   res.json(results);
 });
 
-// ── GET /api/inquiries ─────────────────────────────────────────
+// ── GET /api/inquiries ────────────────────────────────────────
 router.get('/', (req, res) => {
   if (ROLE.isPurchaser(req.user)) return res.status(403).json({ error: 'Access denied' });
   const db = getDB();
@@ -64,7 +62,8 @@ router.get('/', (req, res) => {
 
   if (ROLE.isManager(req.user) && assigned_to) {
     const ids = assigned_to.split(',').filter(Boolean);
-    if (ids.length) { where += ` AND i.assigned_to IN (${ids.map(()=>'?').join(',')})`;  params.push(...ids); }
+    if (ids.length === 1) { where += ' AND i.assigned_to=?'; params.push(ids[0]); }
+    else if (ids.length > 1) { where += ` AND i.assigned_to IN (${ids.map(()=>'?').join(',')})`; params.push(...ids); }
   }
   if (type) {
     const types = type.split(',').filter(Boolean);
@@ -83,15 +82,12 @@ router.get('/', (req, res) => {
     const s = `%${search}%`; params.push(s, s, s);
   }
 
-  // Return ALL records (client-side pagination in InquiryList)
+  // Fetch inquiries — simple query, no JSON functions (max SQLite compatibility)
   const rows = db.prepare(`
     SELECT i.*,
-      c.name as customer_name, c.company as customer_company, c.email as customer_email,
-      ae.name as assigned_name, ae.id as ae_id,
-      (SELECT GROUP_CONCAT(r.part_number, ', ') FROM requirements r WHERE r.inquiry_id=i.id) as parts_list,
-      (SELECT COUNT(*) FROM requirements r WHERE r.inquiry_id=i.id) as parts_count,
-      (SELECT JSON_GROUP_ARRAY(JSON_OBJECT('id',r.id,'part_number',r.part_number,'quantity',r.quantity,'notes',r.notes))
-       FROM requirements r WHERE r.inquiry_id=i.id) as requirements_json
+      c.name  as customer_name,  c.company as customer_company,
+      c.email as customer_email, c.phone   as customer_phone,
+      ae.name as assigned_name,  ae.id     as ae_id
     FROM inquiries i
     JOIN customers c ON i.customer_id=c.id
     LEFT JOIN users ae ON i.assigned_to=ae.id
@@ -99,17 +95,24 @@ router.get('/', (req, res) => {
     ORDER BY i.created_at DESC
   `).all(...params);
 
-  // Parse requirements JSON
-  const parsed = rows.map(r => {
-    let requirements = [];
-    try { requirements = JSON.parse(r.requirements_json || '[]'); } catch(e) {}
-    return { ...r, requirements_json: undefined, requirements };
-  });
+  // Fetch requirements for all returned inquiries in one query (no JSON functions)
+  let requirementsMap = {};
+  if (rows.length > 0) {
+    const ids = rows.map(r => r.id);
+    const reqs = db.prepare(
+      `SELECT inquiry_id, id, part_number, quantity, notes FROM requirements WHERE inquiry_id IN (${ids.map(()=>'?').join(',')})`
+    ).all(...ids);
+    reqs.forEach(r => {
+      if (!requirementsMap[r.inquiry_id]) requirementsMap[r.inquiry_id] = [];
+      requirementsMap[r.inquiry_id].push({ id: r.id, part_number: r.part_number, quantity: r.quantity, notes: r.notes });
+    });
+  }
 
-  res.json(parsed);
+  const result = rows.map(r => ({ ...r, requirements: requirementsMap[r.id] || [] }));
+  res.json(result);
 });
 
-// ── GET /api/inquiries/:id ──────────────────────────────────────
+// ── GET /api/inquiries/:id ─────────────────────────────────────
 router.get('/:id', (req, res) => {
   if (ROLE.isPurchaser(req.user)) return res.status(403).json({ error: 'Access denied' });
   const db = getDB();
@@ -126,14 +129,14 @@ router.get('/:id', (req, res) => {
   if (ROLE.isAE(req.user) && inquiry.ae_id !== req.user.id) return res.status(403).json({ error: 'Access denied' });
 
   const requirements = db.prepare('SELECT * FROM requirements WHERE inquiry_id=? ORDER BY id').all(req.params.id);
-  let followups = [], activity = [], comments = [];
-  try { followups = db.prepare('SELECT f.*, u.name as user_name FROM followups f LEFT JOIN users u ON f.user_id=u.id WHERE f.inquiry_id=? ORDER BY f.follow_up_date ASC').all(req.params.id); } catch(e) {}
-  try { activity  = db.prepare('SELECT a.*, u.name as user_name FROM activity_log a LEFT JOIN users u ON a.user_id=u.id WHERE a.entity_id=? AND a.entity_type=\'inquiry\' ORDER BY a.created_at DESC LIMIT 30').all(req.params.id); } catch(e) {}
+  let followups = [], activity = [];
+  try { followups = db.prepare('SELECT f.*, u.name as user_name FROM followups f LEFT JOIN users u ON f.user_id=u.id WHERE f.inquiry_id=? ORDER BY f.follow_up_date ASC, f.created_at ASC').all(req.params.id); } catch(e) {}
+  try { activity  = db.prepare("SELECT a.*, u.name as user_name FROM activity_log a LEFT JOIN users u ON a.user_id=u.id WHERE a.entity_id=? AND a.entity_type='inquiry' ORDER BY a.created_at DESC LIMIT 30").all(req.params.id); } catch(e) {}
 
   res.json({ ...inquiry, requirements, followups, activity });
 });
 
-// ── POST /api/inquiries ─────────────────────────────────────────
+// ── POST /api/inquiries ────────────────────────────────────────
 router.post('/', (req, res) => {
   if (ROLE.isPurchaser(req.user)) return res.status(403).json({ error: 'Access denied' });
   const db = getDB();
@@ -153,10 +156,9 @@ router.post('/', (req, res) => {
     requirements.forEach(r => { if (r.part_number?.trim()) stmt.run(inquiryId, r.part_number.trim(), r.quantity||null, r.notes||null); });
   }
 
-  // Log activity
   try { db.prepare("INSERT INTO activity_log (entity_id, entity_type, user_id, action, comment) VALUES (?,?,?,?,?)").run(inquiryId, 'inquiry', req.user.id, 'Created', `${type} created`); } catch(e) {}
 
-  // Notify purchasing managers of new inquiry
+  // Notify purchasing managers
   const customer = db.prepare('SELECT name, company FROM customers WHERE id=?').get(customer_id);
   const pms = db.prepare("SELECT id FROM users WHERE role='purchasing_manager'").all();
   const ins = db.prepare("INSERT INTO notifications (user_id, inquiry_id, inquiry_type, customer_name, actor_name, action, comment) VALUES (?,?,?,?,?,?,?)");
@@ -166,128 +168,113 @@ router.post('/', (req, res) => {
   res.json({ id: inquiryId });
 });
 
-// ── PUT /api/inquiries/:id (for api.js updateInquiry) ──────────
-// ── PATCH /api/inquiries/:id (same, both methods supported) ───
+// ── PUT + PATCH /api/inquiries/:id ─────────────────────────────
 const updateInquiry = (req, res) => {
   if (ROLE.isPurchaser(req.user)) return res.status(403).json({ error: 'Access denied' });
   const db = getDB();
-  const inquiry = db.prepare('SELECT assigned_to, disposition FROM inquiries WHERE id=?').get(req.params.id);
-  if (!inquiry) return res.status(404).json({ error: 'Not found' });
-  if (ROLE.isAE(req.user) && inquiry.assigned_to !== req.user.id) return res.status(403).json({ error: 'Access denied' });
+  const existing = db.prepare('SELECT assigned_to, disposition FROM inquiries WHERE id=?').get(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Not found' });
+  if (ROLE.isAE(req.user) && existing.assigned_to !== req.user.id) return res.status(403).json({ error: 'Access denied' });
 
-  const { notes, disposition, assigned_to, order_ref, order_amount, lead_source, order_source,
-    ppc_or_outbound, custom_date, requirements } = req.body;
+  const { notes, disposition, assigned_to, order_ref, order_amount, lead_source,
+    order_source, ppc_or_outbound, custom_date, requirements } = req.body;
   const updates = []; const params = [];
-  if (notes        !== undefined) { updates.push('notes=?');          params.push(notes); }
-  if (disposition  !== undefined) { updates.push('disposition=?');    params.push(disposition); }
-  if (order_ref    !== undefined) { updates.push('order_ref=?');      params.push(order_ref); }
-  if (order_amount !== undefined) { updates.push('order_amount=?');   params.push(order_amount); }
-  if (lead_source  !== undefined) { updates.push('lead_source=?');    params.push(lead_source); }
-  if (order_source !== undefined) { updates.push('order_source=?');   params.push(order_source); }
-  if (ppc_or_outbound!==undefined){ updates.push('ppc_or_outbound=?');params.push(ppc_or_outbound); }
-  if (custom_date  !== undefined) { updates.push('created_at=?');     params.push(custom_date); }
+  if (notes          !== undefined) { updates.push('notes=?');           params.push(notes); }
+  if (disposition    !== undefined) { updates.push('disposition=?');     params.push(disposition); }
+  if (order_ref      !== undefined) { updates.push('order_ref=?');       params.push(order_ref); }
+  if (order_amount   !== undefined) { updates.push('order_amount=?');    params.push(order_amount); }
+  if (lead_source    !== undefined) { updates.push('lead_source=?');     params.push(lead_source); }
+  if (order_source   !== undefined) { updates.push('order_source=?');    params.push(order_source); }
+  if (ppc_or_outbound!==undefined)  { updates.push('ppc_or_outbound=?'); params.push(ppc_or_outbound); }
+  if (custom_date    !== undefined) { updates.push('created_at=?');      params.push(custom_date); }
   if (ROLE.isManager(req.user) && assigned_to !== undefined) { updates.push('assigned_to=?'); params.push(assigned_to); }
 
-  if (updates.length) {
-    params.push(req.params.id);
-    db.prepare(`UPDATE inquiries SET ${updates.join(',')} WHERE id=?`).run(...params);
-  }
+  if (updates.length) { params.push(req.params.id); db.prepare(`UPDATE inquiries SET ${updates.join(',')} WHERE id=?`).run(...params); }
 
-  // Update requirements if provided
+  // Update requirements if sent
   if (Array.isArray(requirements)) {
-    // Remove old, add new
     db.prepare('DELETE FROM requirements WHERE inquiry_id=?').run(req.params.id);
     const stmt = db.prepare('INSERT INTO requirements (inquiry_id, part_number, quantity, notes) VALUES (?,?,?,?)');
     requirements.forEach(r => { if (r.part_number?.trim()) stmt.run(req.params.id, r.part_number.trim(), r.quantity||null, r.notes||null); });
   }
 
-  // Log activity
-  if (disposition && disposition !== inquiry.disposition) {
+  if (disposition && disposition !== existing.disposition) {
     try { db.prepare("INSERT INTO activity_log (entity_id, entity_type, user_id, action, comment) VALUES (?,?,?,?,?)").run(req.params.id, 'inquiry', req.user.id, disposition, ''); } catch(e) {}
-    // Notify on closed won / processed
     if (disposition === 'Closed Won' || disposition === 'Processed') {
       const inq = db.prepare('SELECT i.*, c.name as customer_name FROM inquiries i JOIN customers c ON i.customer_id=c.id WHERE i.id=?').get(req.params.id);
-      const pms = db.prepare("SELECT id FROM users WHERE role IN ('purchasing_manager','manager')").all();
+      const mgrs = db.prepare("SELECT id FROM users WHERE role IN ('purchasing_manager','manager')").all();
       const ins = db.prepare("INSERT INTO notifications (user_id, inquiry_id, inquiry_type, customer_name, actor_name, action, comment) VALUES (?,?,?,?,?,?,?)");
-      pms.forEach(pm => ins.run(pm.id, req.params.id, inq?.type||'', inq?.customer_name||'', req.user.name, disposition, ''));
+      mgrs.forEach(m => ins.run(m.id, req.params.id, inq?.type||'', inq?.customer_name||'', req.user.name, disposition, ''));
     }
   }
-
   res.json({ success: true });
 };
 router.put('/:id',   updateInquiry);
 router.patch('/:id', updateInquiry);
 
-// ── DELETE /api/inquiries/:id ───────────────────────────────────
+// ── DELETE /api/inquiries/:id ──────────────────────────────────
 router.delete('/:id', (req, res) => {
   if (!ROLE.isManager(req.user)) return res.status(403).json({ error: 'Managers only' });
   getDB().prepare('DELETE FROM inquiries WHERE id=?').run(req.params.id);
   res.json({ success: true });
 });
 
-// ── POST /api/inquiries/:id/comments ───────────────────────────
+// ── POST /api/inquiries/:id/comments ──────────────────────────
 router.post('/:id/comments', (req, res) => {
   if (ROLE.isPurchaser(req.user)) return res.status(403).json({ error: 'Access denied' });
   const { comment } = req.body;
   if (!comment?.trim()) return res.status(400).json({ error: 'Comment required' });
-  const db = getDB();
-  try {
-    db.prepare("INSERT INTO activity_log (entity_id, entity_type, user_id, action, comment) VALUES (?,?,?,?,?)").run(req.params.id, 'inquiry', req.user.id, 'Comment', comment.trim());
-  } catch(e) {}
+  try { getDB().prepare("INSERT INTO activity_log (entity_id, entity_type, user_id, action, comment) VALUES (?,?,?,?,?)").run(req.params.id, 'inquiry', req.user.id, 'Comment', comment.trim()); } catch(e) {}
   res.json({ success: true });
 });
 
-// ── GET /api/inquiries/:id/followups ───────────────────────────
+// ── GET /api/inquiries/:id/followups ──────────────────────────
 router.get('/:id/followups', (req, res) => {
   if (ROLE.isPurchaser(req.user)) return res.status(403).json({ error: 'Access denied' });
   try {
-    const followups = getDB().prepare('SELECT f.*, u.name as user_name FROM followups f LEFT JOIN users u ON f.user_id=u.id WHERE f.inquiry_id=? ORDER BY f.follow_up_date ASC').all(req.params.id);
-    res.json(followups);
+    const rows = getDB().prepare('SELECT f.*, u.name as user_name FROM followups f LEFT JOIN users u ON f.user_id=u.id WHERE f.inquiry_id=? ORDER BY f.follow_up_date ASC').all(req.params.id);
+    res.json(rows);
   } catch(e) { res.json([]); }
 });
 
-// ── POST /api/inquiries/:id/followups ──────────────────────────
+// ── POST /api/inquiries/:id/followups ─────────────────────────
 router.post('/:id/followups', (req, res) => {
   if (ROLE.isPurchaser(req.user)) return res.status(403).json({ error: 'Access denied' });
   const { note, follow_up_date } = req.body;
   if (!note?.trim()) return res.status(400).json({ error: 'Note required' });
-  const db = getDB();
   try {
-    const r = db.prepare('INSERT INTO followups (inquiry_id, user_id, note, follow_up_date) VALUES (?,?,?,?)').run(req.params.id, req.user.id, note.trim(), follow_up_date||null);
+    const r = getDB().prepare('INSERT INTO followups (inquiry_id, user_id, note, follow_up_date) VALUES (?,?,?,?)').run(req.params.id, req.user.id, note.trim(), follow_up_date||null);
     res.json({ id: r.lastInsertRowid });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── PUT /api/inquiries/followups/:id ───────────────────────────
+// ── PUT /api/inquiries/followups/:id ──────────────────────────
 router.put('/followups/:id', (req, res) => {
-  if (ROLE.isPurchaser(req.user)) return res.status(403).json({ error: 'Access denied' });
   const { note, follow_up_date, completed } = req.body;
   const db = getDB();
   const updates = []; const params = [];
-  if (note         !== undefined) { updates.push('note=?');          params.push(note); }
+  if (note         !== undefined) { updates.push('note=?');           params.push(note); }
   if (follow_up_date!==undefined) { updates.push('follow_up_date=?'); params.push(follow_up_date); }
   if (completed    !== undefined) { updates.push('completed=?');      params.push(completed ? 1 : 0); }
   if (!updates.length) return res.json({ success: true });
   params.push(req.params.id);
-  try {
-    getDB().prepare(`UPDATE followups SET ${updates.join(',')} WHERE id=?`).run(...params);
-    res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  try { db.prepare(`UPDATE followups SET ${updates.join(',')} WHERE id=?`).run(...params); res.json({ success: true }); }
+  catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── DELETE /api/inquiries/followups/:id ────────────────────────
+// ── DELETE /api/inquiries/followups/:id ───────────────────────
 router.delete('/followups/:id', (req, res) => {
   try { getDB().prepare('DELETE FROM followups WHERE id=?').run(req.params.id); } catch(e) {}
   res.json({ success: true });
 });
 
-// ── PATCH /api/inquiries/followup/:id/complete ─────────────────
+// ── PATCH /api/inquiries/followup/:id/complete ────────────────
 router.patch('/followup/:id/complete', (req, res) => {
   try { getDB().prepare('UPDATE followups SET completed=1 WHERE id=?').run(req.params.id); } catch(e) {}
   res.json({ success: true });
 });
 
-// ── POST /api/inquiries/:id/requirements ───────────────────────
+// ── POST /api/inquiries/:id/requirements ──────────────────────
 router.post('/:id/requirements', (req, res) => {
   if (ROLE.isPurchaser(req.user)) return res.status(403).json({ error: 'Access denied' });
   const { part_number, quantity, notes } = req.body;
@@ -296,7 +283,7 @@ router.post('/:id/requirements', (req, res) => {
   res.json({ id: r.lastInsertRowid });
 });
 
-// ── DELETE /api/inquiries/requirements/:id ─────────────────────
+// ── DELETE /api/inquiries/requirements/:id ────────────────────
 router.delete('/requirements/:id', (req, res) => {
   if (!ROLE.isManager(req.user) && !ROLE.isAE(req.user)) return res.status(403).json({ error: 'Access denied' });
   getDB().prepare('DELETE FROM requirements WHERE id=?').run(req.params.id);
