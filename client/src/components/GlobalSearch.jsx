@@ -44,9 +44,10 @@ export default function GlobalSearch({ onClose }) {
   ] : []
 
   const handleSelect = useCallback((item) => {
-    if (item.type === 'customer') navigate('customer-detail', { id: item.id })
-    else {
-      const dest = item.type === 'online_order' ? 'orders' : item.type + 's'
+    if (item.type === 'customer') {
+      navigate('customer-detail', { id: item.id })
+    } else {
+      // The previous AI had a stray variable here that wasn't used, removed it for clean code
       navigate('inquiry-detail', { id: item.id })
     }
     onClose()

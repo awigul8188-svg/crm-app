@@ -10,6 +10,7 @@ export default function Layout({ children, page }) {
   const { navigate }     = useNav()
   const [theme, setTheme]     = useState(() => localStorage.getItem('crm_theme') || 'dark')
   const [notifCount, setNotifCount] = useState(0)
+  const [isSearchOpen, setIsSearchOpen] = useState(false)
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -27,6 +28,17 @@ export default function Layout({ children, page }) {
     const interval = setInterval(fetchCount, 30000)
     return () => clearInterval(interval)
   }, [page])
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setIsSearchOpen(true)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   const role = user?.role
 
@@ -99,9 +111,13 @@ export default function Layout({ children, page }) {
           </div>
           <button onClick={()=>window.open(window.location.origin+'/#nft','_blank')} style={{ marginLeft:'auto', fontSize:9, fontWeight:700, color:BRAND, background:`${BRAND}15`, border:`1px solid ${BRAND}30`, borderRadius:6, padding:'3px 6px', cursor:'pointer', flexShrink:0, fontFamily:'"Plus Jakarta Sans",sans-serif', whiteSpace:'nowrap' }}>NFT ↗</button>
         </div>
-        {/* Search */}
+        {/* Search Trigger */}
         <div style={{ padding:'10px 10px 0' }}>
-          <GlobalSearch />
+          <button onClick={() => setIsSearchOpen(true)} style={{ display:'flex', alignItems:'center', gap:8, width:'100%', padding:'8px 12px', borderRadius:8, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.02)', color:'rgba(255,255,255,0.4)', cursor:'pointer', fontSize:12, fontFamily:'"Plus Jakarta Sans",sans-serif', textAlign:'left' }}>
+            <span>⌕</span>
+            <span style={{ flex:1 }}>Search...</span>
+            <kbd style={{ fontSize:10, padding:'2px 4px', background:'rgba(255,255,255,0.1)', borderRadius:4 }}>⌘K</kbd>
+          </button>
         </div>
         {/* Nav */}
         <nav style={{ flex:1, overflowY:'auto', padding:'6px 8px', display:'flex', flexDirection:'column', gap:1 }}>
@@ -133,6 +149,9 @@ export default function Layout({ children, page }) {
       <main style={{ flex:1, display:'flex', flexDirection:'column', overflowY:'auto', overflowX:'hidden', background:'var(--bg)' }}>
         {children}
       </main>
+
+      {/* Render GlobalSearch conditionally */}
+      {isSearchOpen && <GlobalSearch onClose={() => setIsSearchOpen(false)} />}
     </div>
   )
 }
