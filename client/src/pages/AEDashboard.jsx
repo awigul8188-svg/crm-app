@@ -9,7 +9,7 @@ import NewInquiryModal from '../components/NewInquiryModal'
 const BRAND = '#00D4C8'
 const C = ['#00D4C8','#3b82f6','#6366f1','#f59e0b','#ef4444','#10b981','#8b5cf6','#f97316','#ec4899','#84cc16']
 const TYPE_ICONS  = { lead:'◎', repeat:'↻', online_order:'◈' }
-const TYPE_COLORS = { lead:'#3b82f6', repeat:'#6366f1', online_order:'#f59e0b' }
+const TYPE_COLORS = { lead:'#3b82f6', repeat:'6366f1', online_order:'#f59e0b' }
 const TYPE_LABELS = { lead:'Lead', repeat:'Repeat', online_order:'Online Order' }
 
 const inp = { width:'100%', boxSizing:'border-box', background:'#fff', border:'1px solid #e2e8f0', borderRadius:'12px', padding:'10px 14px', fontSize:'13px', color:'#0f172a', fontFamily:'"Plus Jakarta Sans",sans-serif', outline:'none', transition:'border 0.15s' }
@@ -428,7 +428,7 @@ function useModuleData(type, dateFilters) {
 function AELeadsTab({ dateFilters, onDrilldown }) {
   const { data, loading } = useModuleData('lead', dateFilters)
   if (loading) return <Loader />
-  if (!data) return null
+  if (!data || data.error) return null
   const p = data.period
   const trendData = (data.trend||[]).map(t => ({ ...t, date: t.date?.slice(5) }))
   const drill = (title, extra={}) => onDrilldown({ title, type:'lead', filters:{ ...dateFilters, ...extra }})
@@ -503,7 +503,7 @@ function AELeadsTab({ dateFilters, onDrilldown }) {
 function AERepeatTab({ dateFilters, onDrilldown }) {
   const { data, loading } = useModuleData('repeat', dateFilters)
   if (loading) return <Loader />
-  if (!data) return null
+  if (!data || data.error) return null
   const p = data.period
   const drill = (title, extra={}) => onDrilldown({ title, type:'repeat', filters:{ ...dateFilters, ...extra }})
 
@@ -556,7 +556,7 @@ function AERepeatTab({ dateFilters, onDrilldown }) {
 function AEOrdersTab({ dateFilters, onDrilldown }) {
   const { data, loading } = useModuleData('online_order', dateFilters)
   if (loading) return <Loader />
-  if (!data) return null
+  if (!data || data.error) return null
   const t = data.today; const p = data.period
   const drill = (title, extra={}) => onDrilldown({ title, type:'online_order', filters:{ ...dateFilters, ...extra }})
 
@@ -605,7 +605,7 @@ function AEOrdersTab({ dateFilters, onDrilldown }) {
 
 // ── Overview Tab ────────────────────────────────────────────────
 function AEOverviewTab({ data, dateFilters, onDrilldown, onNavigate }) {
-  if (!data) return <Loader />
+  if (!data || data.error) return <Loader />
   const todayStr = new Date().toISOString().split('T')[0]
 
   return (
@@ -702,7 +702,21 @@ export default function AEDashboard() {
   const loadOverview = () => {
     setOverviewLoading(true)
     fetch('/api/analytics/ae', { headers: { Authorization:`Bearer ${localStorage.getItem('crm_token')}` } })
-      .then(r => r.json()).then(d => { setOverviewData(d); setOverviewLoading(false) }).catch(() => setOverviewLoading(false))
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) {
+          console.error("API Error:", d.error);
+          setOverviewData(null);
+        } else {
+          setOverviewData(d);
+        }
+        setOverviewLoading(false);
+      })
+      .catch((err) => {
+        console.error("Fetch Error:", err);
+        setOverviewData(null);
+        setOverviewLoading(false);
+      })
   }
   useEffect(() => { loadOverview() }, [])
 

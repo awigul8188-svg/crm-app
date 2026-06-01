@@ -16,22 +16,26 @@ function currentQuarter() {
 }
 
 function getRevenue(db, aeId, fromDate, toDate) {
-  let where = `(i.disposition='Closed Won' OR i.disposition='Processed')`;
-  const params = [];
-  if (aeId)     { where += ' AND i.assigned_to=?';          params.push(aeId); }
-  if (fromDate) { where += ' AND date(i.created_at)>=?';    params.push(fromDate); }
-  if (toDate)   { where += ' AND date(i.created_at)<=?';    params.push(toDate); }
-  const rows = db.prepare(`
-    SELECT i.type, i.order_amount,
-      (SELECT COALESCE(SUM(CAST(REPLACE(REPLACE(pq.price,'$',''),',','') AS REAL)),0)
-       FROM purchase_quotes pq JOIN purchase_assignments pa ON pq.assignment_id=pa.id
-       JOIN requirements r ON pa.requirement_id=r.id WHERE r.inquiry_id=i.id) as quote_value
-    FROM inquiries i WHERE ${where}
-  `).all(...params);
-  return rows.reduce((sum, r) => {
-    if (r.type === 'online_order' && r.order_amount) return sum + (parseFloat(String(r.order_amount).replace(/[$,]/g,'')) || 0);
-    return sum + (r.quote_value || 0);
-  }, 0);
+  try {
+    let where = `(i.disposition='Closed Won' OR i.disposition='Processed')`;
+    const params = [];
+    if (aeId)     { where += ' AND i.assigned_to=?';          params.push(aeId); }
+    if (fromDate) { where += ' AND date(i.created_at)>=?';    params.push(fromDate); }
+    if (toDate)   { where += ' AND date(i.created_at)<=?';    params.push(toDate); }
+    const rows = db.prepare(`
+      SELECT i.type, i.order_amount,
+        (SELECT COALESCE(SUM(CAST(REPLACE(REPLACE(pq.price,'$',''),',','') AS REAL)),0)
+         FROM purchase_quotes pq JOIN purchase_assignments pa ON pq.assignment_id=pa.id
+         JOIN requirements r ON pa.requirement_id=r.id WHERE r.inquiry_id=i.id) as quote_value
+      FROM inquiries i WHERE ${where}
+    `).all(...params);
+    return rows.reduce((sum, r) => {
+      if (r.type === 'online_order' && r.order_amount) return sum + (parseFloat(String(r.order_amount).replace(/[$,]/g,'')) || 0);
+      return sum + (r.quote_value || 0);
+    }, 0);
+  } catch (e) {
+    return 0; // Fails gracefully if tables are missing
+  }
 }
 
 // ── GET /api/analytics/targets ───────────────────────────────
