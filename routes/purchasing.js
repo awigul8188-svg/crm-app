@@ -155,9 +155,13 @@ router.post('/quote', (req, res) => {
   const a = db.prepare(`SELECT pa.*, r.part_number, i.assigned_to as ae_id, i.type as inquiry_type, i.order_amount as selling_price, c.name as customer_name FROM purchase_assignments pa JOIN requirements r ON pa.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id JOIN customers c ON i.customer_id=c.id WHERE pa.id=?`).get(assignment_id);
   if (!a) return res.status(404).json({ error: 'Assignment not found' });
   const existing = db.prepare('SELECT id FROM purchase_quotes WHERE assignment_id=?').get(assignment_id);
-  if (existing) { db.prepare('UPDATE purchase_quotes SET price=?,condition=?,lead_time=?,supplier_name=?,notes=?,updated_at=CURRENT_TIMESTAMP WHERE assignment_id=?').run(price, condition, lead_time, supplier_name, notes, assignment_id); }
+  const oldPrice = existing ? db.prepare('SELECT price FROM purchase_quotes WHERE assignment_id=?').get(assignment_id)?.price : null;
+  if (existing) { db.prepare('UPDATE purchase_quotes SET price=?,condition=?,lead_time=?,supplier_name=?,notes=?,purchaser_id=?,updated_at=CURRENT_TIMESTAMP WHERE assignment_id=?').run(price, condition, lead_time, supplier_name, notes, req.user.id, assignment_id); }
   else { db.prepare('INSERT INTO purchase_quotes (assignment_id,requirement_id,purchaser_id,price,condition,lead_time,supplier_name,notes) VALUES (?,?,?,?,?,?,?,?)').run(assignment_id, a.requirement_id, req.user.id, price, condition, lead_time, supplier_name, notes); }
   db.prepare("UPDATE purchase_assignments SET status='quoted' WHERE id=?").run(assignment_id);
+  // Log price change to part_comments timeline
+  const changeNote = oldPrice ? \`Price updated: $\${oldPrice} → $\${price}\` : \`Price quoted: $\${price}\`;
+  try { db.prepare('INSERT INTO part_comments (assignment_id,user_id,user_name,user_role,comment) VALUES (?,?,?,?,?)').run(assignment_id, req.user.id, req.user.name, req.user.role, changeNote); } catch(e) {}
   const isOver = a.selling_price && parseFloat(String(price).replace(/[$,]/g,'')) > parseFloat(String(a.selling_price).replace(/[$,]/g,''));
   const msg = `${a.part_number} — ${condition?condition+', ':''}$${price}${lead_time?', '+lead_time:''}${isOver?' ⚠️ OVER selling price':''}`;
   const notifyUsers = db.prepare("SELECT id FROM users WHERE role IN ('manager','purchasing_manager') OR id=?").all(a.ae_id);
@@ -264,6 +268,20 @@ router.get('/stats', (req, res) => {
 
 router.get('/purchasers', canManage, (req, res) => {
   res.json(getDB().prepare("SELECT id, name, username FROM users WHERE role='purchaser' ORDER BY name").all());
+});
+
+
+// ── Purchaser follow-up endpoints ────────────────────────────
+router.post('/followup/:assignmentId', (req, res) => {
+  const { note, follow_up_date } = req.body;
+  if (!note?.trim()) return res.status(400).json({ error: 'Note required' });
+  const r = getDB().prepare('INSERT INTO purchaser_followups (assignment_id, purchaser_id, note, follow_up_date) VALUES (?,?,?,?)').run(req.params.assignmentId, req.user.id, note, follow_up_date||null);
+  res.json({ id: r.lastInsertRowid });
+});
+
+router.patch('/followup/:id/complete', (req, res) => {
+  getDB().prepare('UPDATE purchaser_followups SET completed=1 WHERE id=?').run(req.params.id);
+  res.json({ success: true });
 });
 
 module.exports = router;

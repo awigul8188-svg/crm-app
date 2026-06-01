@@ -11,6 +11,7 @@ export const useNav  = () => useContext(NavCtx)
 // ── Lazy page imports ─────────────────────────────────────────
 import Dashboard            from './pages/Dashboard'
 import AEDashboard          from './pages/AEDashboard'
+import PurchaserPartDetail  from './pages/PurchaserPartDetail'
 import PurchaserDashboard   from './pages/PurchaserDashboard'
 import PurchasingManagerView from './pages/PurchasingManagerView'
 import InquiryList          from './pages/InquiryList'
@@ -95,6 +96,11 @@ export default function App() {
     const role = user.role
 
     // ── Purchaser: only their own parts + dashboard ──────────
+    if (page === 'purchaser-part-detail') {
+      if (role === 'purchaser') {
+        return <PurchaserPartDetail assignmentId={pageProps.assignmentId} />
+      }
+    }
     if (role === 'purchaser') {
       if (page === 'notifications') return <Notifications />
       if (page === 'purchasing')    return <PurchasingManagerView />
