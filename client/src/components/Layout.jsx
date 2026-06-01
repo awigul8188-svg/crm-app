@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { useAuth } from './App'
-import { useNav } from './App'
-import { navItems } from './rbac'
+import { useAuth } from '../App'
+import { useNav } from '../App'
+import { navItems } from '../rbac'
 import GlobalSearch from './components/GlobalSearch'
 
 const BRAND = '#00D4C8'
