@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../App'
 import { useNav } from '../App'
 import { navItems } from '../rbac'
-import GlobalSearch from './GlobalSearch'
 
 const BRAND = '#00D4C8'
 const token = () => localStorage.getItem('crm_token')
@@ -74,13 +73,6 @@ export default function Layout({ children, currentPage }) {
             </div>
           )}
         </div>
-
-        {/* Search */}
-        {!collapsed && (
-          <div style={{ padding:'12px 12px 0' }}>
-            <GlobalSearch />
-          </div>
-        )}
 
         {/* Nav items */}
         <nav style={{ flex:1, overflowY:'auto', padding:'8px 8px', display:'flex', flexDirection:'column', gap:2 }}>
