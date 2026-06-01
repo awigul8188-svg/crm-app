@@ -133,7 +133,10 @@ router.get('/my-parts', (req, res) => {
   const total = db.prepare(`SELECT COUNT(*) as c FROM purchase_assignments pa JOIN requirements r ON pa.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id WHERE ${where}`).get(...params).c;
   const parts = db.prepare(`${PART_SELECT} WHERE ${where} ORDER BY CASE pa.urgency WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'normal' THEN 3 ELSE 4 END, pa.not_in_stock ASC, pa.assigned_at ASC LIMIT ${PAGE_SIZE} OFFSET ${pageOffset(page)}`).all(...params);
   const enriched = parts.map(p => ({ ...p, working_days_pending: p.assignment_status==='pending'&&!p.not_in_stock?workingDaysSince(p.assigned_at):0, is_delayed: p.assignment_status==='pending'&&!p.not_in_stock?workingDaysSince(p.assigned_at)>=4:false }));
-  res.json({ parts: enriched, total, pages: Math.ceil(total / PAGE_SIZE), page: parseInt(page) });
+  // Strip company name for purchasers
+  const isPurchaser = req.user.role === 'purchaser';
+  const sanitized = isPurchaser ? enriched.map(p => ({ ...p, customer_name: null, customer_company: null })) : enriched;
+  res.json({ parts: sanitized, total, pages: Math.ceil(total / PAGE_SIZE), page: parseInt(page) });
 });
 
 router.get('/part/:assignmentId', (req, res) => {

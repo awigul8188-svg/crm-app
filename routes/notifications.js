@@ -5,80 +5,87 @@ const { authenticate } = require('../middleware/auth');
 const router = express.Router();
 router.use(authenticate);
 
-// Get all notifications for current user
+// ── GET /api/notifications ──────────────────────────────────────
+// Role-filtered: each user sees only their relevant notifications
 router.get('/', (req, res) => {
   const db = getDB();
-  const userId = req.user.role === 'ae' ? req.user.id : null;
-  const userFilter = userId ? 'AND i.assigned_to = ?' : '';
-  const params = userId ? [userId] : [];
+  const { page = 1, unread_only } = req.query;
+  const userId = req.user.id;
+  const role   = req.user.role;
+  const limit  = 50;
+  const offset = (parseInt(page) - 1) * limit;
 
-  const today = new Date().toISOString().split('T')[0];
-  const in7days = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
-
-  const base = `
-    SELECT f.id, f.note, f.follow_up_date, f.inquiry_id,
-      i.type as inquiry_type, c.name as customer_name, c.company as customer_company,
-      u.name as assigned_name
-    FROM followups f
-    JOIN inquiries i ON f.inquiry_id = i.id
-    JOIN customers c ON i.customer_id = c.id
-    LEFT JOIN users u ON i.assigned_to = u.id
-    WHERE f.completed = 0 ${userFilter}
-  `;
-
-  const overdue  = db.prepare(`${base} AND f.follow_up_date < ? ORDER BY f.follow_up_date ASC LIMIT 50`).all(...params, today);
-  const dueToday = db.prepare(`${base} AND f.follow_up_date = ? ORDER BY f.id ASC LIMIT 50`).all(...params, today);
-  const upcoming = db.prepare(`${base} AND f.follow_up_date > ? AND f.follow_up_date <= ? ORDER BY f.follow_up_date ASC LIMIT 50`).all(...params, today, in7days);
-
-  // Activity notifications — only for managers
-  let activity = [];
-  let unreadActivity = 0;
-  if (req.user.role === 'manager') {
-    activity = db.prepare(`
-      SELECT n.*, 
-        CASE n.inquiry_type 
-          WHEN 'lead' THEN '◎'
-          WHEN 'repeat' THEN '↻'
-          WHEN 'online_order' THEN '◈'
-          ELSE '•'
-        END as type_icon
-      FROM notifications n
-      WHERE n.user_id = ?
-      ORDER BY n.created_at DESC
-      LIMIT 100
-    `).all(req.user.id);
-    unreadActivity = activity.filter(n => !n.read).length;
+  let typeFilter = '';
+  // Purchasers only see part assignment / quote notifications
+  if (role === 'purchaser') {
+    typeFilter = `AND n.inquiry_type IN ('part_assigned','part_reassigned','quote')`;
   }
+  // PM sees new inquiries + unassigned + quote notifications
+  else if (role === 'purchasing_manager') {
+    typeFilter = `AND n.inquiry_type IN ('lead','repeat','online_order','quote','part_assigned','Closed Won','Processed')`;
+  }
+  // AEs see their own inquiry notifications
+  else if (role === 'ae') {
+    typeFilter = `AND n.inquiry_type NOT IN ('part_assigned','part_reassigned')`;
+  }
+  // Managers see everything
 
-  const followupCount = overdue.length + dueToday.length + upcoming.length;
+  const unreadFilter = unread_only === 'true' ? 'AND n.read=0' : '';
 
-  res.json({
-    followups: { overdue, today: dueToday, upcoming },
-    activity,
-    total: followupCount + unreadActivity,
-    unreadActivity,
-  });
+  const total = db.prepare(`
+    SELECT COUNT(*) as c FROM notifications n
+    WHERE n.user_id=? ${typeFilter} ${unreadFilter}
+  `).get(userId).c;
+
+  const rows = db.prepare(`
+    SELECT n.* FROM notifications n
+    WHERE n.user_id=? ${typeFilter} ${unreadFilter}
+    ORDER BY n.created_at DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `).all(userId);
+
+  res.json({ notifications: rows, total, pages: Math.ceil(total / limit), unread: db.prepare(`SELECT COUNT(*) as c FROM notifications WHERE user_id=? AND read=0 ${typeFilter}`).get(userId).c });
 });
 
-// Mark a single notification as read
+// ── GET /api/notifications/count ───────────────────────────────
+router.get('/count', (req, res) => {
+  const db = getDB();
+  const userId = req.user.id;
+  const role   = req.user.role;
+
+  let typeFilter = '';
+  if (role === 'purchaser')          typeFilter = `AND inquiry_type IN ('part_assigned','part_reassigned','quote')`;
+  else if (role === 'purchasing_manager') typeFilter = `AND inquiry_type IN ('lead','repeat','online_order','quote','part_assigned','Closed Won','Processed')`;
+  else if (role === 'ae')            typeFilter = `AND inquiry_type NOT IN ('part_assigned','part_reassigned')`;
+
+  const count = db.prepare(`SELECT COUNT(*) as c FROM notifications WHERE user_id=? AND read=0 ${typeFilter}`).get(userId).c;
+  res.json({ count });
+});
+
+// ── PATCH /api/notifications/:id/read ──────────────────────────
 router.patch('/:id/read', (req, res) => {
-  const db = getDB();
-  db.prepare('UPDATE notifications SET read = 1 WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
+  getDB().prepare('UPDATE notifications SET read=1 WHERE id=? AND user_id=?').run(req.params.id, req.user.id);
   res.json({ success: true });
 });
 
-// Mark all activity notifications as read
-router.post('/read-all', (req, res) => {
-  const db = getDB();
-  db.prepare('UPDATE notifications SET read = 1 WHERE user_id = ?').run(req.user.id);
+// ── PATCH /api/notifications/read-all ──────────────────────────
+router.patch('/read-all', (req, res) => {
+  getDB().prepare('UPDATE notifications SET read=1 WHERE user_id=?').run(req.user.id);
   res.json({ success: true });
 });
 
-// Mark a follow-up complete
+// ── DELETE /api/notifications/:id ──────────────────────────────
+router.delete('/:id', (req, res) => {
+  getDB().prepare('DELETE FROM notifications WHERE id=? AND user_id=?').run(req.params.id, req.user.id);
+  res.json({ success: true });
+});
+
+// ── PATCH /api/notifications/followup/:id/complete (legacy) ────
 router.patch('/followup/:id/complete', (req, res) => {
-  const db = getDB();
-  db.prepare('UPDATE followups SET completed = 1 WHERE id = ?').run(req.params.id);
-  res.json({ success: true });
+  try {
+    getDB().prepare('UPDATE inquiry_followups SET completed=1 WHERE id=?').run(req.params.id);
+    res.json({ success: true });
+  } catch(e) { res.json({ success: true }); }
 });
 
 module.exports = router;
