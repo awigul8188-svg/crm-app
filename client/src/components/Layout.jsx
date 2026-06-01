@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../App'
 import { useNav } from '../App'
-import GlobalSearch from './GlobalSearch'
 
 const BRAND = '#00D4C8'
 
 export default function Layout({ children, page }) {
   const { user, logout } = useAuth()
   const { navigate }     = useNav()
-  const [theme, setTheme]     = useState(() => localStorage.getItem('crm_theme') || 'dark')
+  const [theme, setTheme]       = useState(() => localStorage.getItem('crm_theme') || 'dark')
   const [notifCount, setNotifCount] = useState(0)
 
   useEffect(() => {
@@ -57,8 +56,8 @@ export default function Layout({ children, page }) {
   const adminNav = () => {
     if (role === 'purchaser' || role === 'ae') return []
     const items = [
-      { name: 'users',         label: 'Users',         icon: '⚙' },
-      { name: 'purchasing',    label: 'Purchasing',    icon: '📦' },
+      { name: 'users',      label: 'Users',       icon: '⚙' },
+      { name: 'purchasing', label: 'Purchasing',  icon: '📦' },
     ]
     if (role === 'manager') items.splice(1, 0, { name: 'import', label: 'Import Data', icon: '📥' })
     return items
@@ -72,7 +71,8 @@ export default function Layout({ children, page }) {
   }
 
   const btn = (item) => (
-    <button key={item.name} onClick={() => navigate(item.name)} style={{ display:'flex', alignItems:'center', gap:10, width:'100%', padding:'9px 12px', borderRadius:10, border:'none', cursor:'pointer', background:isActive(item.name)?`${BRAND}18`:'transparent', color:isActive(item.name)?BRAND:'rgba(255,255,255,0.5)', fontSize:13, fontWeight:isActive(item.name)?600:400, fontFamily:'"Plus Jakarta Sans",sans-serif', textAlign:'left', transition:'all 0.1s', position:'relative' }}
+    <button key={item.name} onClick={() => navigate(item.name)}
+      style={{ display:'flex', alignItems:'center', gap:10, width:'100%', padding:'9px 12px', borderRadius:10, border:'none', cursor:'pointer', background:isActive(item.name)?`${BRAND}18`:'transparent', color:isActive(item.name)?BRAND:'rgba(255,255,255,0.5)', fontSize:13, fontWeight:isActive(item.name)?600:400, fontFamily:'"Plus Jakarta Sans",sans-serif', textAlign:'left', transition:'all 0.1s', position:'relative' }}
       onMouseEnter={e=>{ if(!isActive(item.name)){e.currentTarget.style.background='rgba(255,255,255,0.06)';e.currentTarget.style.color='rgba(255,255,255,0.8)'} }}
       onMouseLeave={e=>{ e.currentTarget.style.background=isActive(item.name)?`${BRAND}18`:'transparent';e.currentTarget.style.color=isActive(item.name)?BRAND:'rgba(255,255,255,0.5)' }}>
       <span style={{ width:18, textAlign:'center', flexShrink:0, fontSize:14 }}>{item.icon}</span>
@@ -86,7 +86,6 @@ export default function Layout({ children, page }) {
 
   return (
     <div style={{ display:'flex', height:'100vh', overflow:'hidden', background:'var(--bg)', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>
-      {/* Sidebar */}
       <div style={{ width:200, flexShrink:0, background:'#0d1117', display:'flex', flexDirection:'column', borderRight:'1px solid rgba(255,255,255,0.06)', overflow:'hidden' }}>
         {/* Logo */}
         <div style={{ padding:'16px 14px 12px', borderBottom:'1px solid rgba(255,255,255,0.06)', display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
@@ -99,10 +98,7 @@ export default function Layout({ children, page }) {
           </div>
           <button onClick={()=>window.open(window.location.origin+'/#nft','_blank')} style={{ marginLeft:'auto', fontSize:9, fontWeight:700, color:BRAND, background:`${BRAND}15`, border:`1px solid ${BRAND}30`, borderRadius:6, padding:'3px 6px', cursor:'pointer', flexShrink:0, fontFamily:'"Plus Jakarta Sans",sans-serif', whiteSpace:'nowrap' }}>NFT ↗</button>
         </div>
-        {/* Search */}
-        <div style={{ padding:'10px 10px 0' }}>
-          <GlobalSearch />
-        </div>
+
         {/* Nav */}
         <nav style={{ flex:1, overflowY:'auto', padding:'6px 8px', display:'flex', flexDirection:'column', gap:1 }}>
           <div style={{ fontSize:9, fontWeight:700, color:'rgba(255,255,255,0.2)', textTransform:'uppercase', letterSpacing:'0.1em', padding:'10px 10px 4px' }}>Menu</div>
@@ -112,6 +108,7 @@ export default function Layout({ children, page }) {
             {adminNav().map(btn)}
           </>}
         </nav>
+
         {/* Footer */}
         <div style={{ borderTop:'1px solid rgba(255,255,255,0.06)', padding:'10px', flexShrink:0 }}>
           <div style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', borderRadius:10, background:'rgba(255,255,255,0.04)', marginBottom:6 }}>
@@ -129,7 +126,7 @@ export default function Layout({ children, page }) {
           </button>
         </div>
       </div>
-      {/* Main */}
+
       <main style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', background:'var(--bg)' }}>
         {children}
       </main>
