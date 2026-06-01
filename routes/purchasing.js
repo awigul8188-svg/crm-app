@@ -122,12 +122,14 @@ router.patch('/assignment/:id', (req, res) => {
 
 router.get('/my-parts', (req, res) => {
   const db = getDB();
-  const { type, status, page = 1, from, to } = req.query;
+  const { type, status, urgency, page = 1, from, to } = req.query;
   let where = 'pa.purchaser_id=?'; const params = [req.user.id];
   if (type) { where += ' AND i.type=?'; params.push(type); }
   if (status === 'pending') { where += " AND pa.status='pending' AND pa.not_in_stock=0"; }
   else if (status === 'quoted') { where += " AND pa.status='quoted'"; }
   else if (status === 'not_in_stock') { where += ' AND pa.not_in_stock=1'; }
+  else if (status === 'all') {} // no filter
+  if (urgency) { where += ' AND pa.urgency=?'; params.push(urgency); }
   if (from) { where += ' AND date(i.created_at)>=?'; params.push(from); }
   if (to) { where += ' AND date(i.created_at)<=?'; params.push(to); }
   const total = db.prepare(`SELECT COUNT(*) as c FROM purchase_assignments pa JOIN requirements r ON pa.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id WHERE ${where}`).get(...params).c;

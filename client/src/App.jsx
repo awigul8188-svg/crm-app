@@ -11,6 +11,7 @@ export const useNav  = () => useContext(NavCtx)
 // ── Lazy page imports ─────────────────────────────────────────
 import Dashboard            from './pages/Dashboard'
 import AEDashboard          from './pages/AEDashboard'
+import PurchaserPartsView   from './pages/PurchaserPartsView'
 import PurchaserPartDetail  from './pages/PurchaserPartDetail'
 import PurchaserDashboard   from './pages/PurchaserDashboard'
 import PurchasingManagerView from './pages/PurchasingManagerView'
@@ -103,7 +104,7 @@ export default function App() {
     }
     if (role === 'purchaser') {
       if (page === 'notifications') return <Notifications />
-      if (page === 'purchasing')    return <PurchasingManagerView />
+      if (page === 'purchasing')    return <PurchaserPartsView />
       return <PurchaserDashboard />
     }
 
