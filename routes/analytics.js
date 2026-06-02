@@ -414,6 +414,10 @@ router.get('/manager-dashboard', canManage, (req, res) => {
   try {
     const userId = req.user.id;
     const dw = dateWhere();
+    // Ensure selling_price columns exist (safe migration)
+    try { db.exec('ALTER TABLE requirements ADD COLUMN selling_price REAL DEFAULT NULL'); } catch(e) {}
+    try { db.exec('ALTER TABLE requirements ADD COLUMN selling_price_entered_by INTEGER DEFAULT NULL'); } catch(e) {}
+    try { db.exec('ALTER TABLE ae_targets ADD COLUMN gp_target REAL DEFAULT 0'); } catch(e) {}
 
     // ── SECTION 1: Own performance ──
     const ownTotal = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE i.assigned_to=? AND ${dw.w}`).get(userId, ...dw.p).c;
@@ -487,8 +491,47 @@ router.get('/manager-dashboard', canManage, (req, res) => {
       return { month: d.toLocaleString('default',{month:'short'}), revenue:Math.round(rev), gp:Math.round(gp) };
     });
 
+    // 14-day trend by type
+    const trend14 = Array.from({length:14}, (_,i) => {
+      const d = new Date(); d.setDate(d.getDate()-(13-i));
+      const ds = d.toISOString().split('T')[0];
+      const lead   = db.prepare("SELECT COUNT(*) as c FROM inquiries WHERE type='lead' AND date(created_at)=?").get(ds).c||0;
+      const repeat = db.prepare("SELECT COUNT(*) as c FROM inquiries WHERE type='repeat' AND date(created_at)=?").get(ds).c||0;
+      const order  = db.prepare("SELECT COUNT(*) as c FROM inquiries WHERE type='online_order' AND date(created_at)=?").get(ds).c||0;
+      const won    = db.prepare("SELECT COUNT(*) as c FROM inquiries WHERE disposition='Closed Won' AND date(created_at)=?").get(ds).c||0;
+      const proc   = db.prepare("SELECT COUNT(*) as c FROM inquiries WHERE disposition='Processed' AND date(created_at)=?").get(ds).c||0;
+      const canc   = db.prepare("SELECT COUNT(*) as c FROM inquiries WHERE disposition='Cancelled' AND date(created_at)=?").get(ds).c||0;
+      return { date:ds, lead, repeat, online_order:order, total:lead+repeat+order, won, processed:proc, cancelled:canc };
+    });
+
+    // Today counts
+    const todayDate = new Date().toISOString().split('T')[0];
+    const todayLeads  = db.prepare("SELECT COUNT(*) as c FROM inquiries WHERE type='lead' AND date(created_at)=?").get(todayDate).c||0;
+    const todayRepeat = db.prepare("SELECT COUNT(*) as c FROM inquiries WHERE type='repeat' AND date(created_at)=?").get(todayDate).c||0;
+    const todayOrders = db.prepare("SELECT COUNT(*) as c FROM inquiries WHERE type='online_order' AND date(created_at)=?").get(todayDate).c||0;
+
+    // Detailed AE breakdown for leads tab
+    const leadsAEBreakdown = aes.map(ae => {
+      const ds = db.prepare(`SELECT disposition, COUNT(*) as count FROM inquiries WHERE type='lead' AND assigned_to=? AND ${dw.w} GROUP BY disposition`).all(ae.id, ...dw.p);
+      const total   = ds.reduce((s,d)=>s+d.count,0);
+      const today_c = db.prepare(`SELECT COUNT(*) as c FROM inquiries WHERE type='lead' AND assigned_to=? AND date(created_at)=?`).get(ae.id, todayDate).c||0;
+      const byDisp  = (disp) => ds.find(d=>d.disposition===disp)?.count||0;
+      const cold    = (ds.find(d=>d.disposition==='Cold')?.count||0)+(ds.find(d=>d.disposition==='Cold Lead')?.count||0);
+      return { id:ae.id, name:ae.name, initials:ae.name.split(' ').map(n=>n[0]).join(''), total, today:today_c, won:byDisp('Closed Won'), lost:byDisp('Closed Lost'), quoted:byDisp('Quoted'), bidding:byDisp('Bidding'), fake:byDisp('Fake Lead'), noResp:byDisp('No response'), cold, winRate:total>0?Math.round(byDisp('Closed Won')/total*100):0 };
+    }).sort((a,b)=>b.total-a.total);
+
+    // AE breakdown for orders tab
+    const ordersAEBreakdown = aes.map(ae => {
+      const total = db.prepare(`SELECT COUNT(*) as c FROM inquiries WHERE type='online_order' AND assigned_to=? AND ${dw.w}`).get(ae.id,...dw.p).c||0;
+      const proc  = db.prepare(`SELECT COUNT(*) as c FROM inquiries WHERE type='online_order' AND assigned_to=? AND disposition='Processed' AND ${dw.w}`).get(ae.id,...dw.p).c||0;
+      const today_c = db.prepare("SELECT COUNT(*) as c FROM inquiries WHERE type='online_order' AND assigned_to=? AND date(created_at)=?").get(ae.id,todayDate).c||0;
+      return { id:ae.id, name:ae.name, initials:ae.name.split(' ').map(n=>n[0]).join(''), total, processed:proc, cancelled:total-proc, today:today_c, rate:total>0?Math.round(proc/total*100):0 };
+    }).sort((a,b)=>b.total-a.total);
+
     res.json({
       meta: { year, quarter, qStart, qEnd, from:from||null, to:to||null },
+      trend14, today: { leads:todayLeads, repeat:todayRepeat, orders:todayOrders },
+      leadsAEBreakdown, ordersAEBreakdown,
       own: { total:ownTotal, won:ownWon, lost:ownLost, active:ownActive, winRate:ownWinRate, revenue:ownRev, gp:ownGP, target:ownTarget, byType:ownByType, revByMonth },
       team: { aes: teamAEs },
       leads: { total:leadTotal, won:leadWon, lost:leadLost, active:leadActive, fake:leadFake, winRate:leadWinRate, gp:leadGP, byDisposition:leadByDisp, bySource:leadBySource, byPPC:leadByPPC, byAE:leadByAE },
