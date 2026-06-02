@@ -37,24 +37,26 @@ function getRevenue(db, aeId, fromDate, toDate) {
 
 // GP = (selling_price - purchase_quote_price) * quantity per part
 function getGP(db, aeId, fromDate, toDate) {
-  let where = `(i.disposition='Closed Won' OR i.disposition='Processed')`;
-  const params = [];
-  if (aeId)     { where += ' AND i.assigned_to=?';       params.push(aeId); }
-  if (fromDate) { where += ' AND date(i.created_at)>=?'; params.push(fromDate); }
-  if (toDate)   { where += ' AND date(i.created_at)<=?'; params.push(toDate); }
-  const rows = db.prepare(`
-    SELECT r.selling_price, r.quantity,
-      CAST(REPLACE(REPLACE(COALESCE(pq.price,'0'),'$',''),',','') AS REAL) as cost
-    FROM inquiries i
-    JOIN requirements r ON r.inquiry_id=i.id
-    LEFT JOIN purchase_assignments pa ON pa.requirement_id=r.id
-    LEFT JOIN purchase_quotes pq ON pq.assignment_id=pa.id
-    WHERE ${where} AND r.selling_price IS NOT NULL
-  `).all(...params);
-  return rows.reduce((sum, r) => {
-    const gp = (r.selling_price - (r.cost||0)) * (r.quantity||1);
-    return sum + (isNaN(gp) ? 0 : gp);
-  }, 0);
+  try {
+    let where = `(i.disposition='Closed Won' OR i.disposition='Processed')`;
+    const params = [];
+    if (aeId)     { where += ' AND i.assigned_to=?';       params.push(aeId); }
+    if (fromDate) { where += ' AND date(i.created_at)>=?'; params.push(fromDate); }
+    if (toDate)   { where += ' AND date(i.created_at)<=?'; params.push(toDate); }
+    const rows = db.prepare(`
+      SELECT r.selling_price, r.quantity,
+        CAST(REPLACE(REPLACE(COALESCE(pq.price,'0'),'$',''),',','') AS REAL) as cost
+      FROM inquiries i
+      JOIN requirements r ON r.inquiry_id=i.id
+      LEFT JOIN purchase_assignments pa ON pa.requirement_id=r.id
+      LEFT JOIN purchase_quotes pq ON pq.assignment_id=pa.id
+      WHERE ${where} AND r.selling_price IS NOT NULL
+    `).all(...params);
+    return rows.reduce((sum, r) => {
+      const gp = (r.selling_price - (r.cost||0)) * (r.quantity||1);
+      return sum + (isNaN(gp) ? 0 : gp);
+    }, 0);
+  } catch(e) { return 0; } // selling_price column may not exist yet
 }
 
 // ── GET /api/analytics/targets ───────────────────────────────

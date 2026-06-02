@@ -297,6 +297,13 @@ export default function Dashboard() {
             </tbody>
           </table>
         </div>
+
+        {/* Set targets for AEs if table is empty or as standalone action */}
+        {(team?.aes||[]).length === 0 && (
+          <div style={{ background:'var(--card-2)',borderRadius:12,padding:'16px 20px',textAlign:'center',color:'var(--text-3)',fontSize:13,marginTop:14 }}>
+            No AE data loaded yet. If you see this after refresh, check that AE users exist in the system.
+          </div>
+        )}
       </Section>
 
       {/* ══ 3. LEADS ════════════════════════════════════════ */}
