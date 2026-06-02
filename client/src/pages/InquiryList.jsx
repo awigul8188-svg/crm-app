@@ -491,7 +491,6 @@ export default function InquiryList({ type, title }) {
       )}
 
       {showNew && <NewInquiryModal defaultType={type} onClose={()=>setShowNew(false)} onCreated={()=>{setShowNew(false);load()}} />}
-    </div>
       {sellingPriceModal && (
         <SellingPriceModal
           inquiry={sellingPriceModal}
