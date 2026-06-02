@@ -1,29 +1,29 @@
 // Color palette - customize with your company colors
 export const colors = {
-  // Primary colors - Update these with your company branding
-  primary: '#0066CC',      // Professional Blue
-  secondary: '#6C63FF',    // Purple accent
-  success: '#10B981',      // Green
-  warning: '#F59E0B',      // Amber
-  danger: '#EF4444',       // Red
+  // Primary colors - Clean & Professional (NO BLACK)
+  primary: '#1E88E5',      // Clean Blue
+  secondary: '#5E35B1',    // Soft Purple
+  success: '#43A047',      // Fresh Green
+  warning: '#FB8C00',      // Warm Orange
+  danger: '#E53935',       // Soft Red
   
-  // Grays - Light theme
-  gray50: '#F9FAFB',
-  gray100: '#F3F4F6',
-  gray200: '#E5E7EB',
-  gray300: '#D1D5DB',
-  gray400: '#9CA3AF',
-  gray500: '#6B7280',
-  gray600: '#4B5563',
-  gray700: '#374151',
-  gray800: '#1F2937',
-  gray900: '#111827',
+  // Grays - Light & Friendly (NO BLACK)
+  gray50: '#FAFAFA',       // Almost white
+  gray100: '#F5F5F5',      // Very light
+  gray200: '#EEEEEE',      // Light
+  gray300: '#E0E0E0',      // Soft
+  gray400: '#BDBDBD',      // Medium-light
+  gray500: '#9E9E9E',      // Medium
+  gray600: '#757575',      // Medium-dark
+  gray700: '#616161',      // Dark (not black)
+  gray800: '#424242',      // Very dark (not black)
+  gray900: '#212121',      // Darkest (charcoal, not black)
   
-  // Sidebar - Dark theme
-  sidebar: '#2C3E50',      // Dark blue-gray sidebar
-  sidebarHover: '#34495E', // Lighter on hover
+  // Sidebar - Warm Dark (NOT PURE BLACK)
+  sidebar: '#2E3B4E',      // Warm dark blue-gray (friendly)
+  sidebarHover: '#3D4A5C', // Lighter on hover
   sidebarText: '#FFFFFF',
-  sidebarSecondary: '#BDC3C7',
+  sidebarSecondary: '#B0BEC5',
 };
 
 export const textStyles = {
