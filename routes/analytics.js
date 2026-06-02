@@ -406,10 +406,18 @@ router.get('/manager-dashboard', canManage, (req, res) => {
 
   const dateWhere = (alias='i') => {
     let w = '1=1'; const p = [];
-    if (from) { w += ` AND date(${alias}.created_at)>=?`; p.push(from); }
-    if (to)   { w += ` AND date(${alias}.created_at)<=?`; p.push(to); }
+    // Use alias if provided, otherwise bare column (SQLite accepts both)
+    if (from) { w += ' AND date(' + alias + '.created_at)>=?'; p.push(from); }
+    if (to)   { w += ' AND date(' + alias + '.created_at)<=?'; p.push(to); }
     return { w, p };
   };
+  // Version without alias for queries that don't use 'i'
+  const dw0 = (() => {
+    let w = '1=1'; const p = [];
+    if (from) { w += ' AND date(created_at)>=?'; p.push(from); }
+    if (to)   { w += ' AND date(created_at)<=?'; p.push(to); }
+    return { w, p };
+  })();
 
   try {
     const userId = req.user.id;
@@ -512,7 +520,7 @@ router.get('/manager-dashboard', canManage, (req, res) => {
 
     // Detailed AE breakdown for leads tab
     const leadsAEBreakdown = aes.map(ae => {
-      const ds = db.prepare(`SELECT disposition, COUNT(*) as count FROM inquiries WHERE type='lead' AND assigned_to=? AND ${dw.w} GROUP BY disposition`).all(ae.id, ...dw.p);
+      const ds = db.prepare(`SELECT disposition, COUNT(*) as count FROM inquiries WHERE type='lead' AND assigned_to=? AND ${dw0.w} GROUP BY disposition`).all(ae.id, ...dw0.p);
       const total   = ds.reduce((s,d)=>s+d.count,0);
       const today_c = db.prepare(`SELECT COUNT(*) as c FROM inquiries WHERE type='lead' AND assigned_to=? AND date(created_at)=?`).get(ae.id, todayDate).c||0;
       const byDisp  = (disp) => ds.find(d=>d.disposition===disp)?.count||0;
@@ -522,8 +530,8 @@ router.get('/manager-dashboard', canManage, (req, res) => {
 
     // AE breakdown for orders tab
     const ordersAEBreakdown = aes.map(ae => {
-      const total = db.prepare(`SELECT COUNT(*) as c FROM inquiries WHERE type='online_order' AND assigned_to=? AND ${dw.w}`).get(ae.id,...dw.p).c||0;
-      const proc  = db.prepare(`SELECT COUNT(*) as c FROM inquiries WHERE type='online_order' AND assigned_to=? AND disposition='Processed' AND ${dw.w}`).get(ae.id,...dw.p).c||0;
+      const total = db.prepare(`SELECT COUNT(*) as c FROM inquiries WHERE type='online_order' AND assigned_to=? AND ${dw0.w}`).get(ae.id,...dw0.p).c||0;
+      const proc  = db.prepare(`SELECT COUNT(*) as c FROM inquiries WHERE type='online_order' AND assigned_to=? AND disposition='Processed' AND ${dw0.w}`).get(ae.id,...dw0.p).c||0;
       const today_c = db.prepare("SELECT COUNT(*) as c FROM inquiries WHERE type='online_order' AND assigned_to=? AND date(created_at)=?").get(ae.id,todayDate).c||0;
       return { id:ae.id, name:ae.name, initials:ae.name.split(' ').map(n=>n[0]).join(''), total, processed:proc, cancelled:total-proc, today:today_c, rate:total>0?Math.round(proc/total*100):0 };
     }).sort((a,b)=>b.total-a.total);

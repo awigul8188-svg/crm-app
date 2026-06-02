@@ -740,6 +740,17 @@ function OrdersTab({ data, onDrill }) {
 // ── Main Dashboard ────────────────────────────────────────────
 export default function Dashboard() {
   const { user } = useAuth(); const { navigate } = useNav()
+
+  // Load Poppins font (used by this dashboard)
+  useEffect(() => {
+    if (!document.getElementById('poppins-font')) {
+      const link = document.createElement('link')
+      link.id = 'poppins-font'
+      link.rel = 'stylesheet'
+      link.href = 'https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap'
+      document.head.appendChild(link)
+    }
+  }, [])
   const [data,    setData]    = useState(null)
   const [loading, setLoading] = useState(true)
   const [tab,     setTab]     = useState('overview')
@@ -799,7 +810,7 @@ export default function Dashboard() {
   const greet = () => { const h=new Date().getHours(); return h<12?'Good morning':h<17?'Good afternoon':'Good evening' }
 
   return (
-    <div style={{ padding:'28px 32px',flex:1,overflowY:'auto',fontFamily:'"Plus Jakarta Sans",sans-serif',background:'#FAFAF8',minHeight:'100%' }} onClick={handleTableClick}>
+    <div style={{ padding:'28px 32px',flex:1,overflowY:'auto',fontFamily:'"Plus Jakarta Sans",sans-serif',background:'#FAFAF7',color:'#0F1117' }} onClick={handleTableClick}>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}} * { box-sizing: border-box; }`}</style>
 
       {/* Header */}
