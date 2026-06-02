@@ -34,6 +34,29 @@ function getRevenue(db, aeId, fromDate, toDate) {
   }, 0);
 }
 
+
+// GP = (selling_price - purchase_quote_price) * quantity per part
+function getGP(db, aeId, fromDate, toDate) {
+  let where = `(i.disposition='Closed Won' OR i.disposition='Processed')`;
+  const params = [];
+  if (aeId)     { where += ' AND i.assigned_to=?';       params.push(aeId); }
+  if (fromDate) { where += ' AND date(i.created_at)>=?'; params.push(fromDate); }
+  if (toDate)   { where += ' AND date(i.created_at)<=?'; params.push(toDate); }
+  const rows = db.prepare(`
+    SELECT r.selling_price, r.quantity,
+      CAST(REPLACE(REPLACE(COALESCE(pq.price,'0'),'$',''),',','') AS REAL) as cost
+    FROM inquiries i
+    JOIN requirements r ON r.inquiry_id=i.id
+    LEFT JOIN purchase_assignments pa ON pa.requirement_id=r.id
+    LEFT JOIN purchase_quotes pq ON pq.assignment_id=pa.id
+    WHERE ${where} AND r.selling_price IS NOT NULL
+  `).all(...params);
+  return rows.reduce((sum, r) => {
+    const gp = (r.selling_price - (r.cost||0)) * (r.quantity||1);
+    return sum + (isNaN(gp) ? 0 : gp);
+  }, 0);
+}
+
 // ── GET /api/analytics/targets ───────────────────────────────
 router.get('/targets', canManage, (req, res) => {
   const db = getDB();
@@ -369,6 +392,111 @@ router.patch('/followup/:id/complete', (req, res) => {
   try { db.prepare('UPDATE followups SET completed=1 WHERE id=?').run(req.params.id); } catch(e) {}
   try { db.prepare('UPDATE inquiry_followups SET completed=1 WHERE id=?').run(req.params.id); } catch(e) {}
   res.json({ success: true });
+});
+
+
+// ── GET /api/analytics/manager-dashboard ────────────────────
+// Full 5-section manager dashboard with GP
+router.get('/manager-dashboard', canManage, (req, res) => {
+  const db = getDB();
+  const { from, to } = req.query;
+  const { year, quarter, qStart, qEnd } = currentQuarter();
+
+  const dateWhere = (alias='i') => {
+    let w = '1=1'; const p = [];
+    if (from) { w += ` AND date(${alias}.created_at)>=?`; p.push(from); }
+    if (to)   { w += ` AND date(${alias}.created_at)<=?`; p.push(to); }
+    return { w, p };
+  };
+
+  try {
+    const userId = req.user.id;
+    const dw = dateWhere();
+
+    // ── SECTION 1: Own performance ──
+    const ownTotal = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE i.assigned_to=? AND ${dw.w}`).get(userId, ...dw.p).c;
+    const ownWon   = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE i.assigned_to=? AND i.disposition IN ('Closed Won','Processed') AND ${dw.w}`).get(userId, ...dw.p).c;
+    const ownLost  = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE i.assigned_to=? AND i.disposition IN ('Closed Lost','Cancelled') AND ${dw.w}`).get(userId, ...dw.p).c;
+    const ownActive= db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE i.assigned_to=? AND i.disposition NOT IN ('Closed Won','Closed Lost','Processed','Cancelled','Fake Lead') AND i.disposition IS NOT NULL AND ${dw.w}`).get(userId, ...dw.p).c;
+    const ownRev   = getRevenue(db, userId, from||null, to||null);
+    const ownGP    = getGP(db, userId, from||null, to||null);
+    const ownWinRate = ownTotal > 0 ? Math.round(ownWon/ownTotal*100) : 0;
+    let ownTarget = null;
+    try { ownTarget = db.prepare("SELECT * FROM ae_targets WHERE ae_id=? AND year=? AND quarter=?").get(userId, year, quarter) || null; } catch(e) {}
+    const ownByType = ['lead','repeat','online_order'].map(type => {
+      const t = db.prepare(`SELECT COUNT(*) as total, SUM(CASE WHEN disposition IN ('Closed Won','Processed') THEN 1 ELSE 0 END) as won FROM inquiries i WHERE i.type=? AND i.assigned_to=? AND ${dw.w}`).get(type, userId, ...dw.p);
+      return { type, total:t.total||0, won:t.won||0, winRate:(t.total||0)>0?Math.round((t.won||0)/t.total*100):0 };
+    });
+
+    // ── SECTION 2: Team performance ──
+    const aes = db.prepare("SELECT id,name FROM users WHERE role='ae' ORDER BY name").all();
+    const teamAEs = aes.map(ae => {
+      const t = db.prepare(`SELECT COUNT(*) as total, SUM(CASE WHEN disposition IN ('Closed Won','Processed') THEN 1 ELSE 0 END) as won FROM inquiries i WHERE i.assigned_to=? AND ${dw.w}`).get(ae.id, ...dw.p);
+      const rev = getRevenue(db, ae.id, from||null, to||null);
+      const gp  = getGP(db, ae.id, from||null, to||null);
+      let target = null;
+      try { target = db.prepare("SELECT * FROM ae_targets WHERE ae_id=? AND year=? AND quarter=?").get(ae.id, year, quarter)||null; } catch(e) {}
+      return { id:ae.id, name:ae.name, total:t.total||0, won:t.won||0, winRate:(t.total||0)>0?Math.round((t.won||0)/t.total*100):0, revenue:rev, gp, target };
+    });
+
+    // ── SECTION 3: Leads ──
+    const leadTotal  = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE i.type='lead' AND ${dw.w}`).get(...dw.p).c;
+    const leadWon    = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE i.type='lead' AND i.disposition='Closed Won' AND ${dw.w}`).get(...dw.p).c;
+    const leadLost   = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE i.type='lead' AND i.disposition='Closed Lost' AND ${dw.w}`).get(...dw.p).c;
+    const leadActive = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE i.type='lead' AND i.disposition NOT IN ('Closed Won','Closed Lost','Fake Lead') AND i.disposition IS NOT NULL AND ${dw.w}`).get(...dw.p).c;
+    const leadFake   = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE i.type='lead' AND i.disposition='Fake Lead' AND ${dw.w}`).get(...dw.p).c;
+    const leadGP     = getGP(db, null, from||null, to||null);
+    const leadByDisp = db.prepare(`SELECT disposition, COUNT(*) as count FROM inquiries i WHERE i.type='lead' AND ${dw.w} AND disposition IS NOT NULL GROUP BY disposition ORDER BY count DESC`).all(...dw.p);
+    const leadBySource = db.prepare(`SELECT COALESCE(lead_source,'Unknown') as source, COUNT(*) as count FROM inquiries i WHERE i.type='lead' AND ${dw.w} GROUP BY source ORDER BY count DESC LIMIT 10`).all(...dw.p);
+    const leadByPPC  = db.prepare(`SELECT COALESCE(ppc_or_outbound,'Unknown') as type, COUNT(*) as count FROM inquiries i WHERE i.type='lead' AND ${dw.w} GROUP BY type ORDER BY count DESC`).all(...dw.p);
+    const leadByAE   = db.prepare(`SELECT ae.name, COUNT(*) as total, SUM(CASE WHEN i.disposition='Closed Won' THEN 1 ELSE 0 END) as won FROM inquiries i JOIN users ae ON i.assigned_to=ae.id WHERE i.type='lead' AND ${dw.w} GROUP BY i.assigned_to ORDER BY total DESC`).all(...dw.p);
+    const leadWinRate = leadTotal > 0 ? Math.round(leadWon/leadTotal*100) : 0;
+
+    // ── SECTION 4: Repeats ──
+    const repTotal   = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE i.type='repeat' AND ${dw.w}`).get(...dw.p).c;
+    const repWon     = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE i.type='repeat' AND i.disposition='Closed Won' AND ${dw.w}`).get(...dw.p).c;
+    const repLost    = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE i.type='repeat' AND i.disposition='Closed Lost' AND ${dw.w}`).get(...dw.p).c;
+    const repActive  = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE i.type='repeat' AND i.disposition NOT IN ('Closed Won','Closed Lost','Fake Lead') AND i.disposition IS NOT NULL AND ${dw.w}`).get(...dw.p).c;
+    const repWinRate = repTotal > 0 ? Math.round(repWon/repTotal*100) : 0;
+    const repByDisp  = db.prepare(`SELECT disposition, COUNT(*) as count FROM inquiries i WHERE i.type='repeat' AND ${dw.w} AND disposition IS NOT NULL GROUP BY disposition ORDER BY count DESC`).all(...dw.p);
+    const topCustomers = db.prepare(`SELECT c.id, c.name, c.company, COUNT(*) as count FROM inquiries i JOIN customers c ON i.customer_id=c.id WHERE i.type='repeat' AND ${dw.w} GROUP BY c.id ORDER BY count DESC LIMIT 10`).all(...dw.p);
+    const topReps    = db.prepare(`SELECT ae.id, ae.name, COUNT(*) as count FROM inquiries i JOIN users ae ON i.assigned_to=ae.id WHERE i.type='repeat' AND ${dw.w} GROUP BY ae.id ORDER BY count DESC LIMIT 10`).all(...dw.p);
+    const topCompanies = db.prepare(`SELECT COALESCE(c.company,c.name) as company, COUNT(*) as count FROM inquiries i JOIN customers c ON i.customer_id=c.id WHERE i.type='repeat' AND ${dw.w} GROUP BY company ORDER BY count DESC LIMIT 10`).all(...dw.p);
+
+    // ── SECTION 5: Orders ──
+    const ordTotal   = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE i.type='online_order' AND ${dw.w}`).get(...dw.p).c;
+    const ordProc    = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE i.type='online_order' AND i.disposition='Processed' AND ${dw.w}`).get(...dw.p).c;
+    const ordCanc    = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE i.type='online_order' AND i.disposition='Cancelled' AND ${dw.w}`).get(...dw.p).c;
+    const ordActive  = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE i.type='online_order' AND i.disposition NOT IN ('Processed','Cancelled') AND i.disposition IS NOT NULL AND ${dw.w}`).get(...dw.p).c;
+    const ordVerif   = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE i.type='online_order' AND i.order_ref IS NOT NULL AND i.order_ref!='' AND ${dw.w}`).get(...dw.p).c;
+    const ordNoVerif = db.prepare(`SELECT COUNT(*) as c FROM inquiries i WHERE i.type='online_order' AND (i.order_ref IS NULL OR i.order_ref='') AND ${dw.w}`).get(...dw.p).c;
+    const ordValueRow = db.prepare(`SELECT COALESCE(SUM(CAST(REPLACE(REPLACE(COALESCE(order_amount,'0'),'$',''),',','') AS REAL)),0) as total, COALESCE(AVG(CAST(REPLACE(REPLACE(COALESCE(order_amount,'0'),'$',''),',','') AS REAL)),0) as avg FROM inquiries i WHERE i.type='online_order' AND i.disposition='Processed' AND ${dw.w}`).get(...dw.p);
+    const ordProcRate = ordTotal > 0 ? Math.round(ordProc/ordTotal*100) : 0;
+    const ordByDisp  = db.prepare(`SELECT disposition, COUNT(*) as count FROM inquiries i WHERE i.type='online_order' AND ${dw.w} AND disposition IS NOT NULL GROUP BY disposition ORDER BY count DESC`).all(...dw.p);
+    const ordByAE    = db.prepare(`SELECT ae.name, COUNT(*) as total, SUM(CASE WHEN i.disposition='Processed' THEN 1 ELSE 0 END) as processed FROM inquiries i JOIN users ae ON i.assigned_to=ae.id WHERE i.type='online_order' AND ${dw.w} GROUP BY i.assigned_to ORDER BY total DESC`).all(...dw.p);
+
+    // Revenue by month (for own performance chart)
+    const revByMonth = Array.from({length:6}, (_,i) => {
+      const d = new Date(); d.setDate(1); d.setMonth(d.getMonth()-(5-i));
+      const d2 = new Date(d.getFullYear(), d.getMonth()+1, 0);
+      const ms = d.toISOString().split('T')[0]; const me = d2.toISOString().split('T')[0];
+      const rev = getRevenue(db, userId, ms, me);
+      const gp  = getGP(db, userId, ms, me);
+      return { month: d.toLocaleString('default',{month:'short'}), revenue:Math.round(rev), gp:Math.round(gp) };
+    });
+
+    res.json({
+      meta: { year, quarter, qStart, qEnd, from:from||null, to:to||null },
+      own: { total:ownTotal, won:ownWon, lost:ownLost, active:ownActive, winRate:ownWinRate, revenue:ownRev, gp:ownGP, target:ownTarget, byType:ownByType, revByMonth },
+      team: { aes: teamAEs },
+      leads: { total:leadTotal, won:leadWon, lost:leadLost, active:leadActive, fake:leadFake, winRate:leadWinRate, gp:leadGP, byDisposition:leadByDisp, bySource:leadBySource, byPPC:leadByPPC, byAE:leadByAE },
+      repeats: { total:repTotal, won:repWon, lost:repLost, active:repActive, winRate:repWinRate, byDisposition:repByDisp, topCustomers, topReps, topCompanies },
+      orders: { total:ordTotal, processed:ordProc, cancelled:ordCanc, active:ordActive, verified:ordVerif, notVerified:ordNoVerif, totalValue:Math.round(ordValueRow.total||0), avgValue:Math.round(ordValueRow.avg||0), processRate:ordProcRate, byDisposition:ordByDisp, byAE:ordByAE },
+    });
+  } catch(err) {
+    console.error('Manager dashboard error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

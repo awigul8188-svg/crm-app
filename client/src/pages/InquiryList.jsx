@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { useState, useEffect, useRef } from 'react'
 import { api } from '../api'
 import { useAuth } from '../App'
@@ -5,6 +6,85 @@ import { useNav } from '../App'
 import { DispositionBadge, DISPOSITIONS, LEAD_SOURCES, ORDER_SOURCES, formatDateShort } from '../components/Badges'
 import NewInquiryModal from '../components/NewInquiryModal'
 import MultiSelect from '../components/MultiSelect'
+
+// ── Selling Price Modal (shown when AE marks Closed Won) ─────
+function SellingPriceModal({ inquiry, onClose, onConfirm }) {
+  const [prices, setPrices] = useState(
+    (inquiry.requirements||[]).map(r => ({ requirement_id:r.id, part_number:r.part_number, quantity:r.quantity, purchase_price:null, selling_price:'' }))
+  )
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const token = () => localStorage.getItem('crm_token')
+
+  useEffect(() => {
+    fetch('/api/inquiries/'+inquiry.id+'/selling-prices', { headers:{ Authorization:'Bearer '+token() } })
+      .then(r=>r.json()).then(data => {
+        if (Array.isArray(data)) {
+          setPrices(prev => prev.map(p => {
+            const d = data.find(x=>x.requirement_id===p.requirement_id)
+            return d ? { ...p, purchase_price: d.purchase_quote_price, selling_price: d.selling_price||'' } : p
+          }))
+        }
+        setLoading(false)
+      }).catch(()=>setLoading(false))
+  }, [])
+
+  const save = async () => {
+    setSaving(true)
+    await fetch('/api/inquiries/'+inquiry.id+'/selling-prices', { method:'POST', headers:{ Authorization:'Bearer '+token(), 'Content-Type':'application/json' }, body: JSON.stringify({ prices: prices.map(p=>({ requirement_id:p.requirement_id, selling_price:parseFloat(p.selling_price)||0 })) }) })
+    setSaving(false); onConfirm()
+  }
+
+  const BRAND = '#00D4C8'
+  const inp = { width:'100%', boxSizing:'border-box', background:'var(--input-bg)', border:'1px solid var(--input-border)', borderRadius:8, padding:'7px 10px', fontSize:12, color:'var(--text)', fontFamily:'"Plus Jakarta Sans",sans-serif', outline:'none' }
+
+  return createPortal(
+    <div onClick={onClose} style={{ position:'fixed',inset:0,zIndex:99999,background:'rgba(0,0,0,0.6)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',padding:16 }}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:'var(--card)',borderRadius:20,boxShadow:'0 24px 80px rgba(0,0,0,0.3)',width:'100%',maxWidth:600,maxHeight:'88vh',display:'flex',flexDirection:'column',fontFamily:'"Plus Jakarta Sans",sans-serif' }}>
+        <div style={{ padding:'18px 24px',borderBottom:'1px solid var(--border)',flexShrink:0 }}>
+          <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif',fontWeight:700,fontSize:16,color:'var(--text)' }}>Enter Selling Prices — Closed Won</div>
+          <div style={{ fontSize:12,color:'var(--text-3)',marginTop:3 }}>GP = (Selling Price − Cost) × Qty per part</div>
+        </div>
+        <div style={{ overflowY:'auto',flex:1,padding:'16px 24px' }}>
+          {loading?<div style={{ textAlign:'center',padding:40,color:'var(--text-3)' }}>Loading...</div>:(
+            <div style={{ display:'flex',flexDirection:'column',gap:12 }}>
+              {prices.map((p,i)=>{
+                const cost = parseFloat(p.purchase_price)||0
+                const sell = parseFloat(p.selling_price)||0
+                const gp = sell>0&&cost>0 ? (sell-cost)*(p.quantity||1) : null
+                return (
+                  <div key={p.requirement_id} style={{ background:'var(--card-2)',borderRadius:12,padding:'14px 16px' }}>
+                    <div style={{ display:'flex',alignItems:'center',gap:12,marginBottom:10 }}>
+                      <div style={{ fontFamily:'monospace',fontWeight:700,fontSize:14,color:'var(--text)',flex:1 }}>{p.part_number}</div>
+                      <span style={{ fontSize:12,color:'var(--text-3)' }}>Qty: {p.quantity||1}</span>
+                      {p.purchase_price&&<span style={{ fontSize:12,color:'var(--text-3)' }}>Cost: <b style={{ color:'var(--text)' }}>${p.purchase_price}</b></span>}
+                    </div>
+                    <div style={{ display:'flex',alignItems:'center',gap:10 }}>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:11,fontWeight:700,color:'var(--text-3)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:5 }}>Selling Price / Unit ($)</div>
+                        <input value={p.selling_price} onChange={e=>setPrices(prev=>prev.map((x,j)=>j===i?{...x,selling_price:e.target.value}:x))} placeholder="Enter selling price" style={inp} type="number" />
+                      </div>
+                      {gp!==null&&<div style={{ flexShrink:0,textAlign:'right' }}>
+                        <div style={{ fontSize:10,fontWeight:700,color:'var(--text-4)',textTransform:'uppercase',marginBottom:3 }}>GP</div>
+                        <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif',fontWeight:700,fontSize:16,color:gp>=0?'#10b981':'#ef4444' }}>{gp>=0?'+':''}{gp.toFixed(0)}</div>
+                      </div>}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+        <div style={{ padding:'16px 24px',borderTop:'1px solid var(--border)',display:'flex',gap:10,flexShrink:0 }}>
+          <button onClick={save} disabled={saving} style={{ flex:1,padding:'11px',borderRadius:12,border:'none',background:saving?'var(--card-2)':BRAND,color:saving?'var(--text-3)':'#060610',fontWeight:700,fontSize:13,cursor:saving?'not-allowed':'pointer',fontFamily:'inherit' }}>{saving?'Saving…':'Save & Mark Closed Won'}</button>
+          <button onClick={onClose} style={{ padding:'11px 18px',borderRadius:12,border:'1px solid var(--border)',background:'var(--card)',color:'var(--text-2)',cursor:'pointer',fontFamily:'inherit' }}>Cancel</button>
+        </div>
+      </div>
+    </div>, document.body
+  )
+}
+
+
 
 const PAGE_SIZE = 50
 const TYPE_ICONS  = { lead:'◎', repeat:'↻', online_order:'◈' }
@@ -69,6 +149,8 @@ function InlineDispositionEdit({ inquiry, dispositions, onSave, onCancel }) {
   }, [])
   const handleChange = async e => {
     const v = e.target.value; setValue(v); setSaving(true)
+    // For Closed Won, trigger selling price popup via custom event
+    if (v === 'Closed Won') { onSave(inquiry.id, v, true); return }
     try { await api.updateInquiry(inquiry.id, { disposition:v, assigned_to:inquiry.assigned_to, notes:inquiry.notes, requirements:inquiry.requirements, ppc_or_outbound:inquiry.ppc_or_outbound, order_amount:inquiry.order_amount, order_ref:inquiry.order_ref }); onSave(inquiry.id, v) }
     catch { onCancel() } finally { setSaving(false) }
   }
@@ -129,6 +211,7 @@ export default function InquiryList({ type, title }) {
   const [search, setSearch] = useState('')
   const [deleting, setDeleting] = useState(null)
   const [editingDisp, setEditingDisp] = useState(null)
+  const [sellingPriceModal, setSellingPriceModal] = useState(null) // inquiry waiting for selling prices
   const [page, setPage] = useState(1)
   const [showColPicker, setShowColPicker] = useState(false)
   const [visibleCols, setVisibleCols] = useState(() => {
@@ -171,7 +254,14 @@ export default function InquiryList({ type, title }) {
   }
 
   const isVisible = k => visibleCols.includes(k)
-  const handleDispSave = (id, v) => { setInquiries(prev => prev.map(i => i.id===id?{...i,disposition:v}:i)); setEditingDisp(null) }
+  const handleDispSave = (id, v, needsSP=false) => {
+    setInquiries(prev => prev.map(i => i.id===id?{...i,disposition:v}:i)); setEditingDisp(null)
+    if (needsSP) {
+      const inq = inquiries.find(i=>i.id===id)
+      if (inq?.requirements?.length>0) setSellingPriceModal(inq)
+      else api.updateInquiry(id, { disposition:'Closed Won', assigned_to:inq?.assigned_to, notes:inq?.notes, requirements:inq?.requirements })
+    }
+  }
   const handleDelete = async (e, id) => { e.stopPropagation(); if (!confirm('Delete this inquiry?')) return; setDeleting(id); try { await api.deleteInquiry(id); load() } catch(e) { alert(e.message) } finally { setDeleting(null) } }
 
   const dispositionOptions = type==='online_order' ? ['Processed','Cancelled'] : DISPOSITIONS.filter(d => d!=='Processed'&&d!=='Cancelled')
@@ -401,6 +491,17 @@ export default function InquiryList({ type, title }) {
       )}
 
       {showNew && <NewInquiryModal defaultType={type} onClose={()=>setShowNew(false)} onCreated={()=>{setShowNew(false);load()}} />}
+    </div>
+      {sellingPriceModal && (
+        <SellingPriceModal
+          inquiry={sellingPriceModal}
+          onClose={()=>setSellingPriceModal(null)}
+          onConfirm={async ()=>{
+            await api.updateInquiry(sellingPriceModal.id, { disposition:'Closed Won', assigned_to:sellingPriceModal.assigned_to, notes:sellingPriceModal.notes, requirements:sellingPriceModal.requirements })
+            setSellingPriceModal(null)
+          }}
+        />
+      )}
     </div>
   )
 }

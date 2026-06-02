@@ -287,4 +287,40 @@ router.delete('/requirements/:id', (req, res) => {
   res.json({ success: true });
 });
 
+
+// ── POST /api/inquiries/:id/selling-prices ─────────────────────
+// Called when AE marks Closed Won — saves selling price per part for GP calc
+router.post('/:id/selling-prices', (req, res) => {
+  if (ROLE.isPurchaser(req.user)) return res.status(403).json({ error: 'Access denied' });
+  const db = getDB();
+  const { prices } = req.body; // [{ requirement_id, selling_price }]
+  if (!Array.isArray(prices)) return res.status(400).json({ error: 'prices array required' });
+  const stmt = db.prepare('UPDATE requirements SET selling_price=?, selling_price_entered_by=? WHERE id=? AND inquiry_id=?');
+  prices.forEach(p => {
+    if (p.requirement_id && p.selling_price != null) {
+      stmt.run(parseFloat(p.selling_price)||0, req.user.id, p.requirement_id, req.params.id);
+    }
+  });
+  res.json({ success: true });
+});
+
+// ── GET /api/inquiries/:id/selling-prices ──────────────────────
+router.get('/:id/selling-prices', (req, res) => {
+  if (ROLE.isPurchaser(req.user)) return res.status(403).json({ error: 'Access denied' });
+  const db = getDB();
+  const rows = db.prepare(`
+    SELECT r.id as requirement_id, r.part_number, r.quantity, r.selling_price,
+      pq.price as purchase_quote_price, pq.condition,
+      CASE WHEN r.selling_price IS NOT NULL AND pq.price IS NOT NULL
+        THEN (r.selling_price - CAST(REPLACE(REPLACE(pq.price,'$',''),',','') AS REAL)) * COALESCE(r.quantity,1)
+        ELSE NULL END as gp
+    FROM requirements r
+    LEFT JOIN purchase_assignments pa ON pa.requirement_id=r.id
+    LEFT JOIN purchase_quotes pq ON pq.assignment_id=pa.id
+    WHERE r.inquiry_id=?
+    ORDER BY r.id
+  `).all(req.params.id);
+  res.json(rows);
+});
+
 module.exports = router;
