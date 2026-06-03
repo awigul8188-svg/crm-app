@@ -1,124 +1,196 @@
-const Database = require('better-sqlite3');
-const bcrypt = require('bcryptjs');
-const path = require('path');
+const express = require('express');
+const { getDB } = require('../database');
+const { authenticate, requireManager } = require('../middleware/auth');
 
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'crm.db');
-let db;
+const router = express.Router();
+router.use(authenticate);
 
-function getDB() {
-  if (!db) {
-    db = new Database(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('foreign_keys = ON');
-  }
-  return db;
+function logActivity(db, entityId, user, action, comment = null) {
+  db.prepare('INSERT INTO activity_log (entity_type, entity_id, user_id, user_name, action, comment) VALUES (?, ?, ?, ?, ?, ?)').run('inquiry', entityId, user.id, user.name, action, comment);
 }
 
-function initializeDB() {
+// Notify all managers about an AE action
+function notifyManagers(db, { inquiry_id, inquiry_type, customer_name, actor_name, actor_role, action, comment }) {
+  // Only notify when an AE does something (not when a manager acts on their own stuff)
+  // Managers still get notified of all AE actions
+  const managers = db.prepare("SELECT id FROM users WHERE role = 'manager'").all();
+  const insert = db.prepare("INSERT INTO notifications (user_id, inquiry_id, inquiry_type, customer_name, actor_name, action, comment) VALUES (?, ?, ?, ?, ?, ?, ?)");
+  managers.forEach(m => insert.run(m.id, inquiry_id, inquiry_type, customer_name, actor_name, action, comment));
+}
+
+function buildInFilter(column, value) {
+  if (!value) return null;
+  const values = value.split(',').map(v => v.trim()).filter(Boolean);
+  if (!values.length) return null;
+  return { sql: `${column} IN (${values.map(() => '?').join(',')})`, params: values };
+}
+
+router.get('/', (req, res) => {
   const db = getDB();
-  const { runTargetsMigration } = require('./migrations/targets')
-  runTargetsMigration(db)
+  const { type, disposition, lead_source } = req.query;
+  let query = `
+    SELECT i.*, c.name as customer_name, c.email as customer_email, c.company as customer_company,
+      c.phone as customer_phone, c.lead_source, u.name as assigned_name
+    FROM inquiries i
+    LEFT JOIN customers c ON i.customer_id = c.id
+    LEFT JOIN users u ON i.assigned_to = u.id WHERE 1=1
+  `;
+  const params = [];
+  if (req.user.role === 'ae') { query += ' AND i.assigned_to = ?'; params.push(req.user.id); }
+  if (type) { query += ' AND i.type = ?'; params.push(type); }
+  if (disposition) { const f = buildInFilter('i.disposition', disposition); if (f) { query += ` AND ${f.sql}`; params.push(...f.params); } }
+  if (lead_source) { const f = buildInFilter('c.lead_source', lead_source); if (f) { query += ` AND ${f.sql}`; params.push(...f.params); } }
+  query += ' ORDER BY i.created_at DESC';
+  const inquiries = db.prepare(query).all(...params);
+  res.json(inquiries.map(inq => ({ ...inq, requirements: db.prepare('SELECT * FROM requirements WHERE inquiry_id = ?').all(inq.id) })));
+});
 
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      username TEXT UNIQUE NOT NULL,
-      password TEXT NOT NULL,
-      name TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'ae',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
+router.get('/stats', (req, res) => {
+  const db = getDB();
+  const userId = req.user.role === 'ae' ? req.user.id : null;
+  const w = userId ? 'AND assigned_to = ?' : '';
+  const p = (extra = []) => userId ? [userId, ...extra] : extra;
+  const count = (type) => db.prepare(`SELECT COUNT(*) as c FROM inquiries WHERE type=? ${w}`).get(...p([type])).c;
+  const today = new Date().toISOString().split('T')[0];
+  const next7 = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+  const upcomingFollowups = db.prepare(`SELECT COUNT(*) as c FROM followups f JOIN inquiries i ON f.inquiry_id = i.id WHERE f.completed=0 AND f.follow_up_date BETWEEN ? AND ? ${userId ? 'AND i.assigned_to=?' : ''}`).get(...(userId ? [today, next7, userId] : [today, next7])).c;
+  res.json({ leads: count('lead'), repeat: count('repeat'), orders: count('online_order'), upcomingFollowups });
+});
 
-    CREATE TABLE IF NOT EXISTS customers (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      email TEXT,
-      phone TEXT,
-      company TEXT,
-      lead_source TEXT,
-      assigned_to INTEGER REFERENCES users(id),
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
+router.post('/', (req, res) => {
+  const { customer_id, type, disposition, assigned_to, notes, requirements, ppc_or_outbound, order_amount, order_ref, custom_date } = req.body;
+  if (!customer_id || !type) return res.status(400).json({ error: 'customer_id and type required' });
+  const db = getDB();
+  const assignee = req.user.role === 'ae' ? req.user.id : (assigned_to || req.user.id);
 
-    CREATE TABLE IF NOT EXISTS inquiries (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
-      type TEXT NOT NULL,
-      disposition TEXT DEFAULT 'Initial Contact',
-      assigned_to INTEGER REFERENCES users(id),
-      notes TEXT,
-      ppc_or_outbound TEXT,
-      order_amount TEXT,
-      order_ref TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
+  // Use custom_date if provided, otherwise now
+  const createdAt = custom_date ? new Date(custom_date).toISOString() : new Date().toISOString();
 
-    CREATE TABLE IF NOT EXISTS requirements (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      inquiry_id INTEGER NOT NULL REFERENCES inquiries(id) ON DELETE CASCADE,
-      part_number TEXT NOT NULL,
-      quantity TEXT NOT NULL
-    );
+  const result = db.prepare('INSERT INTO inquiries (customer_id, type, disposition, assigned_to, notes, ppc_or_outbound, order_amount, order_ref, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(customer_id, type, disposition || 'Initial Contact', assignee, notes || null, ppc_or_outbound || null, order_amount || null, order_ref || null, createdAt, createdAt);
+  const inquiryId = result.lastInsertRowid;
 
-    CREATE TABLE IF NOT EXISTS followups (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      inquiry_id INTEGER NOT NULL REFERENCES inquiries(id) ON DELETE CASCADE,
-      note TEXT NOT NULL,
-      follow_up_date TEXT,
-      completed INTEGER DEFAULT 0,
-      created_by INTEGER REFERENCES users(id),
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS activity_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      entity_type TEXT NOT NULL,
-      entity_id INTEGER NOT NULL,
-      user_id INTEGER REFERENCES users(id),
-      user_name TEXT,
-      action TEXT NOT NULL,
-      comment TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
-
-  // Migrations for existing databases
-  const migrations = [
-    "ALTER TABLE inquiries ADD COLUMN disposition TEXT DEFAULT 'Initial Contact'",
-    "ALTER TABLE inquiries ADD COLUMN ppc_or_outbound TEXT",
-    "ALTER TABLE inquiries ADD COLUMN order_amount TEXT",
-    "ALTER TABLE inquiries ADD COLUMN order_ref TEXT",
-    "ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 1",
-    "ALTER TABLE users ADD COLUMN avatar_url TEXT",
-    "ALTER TABLE users ADD COLUMN ringtone_url TEXT",
-    "ALTER TABLE users ADD COLUMN ringtone_active INTEGER DEFAULT 0",
-    "CREATE TABLE IF NOT EXISTS notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, inquiry_id INTEGER, inquiry_type TEXT, customer_name TEXT, actor_name TEXT, action TEXT, comment TEXT, read INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)",
-  ];
-  for (const m of migrations) {
-    try { db.exec(m) } catch {}
+  if (requirements?.length) {
+    const ins = db.prepare('INSERT INTO requirements (inquiry_id, part_number, quantity) VALUES (?, ?, ?)');
+    requirements.forEach(r => { if (r.part_number?.trim()) ins.run(inquiryId, r.part_number, r.quantity); });
   }
 
-  // Seed all team members if no users exist
-  const count = db.prepare('SELECT COUNT(*) as c FROM users').get();
-  if (count.c === 0) {
-    const managerHash = bcrypt.hashSync('Admin@123', 10);
-    const aeHash = bcrypt.hashSync('Team@123', 10);
-    db.prepare("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, 'manager')").run('eddie', managerHash, 'Eddie');
-    db.prepare("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, 'manager')").run('ethan', managerHash, 'Ethan');
-    db.prepare("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, 'ae')").run('ryan', aeHash, 'Ryan');
-    db.prepare("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, 'ae')").run('justin', aeHash, 'Justin');
-    db.prepare("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, 'ae')").run('aman', aeHash, 'Aman');
-    db.prepare("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, 'ae')").run('hector', aeHash, 'Hector');
-    console.log('✅ All team members seeded → Managers: Admin@123 | AEs: Team@123');
+  logActivity(db, inquiryId, req.user, `${type} created`);
+
+  // Notify managers if AE created this
+  const customer = db.prepare('SELECT name FROM customers WHERE id = ?').get(customer_id);
+  notifyManagers(db, {
+    inquiry_id: inquiryId, inquiry_type: type,
+    customer_name: customer?.name || 'Unknown',
+    actor_name: req.user.name,
+    actor_role: req.user.role,
+    action: `New ${type === 'lead' ? 'Lead' : type === 'repeat' ? 'Repeat Inquiry' : 'Online Order'} created`,
+    comment: null,
+  });
+
+  res.json({ id: inquiryId });
+});
+
+router.get('/:id', (req, res) => {
+  const db = getDB();
+  const inquiry = db.prepare(`SELECT i.*, c.name as customer_name, c.email as customer_email, c.phone as customer_phone, c.company as customer_company, c.lead_source, u.name as assigned_name FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id LEFT JOIN users u ON i.assigned_to = u.id WHERE i.id = ?`).get(req.params.id);
+  if (!inquiry) return res.status(404).json({ error: 'Not found' });
+  const requirements = db.prepare('SELECT * FROM requirements WHERE inquiry_id = ? ORDER BY id').all(req.params.id);
+  const followups = db.prepare(`SELECT f.*, u.name as created_by_name FROM followups f LEFT JOIN users u ON f.created_by = u.id WHERE f.inquiry_id = ? ORDER BY f.created_at DESC`).all(req.params.id);
+  const activity = db.prepare("SELECT * FROM activity_log WHERE entity_type='inquiry' AND entity_id=? ORDER BY created_at DESC").all(req.params.id);
+  res.json({ ...inquiry, requirements, followups, activity });
+});
+
+router.put('/:id', (req, res) => {
+  const { disposition, assigned_to, notes, requirements, ppc_or_outbound, order_amount, order_ref } = req.body;
+  const db = getDB();
+
+  // Get inquiry info for notification
+  const inquiry = db.prepare('SELECT i.type, c.name as customer_name FROM inquiries i JOIN customers c ON i.customer_id = c.id WHERE i.id = ?').get(req.params.id);
+
+  db.prepare('UPDATE inquiries SET disposition=?, assigned_to=?, notes=?, ppc_or_outbound=?, order_amount=?, order_ref=?, updated_at=CURRENT_TIMESTAMP WHERE id=?').run(disposition, assigned_to, notes, ppc_or_outbound || null, order_amount || null, order_ref || null, req.params.id);
+  if (requirements !== undefined) {
+    db.prepare('DELETE FROM requirements WHERE inquiry_id = ?').run(req.params.id);
+    if (requirements.length) { const ins = db.prepare('INSERT INTO requirements (inquiry_id, part_number, quantity) VALUES (?, ?, ?)'); requirements.forEach(r => { if (r.part_number?.trim()) ins.run(req.params.id, r.part_number, r.quantity); }); }
   }
 
-  console.log('✅ Database ready');
-}
+  logActivity(db, req.params.id, req.user, 'Inquiry updated');
 
-module.exports = { getDB, initializeDB };
+  notifyManagers(db, {
+    inquiry_id: parseInt(req.params.id),
+    inquiry_type: inquiry?.type,
+    customer_name: inquiry?.customer_name || 'Unknown',
+    actor_name: req.user.name,
+    actor_role: req.user.role,
+    action: `Disposition changed to "${disposition}"`,
+    comment: null,
+  });
 
-// Additional migrations run at startup (safe to re-run - uses IF NOT EXISTS or try/catch)
+  res.json({ success: true });
+});
+
+router.delete('/:id', requireManager, (req, res) => {
+  getDB().prepare('DELETE FROM inquiries WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
+router.post('/:id/comments', (req, res) => {
+  const { comment } = req.body;
+  if (!comment?.trim()) return res.status(400).json({ error: 'Comment cannot be empty' });
+  const db = getDB();
+
+  const inquiry = db.prepare('SELECT i.type, c.name as customer_name FROM inquiries i JOIN customers c ON i.customer_id = c.id WHERE i.id = ?').get(req.params.id);
+
+  logActivity(db, req.params.id, req.user, 'Comment', comment);
+
+  notifyManagers(db, {
+    inquiry_id: parseInt(req.params.id),
+    inquiry_type: inquiry?.type,
+    customer_name: inquiry?.customer_name || 'Unknown',
+    actor_name: req.user.name,
+    actor_role: req.user.role,
+    action: 'Added a comment',
+    comment: comment.length > 80 ? comment.slice(0, 80) + '...' : comment,
+  });
+
+  res.json({ success: true });
+});
+
+router.post('/:id/followups', (req, res) => {
+  const { note, follow_up_date } = req.body;
+  if (!note?.trim()) return res.status(400).json({ error: 'Note required' });
+  const db = getDB();
+
+  const inquiry = db.prepare('SELECT i.type, c.name as customer_name FROM inquiries i JOIN customers c ON i.customer_id = c.id WHERE i.id = ?').get(req.params.id);
+
+  const result = db.prepare('INSERT INTO followups (inquiry_id, note, follow_up_date, created_by) VALUES (?, ?, ?, ?)').run(req.params.id, note, follow_up_date || null, req.user.id);
+  logActivity(db, req.params.id, req.user, 'Follow-up added', note);
+
+  notifyManagers(db, {
+    inquiry_id: parseInt(req.params.id),
+    inquiry_type: inquiry?.type,
+    customer_name: inquiry?.customer_name || 'Unknown',
+    actor_name: req.user.name,
+    actor_role: req.user.role,
+    action: `Added a follow-up${follow_up_date ? ` for ${follow_up_date}` : ''}`,
+    comment: note.length > 80 ? note.slice(0, 80) + '...' : note,
+  });
+
+  res.json({ id: result.lastInsertRowid });
+});
+
+router.put('/followups/:id', (req, res) => {
+  const { completed, note, follow_up_date } = req.body;
+  getDB().prepare('UPDATE followups SET completed=?, note=?, follow_up_date=? WHERE id=?').run(completed ? 1 : 0, note, follow_up_date || null, req.params.id);
+  res.json({ success: true });
+});
+
+router.delete('/followups/:id', requireManager, (req, res) => {
+  getDB().prepare('DELETE FROM followups WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
+module.exports = router;
+
 function runPurchasingMigrations() {
   const db = getDB();
   try {
@@ -129,6 +201,10 @@ function runPurchasingMigrations() {
         purchaser_id INTEGER NOT NULL REFERENCES users(id),
         assigned_by INTEGER REFERENCES users(id),
         status TEXT DEFAULT 'pending',
+        urgency TEXT DEFAULT 'normal',
+        pm_notes TEXT,
+        purchaser_notes TEXT,
+        not_in_stock INTEGER DEFAULT 0,
         assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(requirement_id)
       );
@@ -145,30 +221,6 @@ function runPurchasingMigrations() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
-    `);
-  } catch(e) { console.log('Purchasing migration note:', e.message); }
-}
-
-module.exports.runPurchasingMigrations = runPurchasingMigrations;
-
-function runPurchasingV2Migrations() {
-  const db = getDB();
-  try {
-    db.exec(`
-      ALTER TABLE purchase_assignments ADD COLUMN urgency TEXT DEFAULT 'normal';
-    `);
-  } catch(e) {}
-  try {
-    db.exec(`ALTER TABLE purchase_assignments ADD COLUMN pm_notes TEXT;`);
-  } catch(e) {}
-  try {
-    db.exec(`ALTER TABLE purchase_assignments ADD COLUMN purchaser_notes TEXT;`);
-  } catch(e) {}
-  try {
-    db.exec(`ALTER TABLE purchase_assignments ADD COLUMN not_in_stock INTEGER DEFAULT 0;`);
-  } catch(e) {}
-  try {
-    db.exec(`
       CREATE TABLE IF NOT EXISTS purchaser_followups (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         assignment_id INTEGER NOT NULL REFERENCES purchase_assignments(id) ON DELETE CASCADE,
@@ -188,194 +240,13 @@ function runPurchasingV2Migrations() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
     `);
-  } catch(e) { console.log('V2 migration note:', e.message); }
+  } catch(e) { console.log('Purchasing migration note:', e.message); }
+}
+module.exports.runPurchasingMigrations = runPurchasingMigrations;
+
+function runPurchasingV2Migrations() {
+  const db = getDB();
+  const cols = ['urgency TEXT DEFAULT 'normal'', 'pm_notes TEXT', 'purchaser_notes TEXT', 'not_in_stock INTEGER DEFAULT 0'];
+  cols.forEach(col => { try { db.exec('ALTER TABLE purchase_assignments ADD COLUMN ' + col); } catch(e) {} });
 }
 module.exports.runPurchasingV2Migrations = runPurchasingV2Migrations;
-
-function runNFTMigrations() {
-  const db = getDB();
-  const tables = [
-    `CREATE TABLE IF NOT EXISTS nft_profiles (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-      real_name TEXT NOT NULL,
-      job_title TEXT DEFAULT 'Account Executive',
-      department TEXT DEFAULT 'Sales',
-      photo_url TEXT,
-      phone TEXT,
-      hire_date DATE,
-      nft_role TEXT DEFAULT 'employee',
-      bio TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`,
-    `CREATE TABLE IF NOT EXISTS nft_salary (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL REFERENCES users(id),
-      base_salary REAL DEFAULT 0,
-      month TEXT NOT NULL,
-      bonus REAL DEFAULT 0,
-      notes TEXT,
-      created_by INTEGER REFERENCES users(id),
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(user_id, month)
-    )`,
-    `CREATE TABLE IF NOT EXISTS nft_targets (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL REFERENCES users(id),
-      quarter TEXT NOT NULL,
-      sales_target REAL DEFAULT 0,
-      gp_target REAL DEFAULT 0,
-      sales_achieved REAL DEFAULT 0,
-      gp_achieved REAL DEFAULT 0,
-      created_by INTEGER REFERENCES users(id),
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(user_id, quarter)
-    )`,
-    `CREATE TABLE IF NOT EXISTS nft_biodata (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL REFERENCES users(id),
-      doc_type TEXT NOT NULL,
-      doc_name TEXT NOT NULL,
-      file_url TEXT NOT NULL,
-      file_size INTEGER DEFAULT 0,
-      uploaded_by INTEGER REFERENCES users(id),
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`,
-    `CREATE TABLE IF NOT EXISTS nft_kiosk_menu (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      category TEXT DEFAULT 'Food',
-      price REAL NOT NULL,
-      description TEXT,
-      available INTEGER DEFAULT 1,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`,
-    `CREATE TABLE IF NOT EXISTS nft_kiosk_orders (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL REFERENCES users(id),
-      items TEXT NOT NULL,
-      total_amount REAL DEFAULT 0,
-      status TEXT DEFAULT 'pending',
-      notes TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`,
-    `CREATE TABLE IF NOT EXISTS nft_shop_products (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      description TEXT,
-      price REAL NOT NULL,
-      inventory INTEGER DEFAULT 0,
-      category TEXT DEFAULT 'Merchandise',
-      available INTEGER DEFAULT 1,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`,
-    `CREATE TABLE IF NOT EXISTS nft_shop_orders (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL REFERENCES users(id),
-      items TEXT NOT NULL,
-      total_amount REAL DEFAULT 0,
-      status TEXT DEFAULT 'pending',
-      deduction_status TEXT DEFAULT 'pending',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`,
-    `CREATE TABLE IF NOT EXISTS nft_conversations (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      type TEXT DEFAULT 'dm',
-      name TEXT,
-      participants TEXT NOT NULL,
-      created_by INTEGER REFERENCES users(id),
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`,
-    `CREATE TABLE IF NOT EXISTS nft_messages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      conversation_id INTEGER NOT NULL REFERENCES nft_conversations(id) ON DELETE CASCADE,
-      sender_id INTEGER NOT NULL REFERENCES users(id),
-      content TEXT,
-      file_url TEXT,
-      file_name TEXT,
-      file_size INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`,
-    `CREATE TABLE IF NOT EXISTS nft_news (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      title TEXT NOT NULL,
-      content TEXT NOT NULL,
-      image_url TEXT,
-      author_id INTEGER REFERENCES users(id),
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`,
-    `CREATE TABLE IF NOT EXISTS nft_cars (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      description TEXT,
-      image_url TEXT,
-      required_sales_target REAL DEFAULT 0,
-      sort_order INTEGER DEFAULT 0
-    )`,
-    `CREATE TABLE IF NOT EXISTS nft_car_assignments (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL REFERENCES users(id),
-      car_id INTEGER NOT NULL REFERENCES nft_cars(id),
-      achieved_at DATE,
-      notes TEXT
-    )`
-  ];
-  tables.forEach(sql => { try { db.exec(sql); } catch(e) { console.log('NFT migration:', e.message); } });
-
-  // Seed default NFT profiles if none exist
-  const count = db.prepare('SELECT COUNT(*) as c FROM nft_profiles').get().c;
-  if (count === 0) {
-    const users = db.prepare("SELECT id, name FROM users WHERE role IN ('ae','manager')").all();
-    const nameMap = { ryan:'Usman Azeem', ethan:'Hammad Asif', eddie:'Awais Gul Khan', justin:'Ahmed Naseem', hector:'Ahmed Shafay', aman:'Aman' };
-    const ins = db.prepare('INSERT OR IGNORE INTO nft_profiles (user_id, real_name, nft_role) VALUES (?,?,?)');
-    users.forEach(u => {
-      const realName = nameMap[u.name?.toLowerCase()] || u.name;
-      const role = u.name?.toLowerCase() === 'eddie' || u.name?.toLowerCase() === 'ethan' ? 'manager' : 'employee';
-      ins.run(u.id, realName, role);
-    });
-  }
-}
-module.exports.runNFTMigrations = runNFTMigrations;
-
-function runNFTV2Migrations() {
-  const db = getDB();
-  const bcrypt = require('bcryptjs');
-  try {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS nft_users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        real_name TEXT NOT NULL,
-        role TEXT DEFAULT 'employee',
-        job_title TEXT,
-        department TEXT DEFAULT 'Sales',
-        photo_url TEXT,
-        phone TEXT,
-        hire_date DATE,
-        bio TEXT,
-        token_version INTEGER DEFAULT 1,
-        created_by INTEGER,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-    // Update NFT tables to allow null or nft_user references
-    // Seed managers if not present
-    const count = db.prepare("SELECT COUNT(*) as c FROM nft_users WHERE role='manager'").get().c;
-    if (count === 0) {
-      const hash = bcrypt.hashSync('Admin@123', 10);
-      db.prepare("INSERT OR IGNORE INTO nft_users (username, password, real_name, role, job_title) VALUES (?,?,?,?,?)").run('awais', hash, 'Awais Gul Khan', 'manager', 'Managing Director');
-      db.prepare("INSERT OR IGNORE INTO nft_users (username, password, real_name, role, job_title) VALUES (?,?,?,?,?)").run('hammad', hash, 'Hammad Asif', 'manager', 'Manager');
-      // Seed employees
-      const employees = [
-        ['usman', 'Usman Azeem', 'Account Executive'],
-        ['ahmed_naseem', 'Ahmed Naseem', 'Account Executive'],
-        ['ahmed_shafay', 'Ahmed Shafay', 'Account Executive'],
-        ['aman', 'Aman', 'Account Executive'],
-      ];
-      const empHash = bcrypt.hashSync('Team@123', 10);
-      employees.forEach(([u, n, t]) => db.prepare("INSERT OR IGNORE INTO nft_users (username, password, real_name, role, job_title) VALUES (?,?,?,?,?)").run(u, empHash, n, 'employee', t));
-    }
-  } catch(e) { console.log('NFT V2 migration note:', e.message); }
-}
-module.exports.runNFTV2Migrations = runNFTV2Migrations;

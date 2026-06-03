@@ -5,7 +5,7 @@ import { useNav } from '../App'
 import { formatDate, timeAgo } from '../components/Badges'
 
 const BRAND = '#00D4C8'
-const TYPE_ICONS = { lead: '◎', repeat: '↻', online_order: '◈' }
+const TYPE_ICONS = { lead: '\u25ce', repeat: '\u21bb', online_order: '\u25c8' }
 const TYPE_LABELS = { lead: 'Lead', repeat: 'Repeat', online_order: 'Online Order' }
 const TYPE_COLORS = { lead: '#3b82f6', repeat: '#6366f1', online_order: '#f59e0b' }
 
@@ -19,27 +19,27 @@ function FollowUpCard({ fu, onComplete, onNavigate }) {
   return (
     <div
       onClick={() => onNavigate('inquiry-detail', { id: fu.inquiry_id })}
-      style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '14px 16px', background: 'var(--card)', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.07)', cursor: 'pointer', transition: 'all 0.15s', marginBottom: '8px' }}
+      style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '14px 16px', background: '#fff', borderRadius: '14px', border: '1px solid #f1f5f9', cursor: 'pointer', transition: 'all 0.15s', marginBottom: '8px' }}
       onMouseEnter={e => { e.currentTarget.style.borderColor = BRAND; e.currentTarget.style.boxShadow = `0 2px 12px rgba(0,212,200,0.1)` }}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--card-2)'; e.currentTarget.style.boxShadow = 'none' }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = '#f1f5f9'; e.currentTarget.style.boxShadow = 'none' }}
     >
       <div style={{ width: 36, height: 36, borderRadius: '10px', background: `${BRAND}18`, color: BRAND, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '13px', flexShrink: 0 }}>
         {fu.customer_name?.[0]?.toUpperCase() || '?'}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '3px' }}>
-          <span style={{ fontWeight: 700, fontSize: '14px', color: 'var(--text)' }}>{fu.customer_name}</span>
-          {fu.customer_company && <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.38)' }}>· {fu.customer_company}</span>}
+          <span style={{ fontWeight: 700, fontSize: '14px', color: '#0f172a' }}>{fu.customer_name}</span>
+          {fu.customer_company && <span style={{ fontSize: '12px', color: '#94a3b8' }}>\u00b7 {fu.customer_company}</span>}
           {fu.inquiry_type && (
             <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px', background: `${TYPE_COLORS[fu.inquiry_type]}18`, color: TYPE_COLORS[fu.inquiry_type] }}>
               {TYPE_ICONS[fu.inquiry_type]} {TYPE_LABELS[fu.inquiry_type]}
             </span>
           )}
         </div>
-        <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.65)', margin: '0 0 4px' }}>{fu.note}</p>
-        <div style={{ display: 'flex', gap: '12px', fontSize: '11px', color: 'rgba(255,255,255,0.38)' }}>
-          {fu.follow_up_date && <span style={{ color: '#f59e0b', fontWeight: 600 }}>📅 {formatDate(fu.follow_up_date)}</span>}
-          <span>👤 {fu.assigned_name || '—'}</span>
+        <p style={{ fontSize: '13px', color: '#475569', margin: '0 0 4px' }}>{fu.note}</p>
+        <div style={{ display: 'flex', gap: '12px', fontSize: '11px', color: '#94a3b8' }}>
+          {fu.follow_up_date && <span style={{ color: '#f59e0b', fontWeight: 600 }}>\ud83d\udcc5 {formatDate(fu.follow_up_date)}</span>}
+          <span>\ud83d\udc64 {fu.assigned_name || '\u2014'}</span>
         </div>
       </div>
       <button
@@ -50,7 +50,7 @@ function FollowUpCard({ fu, onComplete, onNavigate }) {
         onMouseEnter={e => { e.currentTarget.style.borderColor = BRAND; e.currentTarget.style.background = `${BRAND}12` }}
         onMouseLeave={e => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.background = 'transparent' }}
       >
-        {completing ? <div style={{ width: 12, height: 12, borderRadius: '50%', border: `2px solid ${BRAND}`, borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} /> : <span style={{ color: 'rgba(255,255,255,0.38)', fontSize: '13px' }}>✓</span>}
+        {completing ? <div style={{ width: 12, height: 12, borderRadius: '50%', border: `2px solid ${BRAND}`, borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} /> : <span style={{ color: '#94a3b8', fontSize: '13px' }}>\u2713</span>}
       </button>
     </div>
   )
@@ -71,12 +71,12 @@ function ActivityCard({ notif, onNavigate, onRead }) {
       style={{
         display: 'flex', alignItems: 'flex-start', gap: '12px',
         padding: '14px 16px', borderRadius: '14px', cursor: 'pointer',
-        background: notif.read ? 'var(--card)' : `${BRAND}06`,
-        border: `1px solid ${notif.read ? 'var(--card-2)' : `${BRAND}30`}`,
+        background: notif.read ? '#fff' : `${BRAND}06`,
+        border: `1px solid ${notif.read ? '#f1f5f9' : `${BRAND}30`}`,
         transition: 'all 0.15s', marginBottom: '8px', position: 'relative',
       }}
       onMouseEnter={e => { e.currentTarget.style.borderColor = BRAND; e.currentTarget.style.boxShadow = `0 2px 12px rgba(0,212,200,0.1)` }}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = notif.read ? 'var(--card-2)' : `${BRAND}30`; e.currentTarget.style.boxShadow = 'none' }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = notif.read ? '#f1f5f9' : `${BRAND}30`; e.currentTarget.style.boxShadow = 'none' }}
     >
       {/* Unread dot */}
       {!notif.read && (
@@ -84,18 +84,18 @@ function ActivityCard({ notif, onNavigate, onRead }) {
       )}
 
       {/* Actor avatar */}
-      <div style={{ width: 36, height: 36, borderRadius: '10px', background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '13px', flexShrink: 0 }}>
+      <div style={{ width: 36, height: 36, borderRadius: '10px', background: '#f1f5f9', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '13px', flexShrink: 0 }}>
         {notif.actor_name?.[0]?.toUpperCase() || '?'}
       </div>
 
       <div style={{ flex: 1, minWidth: 0, paddingRight: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '3px' }}>
-          <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text)' }}>{notif.actor_name}</span>
-          <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.65)' }}>{notif.action}</span>
+          <span style={{ fontWeight: 700, fontSize: '13px', color: '#0f172a' }}>{notif.actor_name}</span>
+          <span style={{ fontSize: '13px', color: '#475569' }}>{notif.action}</span>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)' }}>{notif.customer_name}</span>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: '#0f172a' }}>{notif.customer_name}</span>
           {notif.inquiry_type && (
             <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px', background: `${typeColor}18`, color: typeColor }}>
               {notif.type_icon || TYPE_ICONS[notif.inquiry_type]} {TYPE_LABELS[notif.inquiry_type] || notif.inquiry_type}
@@ -104,14 +104,14 @@ function ActivityCard({ notif, onNavigate, onRead }) {
         </div>
 
         {notif.comment && (
-          <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.50)', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', padding: '6px 10px', marginBottom: '4px', fontStyle: 'italic' }}>
+          <div style={{ fontSize: '12px', color: '#64748b', background: '#f8fafc', borderRadius: '8px', padding: '6px 10px', marginBottom: '4px', fontStyle: 'italic' }}>
             "{notif.comment}"
           </div>
         )}
 
-        <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.38)' }}>
+        <div style={{ fontSize: '11px', color: '#94a3b8' }}>
           {timeAgo(notif.created_at)}
-          {notif.inquiry_id && <span style={{ color: BRAND, marginLeft: '8px' }}>View inquiry →</span>}
+          {notif.inquiry_id && <span style={{ color: BRAND, marginLeft: '8px' }}>View inquiry \u2192</span>}
         </div>
       </div>
     </div>
@@ -131,7 +131,7 @@ export default function Notifications() {
     api.getNotifications().then(d => {
       setData(d)
       setLocalActivity(d.activity || [])
-      // Default tab: managers → activity, AEs → followups
+      // Default tab: managers \u2192 activity, AEs \u2192 followups
       if (user.role === 'ae') setActiveTab('followups')
       setLoading(false)
     }).catch(() => setLoading(false))
@@ -151,24 +151,18 @@ export default function Notifications() {
   const followupTotal = data ? data.followups.overdue.length + data.followups.today.length + data.followups.upcoming.length : 0
   const unreadActivity = localActivity.filter(n => !n.read).length
 
-  const quoteNotifs = (data?.activity || []).filter(n => n.inquiry_type === 'quote')
-  const unreadQuotes = quoteNotifs.filter(n => !n.read).length
-  const activityNotifs = (data?.activity || []).filter(n => n.inquiry_type !== 'quote')
-  const unreadActivityFiltered = activityNotifs.filter(n => !n.read).length
-
   const tabs = [
-    ...(user.role === 'manager' || user.role === 'purchasing_manager' ? [{ key: 'activity', label: 'Activity', count: unreadActivityFiltered }] : []),
+    ...(user.role === 'manager' ? [{ key: 'activity', label: 'Activity', count: unreadActivity }] : []),
     { key: 'followups', label: 'Follow-ups', count: followupTotal },
-    ...(['manager','purchasing_manager','ae'].includes(user.role) ? [{ key: 'quotes', label: '🔧 Quotes', count: unreadQuotes }] : []),
   ]
 
   return (
-    <div className="p-8 max-w-3xl fade-in" style={{ overflowY:"auto", flex:1 }}>
+    <div className="p-8 max-w-3xl fade-in">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="font-display font-bold text-2xl text-ink-900 flex items-center gap-2">
-            🔔 Notifications
+            \ud83d\udd14 Notifications
           </h1>
           <p className="text-ink-400 text-sm mt-0.5">
             {user.role === 'manager' ? 'Team activity and follow-up reminders' : 'Your follow-up reminders'}
@@ -178,20 +172,20 @@ export default function Notifications() {
           {user.role === 'manager' && unreadActivity > 0 && (
             <button onClick={handleMarkAllRead}
               style={{ padding: '8px 14px', borderRadius: '10px', border: `1px solid ${BRAND}40`, background: `${BRAND}10`, color: '#00b8ad', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
-              ✓ Mark all read
+              \u2713 Mark all read
             </button>
           )}
-          <button onClick={load} className="btn-secondary btn-sm">↻ Refresh</button>
+          <button onClick={load} className="btn-secondary btn-sm">\u21bb Refresh</button>
         </div>
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: '4px', background: 'rgba(255,255,255,0.04)', borderRadius: '12px', padding: '4px', marginBottom: '20px' }}>
+      <div style={{ display: 'flex', gap: '4px', background: '#f1f5f9', borderRadius: '12px', padding: '4px', marginBottom: '20px' }}>
         {tabs.map(tab => (
           <button key={tab.key} onClick={() => setActiveTab(tab.key)}
             style={{
               flex: 1, padding: '9px 16px', borderRadius: '10px', border: 'none',
-              background: activeTab === tab.key ? 'var(--card)' : 'transparent',
+              background: activeTab === tab.key ? '#fff' : 'transparent',
               color: activeTab === tab.key ? '#0f172a' : '#64748b',
               fontSize: '13px', fontWeight: 600, cursor: 'pointer',
               boxShadow: activeTab === tab.key ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
@@ -214,12 +208,12 @@ export default function Notifications() {
         </div>
       ) : (
         <>
-          {/* Activity tab — managers only */}
+          {/* Activity tab \u2014 managers only */}
           {activeTab === 'activity' && user.role === 'manager' && (
             <div>
               {localActivity.length === 0 ? (
                 <div className="card p-16 text-center">
-                  <div style={{ fontSize: '48px', marginBottom: '12px' }}>📭</div>
+                  <div style={{ fontSize: '48px', marginBottom: '12px' }}>\ud83d\udced</div>
                   <div className="font-display font-bold text-ink-400 text-lg">No activity yet</div>
                   <div className="text-ink-300 text-sm mt-1">Team actions will appear here</div>
                 </div>
@@ -238,7 +232,7 @@ export default function Notifications() {
             <div>
               {followupTotal === 0 ? (
                 <div className="card p-16 text-center">
-                  <div style={{ fontSize: '48px', marginBottom: '12px' }}>✅</div>
+                  <div style={{ fontSize: '48px', marginBottom: '12px' }}>\u2705</div>
                   <div className="font-display font-bold text-ink-400 text-lg">All caught up!</div>
                   <div className="text-ink-300 text-sm mt-1">No pending follow-ups right now</div>
                 </div>
@@ -250,7 +244,7 @@ export default function Notifications() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                         <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', animation: 'pulse 2s infinite' }} />
                         <span style={{ fontFamily: '"Bricolage Grotesque", sans-serif', fontWeight: 700, fontSize: '12px', color: '#dc2626', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                          Overdue — {data.followups.overdue.length}
+                          Overdue \u2014 {data.followups.overdue.length}
                         </span>
                       </div>
                       <div style={{ borderLeft: '2px solid #fecaca', paddingLeft: '16px' }}>
@@ -265,7 +259,7 @@ export default function Notifications() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                         <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b' }} />
                         <span style={{ fontFamily: '"Bricolage Grotesque", sans-serif', fontWeight: 700, fontSize: '12px', color: '#d97706', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                          Due Today — {data.followups.today.length}
+                          Due Today \u2014 {data.followups.today.length}
                         </span>
                       </div>
                       <div style={{ borderLeft: '2px solid #fde68a', paddingLeft: '16px' }}>
@@ -280,7 +274,7 @@ export default function Notifications() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                         <div style={{ width: 8, height: 8, borderRadius: '50%', background: BRAND }} />
                         <span style={{ fontFamily: '"Bricolage Grotesque", sans-serif', fontWeight: 700, fontSize: '12px', color: '#00b8ad', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                          This Week — {data.followups.upcoming.length}
+                          This Week \u2014 {data.followups.upcoming.length}
                         </span>
                       </div>
                       <div style={{ borderLeft: `2px solid ${BRAND}40`, paddingLeft: '16px' }}>

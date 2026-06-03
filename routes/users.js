@@ -28,69 +28,38 @@ router.get('/', (req, res) => {
   res.json(db.prepare('SELECT id, username, name, role, created_at FROM users ORDER BY role DESC, name').all());
 });
 
-router.post('/', (req, res) => {
-  if (req.user.role !== 'manager' && req.user.role !== 'purchasing_manager') {
-    return res.status(403).json({ error: 'Managers only' });
-  }
+router.post('/', requireManager, (req, res) => {
   const { username, password, name, role } = req.body;
   if (!username || !password || !name) return res.status(400).json({ error: 'username, password, and name are required' });
   const db = getDB();
   const hash = bcrypt.hashSync(password, 10);
   try {
-    // Purchasing managers can only create purchasers
-    const finalRole = req.user.role === 'purchasing_manager' ? 'purchaser' : (role || 'ae');
-    const result = db.prepare("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, ?)").run(username.toLowerCase().trim(), hash, name.trim(), finalRole);
+    const result = db.prepare("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, ?)").run(username.toLowerCase().trim(), hash, name.trim(), role || 'ae');
     res.json({ id: result.lastInsertRowid, username: username.toLowerCase(), name, role: role || 'ae' });
   } catch {
     res.status(400).json({ error: 'Username already taken' });
   }
 });
 
-router.put('/:id', (req, res) => {
-  // Managers can edit anyone; purchasing managers can only edit purchasers
-  if (!['manager','purchasing_manager'].includes(req.user.role)) return res.status(403).json({ error: 'Not authorized' });
-  const { name, role, password, username } = req.body;
+router.put('/:id', requireManager, (req, res) => {
+  const { name, role, password } = req.body;
   const db = getDB();
-
-  // Purchasing managers can only edit purchasers
-  const target = db.prepare('SELECT role FROM users WHERE id=?').get(req.params.id);
-  if (req.user.role === 'purchasing_manager' && target?.role !== 'purchaser') {
-    return res.status(403).json({ error: 'You can only edit purchasers' });
+  if (password) {
+    db.prepare('UPDATE users SET name=?, role=?, password=? WHERE id=?').run(name, role, bcrypt.hashSync(password, 10), req.params.id);
+  } else {
+    db.prepare('UPDATE users SET name=?, role=? WHERE id=?').run(name, role, req.params.id);
   }
-
-  // Check username uniqueness if changing
-  if (username) {
-    const existing = db.prepare('SELECT id FROM users WHERE username=? AND id!=?').get(username.toLowerCase().trim(), req.params.id);
-    if (existing) return res.status(400).json({ error: 'Username already taken' });
-  }
-
-  try {
-    if (password && username) {
-      db.prepare('UPDATE users SET name=?, role=?, password=?, username=? WHERE id=?').run(name, role, bcrypt.hashSync(password, 10), username.toLowerCase().trim(), req.params.id);
-    } else if (password) {
-      db.prepare('UPDATE users SET name=?, role=?, password=? WHERE id=?').run(name, role, bcrypt.hashSync(password, 10), req.params.id);
-    } else if (username) {
-      db.prepare('UPDATE users SET name=?, role=?, username=? WHERE id=?').run(name, role, username.toLowerCase().trim(), req.params.id);
-    } else {
-      db.prepare('UPDATE users SET name=?, role=? WHERE id=?').run(name, role, req.params.id);
-    }
-    res.json({ success: true });
-  } catch(e) { res.status(400).json({ error: e.message }); }
+  res.json({ success: true });
 });
 
-router.delete('/:id', (req, res) => {
-  if (!['manager','purchasing_manager'].includes(req.user.role)) return res.status(403).json({ error: 'Not authorized' });
+router.delete('/:id', requireManager, (req, res) => {
   const db = getDB();
   if (parseInt(req.params.id) === req.user.id) return res.status(400).json({ error: "Can't delete yourself" });
-  const target = db.prepare('SELECT role FROM users WHERE id=?').get(req.params.id);
-  if (req.user.role === 'purchasing_manager' && target?.role !== 'purchaser') {
-    return res.status(403).json({ error: 'You can only delete purchasers' });
-  }
   db.prepare('DELETE FROM users WHERE id=?').run(req.params.id);
   res.json({ success: true });
 });
 
-// Reset all AE passwords to random — managers only
+// Reset all AE passwords to random \u2014 managers only
 router.post('/reset-ae-passwords', requireManager, (req, res) => {
   const db = getDB();
   const aes = db.prepare("SELECT id, name, username FROM users WHERE role = 'ae' ORDER BY name").all();
@@ -99,26 +68,10 @@ router.post('/reset-ae-passwords', requireManager, (req, res) => {
   const results = aes.map(ae => {
     const newPassword = generatePassword();
     const hash = bcrypt.hashSync(newPassword, 10);
-    db.prepare('UPDATE users SET password=?, token_version = COALESCE(token_version, 1) + 1 WHERE id=?').run(hash, ae.id);
+    db.prepare('UPDATE users SET password=? WHERE id=?').run(hash, ae.id);
     return { id: ae.id, name: ae.name, username: ae.username, password: newPassword };
   });
 
-  res.json({ results });
-});
-
-// Reset all PURCHASER passwords (purchasing manager + manager can do this)
-router.post('/reset-purchaser-passwords', (req, res) => {
-  if (!['manager','purchasing_manager'].includes(req.user.role)) {
-    return res.status(403).json({ error: 'Not authorized' });
-  }
-  const db = getDB();
-  const purchasers = db.prepare("SELECT id, name, username FROM users WHERE role = 'purchaser' ORDER BY name").all();
-  if (!purchasers.length) return res.json({ results: [] });
-  const results = purchasers.map(p => {
-    const newPwd = generatePassword();
-    db.prepare('UPDATE users SET password=?, token_version=COALESCE(token_version,1)+1 WHERE id=?').run(bcrypt.hashSync(newPwd, 10), p.id);
-    return { id: p.id, name: p.name, username: p.username, password: newPwd };
-  });
   res.json({ results });
 });
 

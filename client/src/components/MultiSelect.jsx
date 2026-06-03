@@ -59,10 +59,10 @@ export default function MultiSelect({ label, options, selected, onChange, placeh
         {selected.length > 0 && (
           <span
             onClick={(e) => { e.stopPropagation(); clearAll() }}
-            style={{ width: '16px', height: '16px', background: 'var(--border-2)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', cursor: 'pointer', color: 'var(--text-2)', flexShrink: 0 }}
-          >×</span>
+            style={{ width: '16px', height: '16px', background: '#e2e8f0', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', cursor: 'pointer', color: '#64748b', flexShrink: 0 }}
+          >\u00d7</span>
         )}
-        <span style={{ color: 'var(--text-3)', fontSize: '10px', flexShrink: 0, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▾</span>
+        <span style={{ color: '#94a3b8', fontSize: '10px', flexShrink: 0, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>\u25be</span>
       </button>
 
       {/* Dropdown */}
@@ -73,7 +73,7 @@ export default function MultiSelect({ label, options, selected, onChange, placeh
           left: 0,
           zIndex: 9999,
           background: 'white',
-          border: '1px solid var(--border)',
+          border: '1px solid #e2e8f0',
           borderRadius: '12px',
           boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
           minWidth: '200px',
@@ -83,10 +83,10 @@ export default function MultiSelect({ label, options, selected, onChange, placeh
           flexDirection: 'column',
         }}>
           {/* Select all / None */}
-          <div style={{ display: 'flex', gap: '8px', padding: '8px 12px', borderBottom: '1px solid var(--input-bg)', flexShrink: 0, background: 'rgba(255,255,255,0.03)', borderRadius: '12px 12px 0 0' }}>
+          <div style={{ display: 'flex', gap: '8px', padding: '8px 12px', borderBottom: '1px solid #f1f5f9', flexShrink: 0, background: '#fafafa', borderRadius: '12px 12px 0 0' }}>
             <button type="button" onClick={selectAll} style={{ fontSize: '11px', fontWeight: 600, color: '#00b8ad', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}>All</button>
-            <span style={{ color: 'rgba(255,255,255,0.18)' }}>·</span>
-            <button type="button" onClick={clearAll} style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-3)', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}>None</button>
+            <span style={{ color: '#e2e8f0' }}>\u00b7</span>
+            <button type="button" onClick={clearAll} style={{ fontSize: '11px', fontWeight: 600, color: '#94a3b8', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}>None</button>
             {selected.length > 0 && <span style={{ fontSize: '11px', color: '#00b8ad', marginLeft: 'auto' }}>{selected.length} selected</span>}
           </div>
 
@@ -110,7 +110,7 @@ export default function MultiSelect({ label, options, selected, onChange, placeh
                     transition: 'background 0.1s',
                     fontSize: '13px',
                   }}
-                  onMouseEnter={e => { if (!checked) e.currentTarget.style.background = 'var(--card-2)' }}
+                  onMouseEnter={e => { if (!checked) e.currentTarget.style.background = '#f8fafc' }}
                   onMouseLeave={e => { e.currentTarget.style.background = checked ? 'rgba(0,212,200,0.06)' : 'transparent' }}
                 >
                   {/* Checkbox */}

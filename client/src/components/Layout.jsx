@@ -1,135 +1,145 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../App'
 import { useNav } from '../App'
+import { api } from '../api'
 
-const BRAND = '#00D4C8'
-
-export default function Layout({ children, page }) {
-  const { user, logout } = useAuth()
-  const { navigate }     = useNav()
-  const [theme, setTheme]       = useState(() => localStorage.getItem('crm_theme') || 'dark')
-  const [notifCount, setNotifCount] = useState(0)
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme)
-    localStorage.setItem('crm_theme', theme)
-  }, [theme])
-
-  useEffect(() => {
-    const fetchCount = () => {
-      const token = localStorage.getItem('crm_token')
-      if (!token) return
-      fetch('/api/notifications/count', { headers: { Authorization: `Bearer ${token}` } })
-        .then(r => r.json()).then(d => setNotifCount(d.count || 0)).catch(() => {})
-    }
-    fetchCount()
-    const interval = setInterval(fetchCount, 30000)
-    return () => clearInterval(interval)
-  }, [page])
-
-  const role = user?.role
-
-  const mainNav = () => {
-    if (role === 'purchaser') return [
-      { name: 'dashboard',     label: 'Dashboard',     icon: '⊞' },
-      { name: 'purchasing',    label: 'My Parts',      icon: '◈' },
-      { name: 'notifications', label: 'Notifications', icon: '🔔', badge: notifCount },
-    ]
-    if (role === 'ae') return [
-      { name: 'dashboard',     label: 'Dashboard',     icon: '⊞' },
-      { name: 'leads',         label: 'Leads',         icon: '◎' },
-      { name: 'repeat',        label: 'Repeat',        icon: '↻' },
-      { name: 'orders',        label: 'Orders',        icon: '◈' },
-      { name: 'customers',     label: 'Customers',     icon: '👥' },
-      { name: 'notifications', label: 'Notifications', icon: '🔔', badge: notifCount },
-    ]
-    return [
-      { name: 'dashboard',     label: 'Dashboard',     icon: '⊞' },
-      { name: 'leads',         label: 'Leads',         icon: '◎' },
-      { name: 'repeat',        label: 'Repeat',        icon: '↻' },
-      { name: 'orders',        label: 'Orders',        icon: '◈' },
-      { name: 'notifications', label: 'Notifications', icon: '🔔', badge: notifCount },
-    ]
-  }
-
-  const adminNav = () => {
-    if (role === 'purchaser' || role === 'ae') return []
-    if (role === 'purchasing_manager') return [
-      { name: 'users', label: 'Users (Purchasers)', icon: '⚙' },
-    ]
-    // manager
-    return [
-      { name: 'import',     label: 'Import Data', icon: '📥' },
-      { name: 'users',      label: 'Users',        icon: '⚙' },
-      { name: 'purchasing', label: 'Purchasing',   icon: '📦' },
-    ]
-  }
-
-  const isActive = (name) => {
-    if (page === name) return true
-    if (name === 'dashboard' && (page === 'ae-dashboard' || page === 'purchaser-dashboard')) return true
-    if (name === 'purchasing' && page === 'purchasing-parts') return true
-    return false
-  }
-
-  const btn = (item) => (
-    <button key={item.name} onClick={() => navigate(item.name)}
-      style={{ display:'flex', alignItems:'center', gap:10, width:'100%', padding:'9px 12px', borderRadius:10, border:'none', cursor:'pointer', background:isActive(item.name)?`${BRAND}18`:'transparent', color:isActive(item.name)?BRAND:'rgba(255,255,255,0.5)', fontSize:13, fontWeight:isActive(item.name)?600:400, fontFamily:'"Plus Jakarta Sans",sans-serif', textAlign:'left', transition:'all 0.1s', position:'relative' }}
-      onMouseEnter={e=>{ if(!isActive(item.name)){e.currentTarget.style.background='rgba(255,255,255,0.06)';e.currentTarget.style.color='rgba(255,255,255,0.8)'} }}
-      onMouseLeave={e=>{ e.currentTarget.style.background=isActive(item.name)?`${BRAND}18`:'transparent';e.currentTarget.style.color=isActive(item.name)?BRAND:'rgba(255,255,255,0.5)' }}>
-      <span style={{ width:18, textAlign:'center', flexShrink:0, fontSize:14 }}>{item.icon}</span>
-      <span style={{ flex:1 }}>{item.label}</span>
-      {item.badge>0&&<span style={{ background:'#ef4444', color:'#fff', fontSize:10, fontWeight:700, padding:'1px 6px', borderRadius:10 }}>{item.badge>99?'99+':item.badge}</span>}
-      {isActive(item.name)&&<span style={{ position:'absolute', right:0, top:'50%', transform:'translateY(-50%)', width:3, height:18, background:BRAND, borderRadius:'2px 0 0 2px' }} />}
-    </button>
+function TALogo({ size = 36 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <polygon points="20,2 46,2 46,14 32,14 32,10 20,10" fill="white"/>
+      <rect x="32" y="14" width="14" height="16" fill="white"/>
+      <rect x="2" y="14" width="28" height="22" fill="#00D4C8"/>
+      <rect x="20" y="36" width="26" height="10" fill="white"/>
+    </svg>
   )
+}
 
-  const roleLabel = { manager:'Manager', purchasing_manager:'Purchasing Manager', ae:'Account Executive', purchaser:'Purchaser' }[role] || role
+const NAV = [
+  { name: 'dashboard', label: 'Dashboard',       icon: '\u25a3' },
+  { name: 'leads',     label: 'Leads',            icon: '\u25ce' },
+  { name: 'repeat',    label: 'Repeat Inquiries', icon: '\u21bb' },
+  { name: 'orders',    label: 'Online Orders',    icon: '\u25c8' },
+  { name: 'customers', label: 'Customers',        icon: '\u25c9' },
+]
+
+export default function Layout({ children }) {
+  const { user, logout } = useAuth()
+  const { page, navigate } = useNav()
+  const [notifCount, setNotifCount] = useState(0)
+  const [avatarUrl, setAvatarUrl] = useState(null)
+
+  const loadNotifs = () => api.getNotifications().then(n => setNotifCount(n.total)).catch(() => {})
+
+  useEffect(() => {
+    loadNotifs()
+    // Load current user's avatar
+    api.getUsers().then(users => {
+      const me = users.find(u => u.id === user.id)
+      if (me?.avatar_url) setAvatarUrl(me.avatar_url)
+    }).catch(() => {})
+    const interval = setInterval(loadNotifs, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    if (page.name !== 'notifications') loadNotifs()
+  }, [page.name])
 
   return (
-    <div style={{ display:'flex', height:'100vh', overflow:'hidden', background:'var(--bg)', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>
-      <div style={{ width:200, flexShrink:0, background:'#0d1117', display:'flex', flexDirection:'column', borderRight:'1px solid rgba(255,255,255,0.06)', overflow:'hidden' }}>
+    <div className="flex h-screen overflow-hidden">
+      <aside className="w-[230px] flex-shrink-0 flex flex-col"
+        style={{ background: '#0d0d0d', borderRight: '1px solid rgba(255,255,255,0.06)' }}>
+
         {/* Logo */}
-        <div style={{ padding:'16px 14px 12px', borderBottom:'1px solid rgba(255,255,255,0.06)', display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
-          <div style={{ width:32, height:32, borderRadius:10, background:`linear-gradient(135deg,${BRAND},#0891b2)`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-            <svg width={18} height={18} viewBox="0 0 24 24" fill="white"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        <div className="px-5 pt-6 pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+          <div className="flex items-center gap-3 mb-5">
+            <TALogo size={34} />
+            <div>
+              <div className="font-display font-bold text-white leading-none tracking-tight text-base">TECH</div>
+              <div className="font-display font-bold leading-none tracking-tight text-base" style={{ color: '#00D4C8' }}>ATLANTIX</div>
+            </div>
           </div>
-          <div>
-            <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:800, fontSize:13, color:'#fff', lineHeight:1 }}>TECH</div>
-            <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:800, fontSize:13, color:BRAND, lineHeight:1 }}>ATLANTIX</div>
+
+          {/* User chip with avatar */}
+          <div className="flex items-center gap-2.5 rounded-xl px-3 py-2.5"
+            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            {avatarUrl ? (
+              <img src={avatarUrl} alt={user.name} style={{ width:28, height:28, borderRadius:8, objectFit:'cover', flexShrink:0 }} onError={() => setAvatarUrl(null)} />
+            ) : (
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center text-dark-900 text-xs font-bold flex-shrink-0"
+                style={{ background: '#00D4C8' }}>
+                {user.name[0].toUpperCase()}
+              </div>
+            )}
+            <div className="min-w-0">
+              <div className="text-white text-xs font-semibold truncate">{user.name}</div>
+              <div className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                {user.role === 'manager' ? 'Manager' : 'Account Executive'}
+              </div>
+            </div>
           </div>
-          <button onClick={()=>window.open(window.location.origin+'/#nft','_blank')} style={{ marginLeft:'auto', fontSize:9, fontWeight:700, color:BRAND, background:`${BRAND}15`, border:`1px solid ${BRAND}30`, borderRadius:6, padding:'3px 6px', cursor:'pointer', flexShrink:0, fontFamily:'"Plus Jakarta Sans",sans-serif', whiteSpace:'nowrap' }}>NFT ↗</button>
         </div>
 
         {/* Nav */}
-        <nav style={{ flex:1, overflowY:'auto', padding:'6px 8px', display:'flex', flexDirection:'column', gap:1 }}>
-          <div style={{ fontSize:9, fontWeight:700, color:'rgba(255,255,255,0.2)', textTransform:'uppercase', letterSpacing:'0.1em', padding:'10px 10px 4px' }}>Menu</div>
-          {mainNav().map(btn)}
-          {adminNav().length>0&&<>
-            <div style={{ fontSize:9, fontWeight:700, color:'rgba(255,255,255,0.2)', textTransform:'uppercase', letterSpacing:'0.1em', padding:'14px 10px 4px' }}>Admin</div>
-            {adminNav().map(btn)}
-          </>}
+        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+          <div className="px-3 mb-2.5" style={{ color: 'rgba(255,255,255,0.2)', fontSize: '9px', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+            Main Menu
+          </div>
+          {NAV.map(item => (
+            <button key={item.name} onClick={() => navigate(item.name)}
+              className={`nav-item ${page.name === item.name ? 'nav-active' : 'nav-inactive'}`}>
+              <span className="text-sm w-5 text-center flex-shrink-0">{item.icon}</span>
+              <span>{item.label}</span>
+              {page.name === item.name && <span className="ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#00D4C8' }} />}
+            </button>
+          ))}
+
+          {/* Notifications */}
+          <button onClick={() => navigate('notifications')}
+            className={`nav-item ${page.name === 'notifications' ? 'nav-active' : 'nav-inactive'}`}>
+            <span className="text-sm w-5 text-center flex-shrink-0">\ud83d\udd14</span>
+            <span>Notifications</span>
+            {notifCount > 0 && page.name !== 'notifications' && (
+              <span className="ml-auto font-bold leading-none flex-shrink-0"
+                style={{ background: '#00D4C8', color: '#0d0d0d', fontSize: '10px', padding: '2px 7px', borderRadius: '20px', minWidth: '20px', textAlign: 'center' }}>
+                {notifCount > 99 ? '99+' : notifCount}
+              </span>
+            )}
+          </button>
+
+          {user.role === 'manager' && (
+            <>
+              <div className="px-3 mt-5 mb-2.5" style={{ color: 'rgba(255,255,255,0.2)', fontSize: '9px', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                Admin
+              </div>
+              {[
+                { name: 'import', label: 'Import Data', icon: '\ud83d\udce5' },
+                { name: 'users',  label: 'Users',       icon: '\u2699' },
+              ].map(item => (
+                <button key={item.name} onClick={() => navigate(item.name)}
+                  className={`nav-item ${page.name === item.name ? 'nav-active' : 'nav-inactive'}`}>
+                  <span className="text-sm w-5 text-center">{item.icon}</span>
+                  <span>{item.label}</span>
+                  {page.name === item.name && <span className="ml-auto w-1.5 h-1.5 rounded-full" style={{ background: '#00D4C8' }} />}
+                </button>
+              ))}
+            </>
+          )}
         </nav>
 
         {/* Footer */}
-        <div style={{ borderTop:'1px solid rgba(255,255,255,0.06)', padding:'10px', flexShrink:0 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', borderRadius:10, background:'rgba(255,255,255,0.04)', marginBottom:6 }}>
-            <div style={{ width:28, height:28, borderRadius:8, background:`${BRAND}25`, color:BRAND, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:800, fontSize:11, flexShrink:0 }}>{(user?.name||'?').split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}</div>
-            <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ fontSize:12, fontWeight:700, color:'rgba(255,255,255,0.8)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user?.name}</div>
-              <div style={{ fontSize:10, color:'rgba(255,255,255,0.3)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{roleLabel}</div>
-            </div>
+        <div className="px-3 pb-5 pt-2" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+          <button onClick={logout} className="nav-item nav-inactive mt-2">
+            <span className="text-sm w-5 text-center">\u2192</span>
+            <span>Sign out</span>
+          </button>
+          <div className="text-center mt-3" style={{ color: 'rgba(255,255,255,0.12)', fontSize: '9px' }}>
+            Beyond Tech \u00b7 Above Integration
           </div>
-          <button onClick={()=>setTheme(t=>t==='dark'?'light':'dark')} style={{ display:'flex', alignItems:'center', gap:8, width:'100%', padding:'7px 10px', borderRadius:8, border:'none', background:'transparent', color:'rgba(255,255,255,0.35)', cursor:'pointer', fontSize:12, fontFamily:'"Plus Jakarta Sans",sans-serif', marginBottom:2 }}>
-            <span>{theme==='dark'?'☀':'🌙'}</span><span>{theme==='dark'?'Light':'Dark'}</span>
-          </button>
-          <button onClick={logout} style={{ display:'flex', alignItems:'center', gap:8, width:'100%', padding:'7px 10px', borderRadius:8, border:'none', background:'transparent', color:'rgba(255,255,255,0.35)', cursor:'pointer', fontSize:12, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>
-            <span>⤺</span><span>Sign out</span>
-          </button>
         </div>
-      </div>
+      </aside>
 
-      <main style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', background:'var(--bg)' }}>
+      <main className="flex-1 overflow-y-auto bg-surface-50">
         {children}
       </main>
     </div>

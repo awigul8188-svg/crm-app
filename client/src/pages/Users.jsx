@@ -4,7 +4,7 @@ import { useAuth } from '../App'
 import Modal from '../components/Modal'
 
 const BRAND = '#00D4C8'
-const inp = { width:'100%', boxSizing:'border-box', background:'var(--input-bg)', border:'1px solid var(--input-border)', borderRadius:'12px', padding:'10px 14px', fontSize:'13px', color:'var(--text)', fontFamily:'"Plus Jakarta Sans", sans-serif', outline:'none' }
+const inp = { width:'100%', boxSizing:'border-box', background:'#fff', border:'1px solid #e2e8f0', borderRadius:'12px', padding:'10px 14px', fontSize:'13px', color:'#0f172a', fontFamily:'"Plus Jakarta Sans", sans-serif', outline:'none' }
 
 const ROLE_INFO = {
   manager:            { label:'Manager',              color:'#7c3aed', bg:'#f5f3ff', border:'#ddd6fe' },
@@ -16,12 +16,12 @@ const ROLE_INFO = {
 const SECTIONS = [
   { role: 'manager',            title: 'Managers',              icon: '⚙' },
   { role: 'ae',                 title: 'Account Executives',    icon: '◎' },
-  { role: 'purchasing_manager', title: 'Purchasing Managers',   icon: '🔧' },
-  { role: 'purchaser',          title: 'Purchasers',            icon: '🔩' },
+  { role: 'purchasing_manager', title: 'Purchasing Managers',   icon: '??' },
+  { role: 'purchaser',          title: 'Purchasers',            icon: '??' },
 ]
 
 function RoleBadge({ role }) {
-  const r = ROLE_INFO[role] || { label: role, color:'var(--text-2)', bg:'var(--card-2)', border:'#e2e8f0' }
+  const r = ROLE_INFO[role] || { label: role, color:'#64748b', bg:'#f8fafc', border:'#e2e8f0' }
   return (
     <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:r.bg, color:r.color, border:`1px solid ${r.border}`, whiteSpace:'nowrap' }}>
       {r.label}
@@ -43,45 +43,9 @@ export default function Users() {
   const [resetType, setResetType] = useState('ae')
   const [copiedAll, setCopiedAll] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
-  const [ringtoneStates, setRingtoneStates] = useState({}) // userId -> { active, url }
-  const [uploadingRingtone, setUploadingRingtone] = useState(null)
 
-  const loadRingtoneStates = async () => {
-    try {
-      const token = localStorage.getItem('crm_token')
-      const res = await fetch('/api/ringtone/all', { headers: { Authorization: `Bearer ${token}` } })
-      const data = await res.json()
-      const map = {}
-      data.forEach(u => { map[u.id] = { active: u.ringtone_active, url: u.ringtone_url } })
-      setRingtoneStates(map)
-    } catch(e) {}
-  }
-
-  const handleRingtoneUpload = async (userId, file) => {
-    setUploadingRingtone(userId)
-    try {
-      const token = localStorage.getItem('crm_token')
-      const form = new FormData()
-      form.append('file', file)
-      await fetch(`/api/upload/ringtone/${userId}`, { method:'POST', headers:{ Authorization:`Bearer ${token}` }, body: form })
-      loadRingtoneStates()
-    } catch(e) {} finally { setUploadingRingtone(null) }
-  }
-
-  const handleRingtonePlay = async (userId) => {
-    const token = localStorage.getItem('crm_token')
-    await fetch(`/api/ringtone/${userId}/play`, { method:'POST', headers:{ Authorization:`Bearer ${token}` } })
-    setRingtoneStates(prev => ({ ...prev, [userId]: { ...prev[userId], active: 1 } }))
-  }
-
-  const handleRingtoneStop = async (userId) => {
-    const token = localStorage.getItem('crm_token')
-    await fetch(`/api/ringtone/${userId}/stop`, { method:'POST', headers:{ Authorization:`Bearer ${token}` } })
-    setRingtoneStates(prev => ({ ...prev, [userId]: { ...prev[userId], active: 0 } }))
-  }
-
-  const load = () => api.getUsers().then(u => { setUsers(user?.role==='purchasing_manager'?u.filter(x=>x.role==='purchaser'):u); setLoading(false) })
-  useEffect(() => { load(); if (user.role === 'manager') loadRingtoneStates() }, [])
+  const load = () => api.getUsers().then(u => { setUsers(u); setLoading(false) })
+  useEffect(() => { load() }, [])
 
   const reset = () => { setForm({ username:'', password:'', name:'', role:'ae' }); setError('') }
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -154,7 +118,7 @@ export default function Users() {
   )
 
   return (
-    <div className="p-8 fade-in" style={{ overflowY:'auto', flex:1 }}>
+    <div className="p-8 fade-in">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -167,19 +131,19 @@ export default function Users() {
           {user.role === 'manager' && (
             <>
               <button onClick={() => handleResetPasswords('ae')} disabled={resetting}
-                style={{ padding:'8px 14px', borderRadius:12, background:'var(--danger)', border:'1px solid var(--danger-border)', color:'var(--danger-text)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans", sans-serif' }}>
-                🔑 Reset AE Passwords
+                style={{ padding:'8px 14px', borderRadius:12, background:'#fff5f5', border:'1px solid #fecaca', color:'#dc2626', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans", sans-serif' }}>
+                ?? Reset AE Passwords
               </button>
               <button onClick={() => handleResetPasswords('purchaser')} disabled={resetting}
-                style={{ padding:'8px 14px', borderRadius:12, background:'var(--warn)', border:'1px solid rgba(245,158,11,0.3)', color:'var(--warn-text)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans", sans-serif' }}>
-                🔑 Reset Purchaser Passwords
+                style={{ padding:'8px 14px', borderRadius:12, background:'#fff7ed', border:'1px solid #fed7aa', color:'#d97706', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans", sans-serif' }}>
+                ?? Reset Purchaser Passwords
               </button>
             </>
           )}
           {user.role === 'purchasing_manager' && (
             <button onClick={() => handleResetPasswords('purchaser')} disabled={resetting}
-              style={{ padding:'8px 14px', borderRadius:12, background:'var(--warn)', border:'1px solid rgba(245,158,11,0.3)', color:'var(--warn-text)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans", sans-serif' }}>
-              🔑 Reset Purchaser Passwords
+              style={{ padding:'8px 14px', borderRadius:12, background:'#fff7ed', border:'1px solid #fed7aa', color:'#d97706', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans", sans-serif' }}>
+              ?? Reset Purchaser Passwords
             </button>
           )}
           <button onClick={() => { reset(); setShowNew(true) }} className="btn-primary">+ New User</button>
@@ -199,27 +163,27 @@ export default function Users() {
               <div key={section.role}>
                 <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
                   <span style={{ fontSize:14 }}>{section.icon}</span>
-                  <span style={{ fontSize:11, fontWeight:700, color:'var(--text-3)', textTransform:'uppercase', letterSpacing:'0.1em' }}>{section.title}</span>
-                  <span style={{ fontSize:11, color:'var(--text-4)' }}>({sectionUsers.length})</span>
+                  <span style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.1em' }}>{section.title}</span>
+                  <span style={{ fontSize:11, color:'#cbd5e1' }}>({sectionUsers.length})</span>
                 </div>
                 {sectionUsers.length === 0 ? (
-                  <div style={{ background:'var(--row-alt)', borderRadius:14, border:'1px dashed #e2e8f0', padding:'20px 24px', color:'var(--text-3)', fontSize:13 }}>
+                  <div style={{ background:'#f8fafc', borderRadius:14, border:'1px dashed #e2e8f0', padding:'20px 24px', color:'#94a3b8', fontSize:13 }}>
                     No {section.title.toLowerCase()} yet. Click "+ New User" to add one.
                   </div>
                 ) : (
                   <div className="card overflow-hidden">
                     <table style={{ width:'100%', borderCollapse:'collapse' }}>
                       <thead>
-                        <tr style={{ background:'var(--row-alt)', borderBottom:'1px solid var(--border)' }}>
+                        <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
                           {['Name','Username','Role','Joined','Actions'].map(h => (
-                            <th key={h} style={{ textAlign:'left', padding:'10px 16px', fontSize:11, fontWeight:700, color:'var(--text-2)', textTransform:'uppercase', letterSpacing:'0.06em' }}>{h}</th>
+                            <th key={h} style={{ textAlign:'left', padding:'10px 16px', fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.06em' }}>{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {sectionUsers.map(u => (
-                          <tr key={u.id} style={{ borderBottom:'1px solid var(--border)', transition:'background 0.1s' }}
-                            onMouseEnter={e => e.currentTarget.style.background='var(--card-2)'}
+                          <tr key={u.id} style={{ borderBottom:'1px solid #f1f5f9', transition:'background 0.1s' }}
+                            onMouseEnter={e => e.currentTarget.style.background='#fafbfc'}
                             onMouseLeave={e => e.currentTarget.style.background='transparent'}>
                             <td style={{ padding:'12px 16px' }}>
                               <div style={{ display:'flex', alignItems:'center', gap:10 }}>
@@ -228,16 +192,16 @@ export default function Users() {
                                   : <div style={{ width:34, height:34, borderRadius:8, background:`${BRAND}20`, color:BRAND, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:13, flexShrink:0 }}>{u.name[0].toUpperCase()}</div>
                                 }
                                 <div>
-                                  <div style={{ fontWeight:600, fontSize:14, color:'var(--text)' }}>
+                                  <div style={{ fontWeight:600, fontSize:14, color:'#0f172a' }}>
                                     {u.name}
-                                    {u.id === user.id && <span style={{ marginLeft:6, fontSize:11, color:'var(--text-3)' }}>(you)</span>}
+                                    {u.id === user.id && <span style={{ marginLeft:6, fontSize:11, color:'#94a3b8' }}>(you)</span>}
                                   </div>
                                 </div>
                               </div>
                             </td>
-                            <td style={{ padding:'12px 16px', fontFamily:'monospace', fontSize:13, color:'var(--text-2)' }}>{u.username}</td>
+                            <td style={{ padding:'12px 16px', fontFamily:'monospace', fontSize:13, color:'#64748b' }}>{u.username}</td>
                             <td style={{ padding:'12px 16px' }}><RoleBadge role={u.role} /></td>
-                            <td style={{ padding:'12px 16px', fontSize:12, color:'var(--text-3)' }}>{new Date(u.created_at).toLocaleDateString()}</td>
+                            <td style={{ padding:'12px 16px', fontSize:12, color:'#94a3b8' }}>{new Date(u.created_at).toLocaleDateString()}</td>
                             <td style={{ padding:'12px 16px' }}>
                               {canManageRole(u.role) ? (
                                 <div style={{ display:'flex', gap:6 }}>
@@ -258,7 +222,7 @@ export default function Users() {
                                   )}
                                 </div>
                               ) : (
-                                <span style={{ fontSize:12, color:'var(--text-4)' }}>—</span>
+                                <span style={{ fontSize:12, color:'#cbd5e1' }}>—</span>
                               )}
                             </td>
                           </tr>
@@ -278,19 +242,19 @@ export default function Users() {
         <Modal title="New User" onClose={() => { setShowNew(false); reset() }}>
           <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
             <div>
-              <div style={{ fontSize:11, fontWeight:700, color:'var(--text-2)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Full Name</div>
+              <div style={{ fontSize:11, fontWeight:700, color:'#64748b', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Full Name</div>
               <input style={inp} placeholder="e.g. John Smith" value={form.name} onChange={e => setF('name', e.target.value)} />
             </div>
             <div>
-              <div style={{ fontSize:11, fontWeight:700, color:'var(--text-2)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Username</div>
+              <div style={{ fontSize:11, fontWeight:700, color:'#64748b', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Username</div>
               <input style={inp} placeholder="e.g. john" value={form.username} onChange={e => setF('username', e.target.value)} />
             </div>
             <div>
-              <div style={{ fontSize:11, fontWeight:700, color:'var(--text-2)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Password</div>
+              <div style={{ fontSize:11, fontWeight:700, color:'#64748b', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Password</div>
               <input type="password" style={inp} placeholder="Set initial password" value={form.password} onChange={e => setF('password', e.target.value)} />
             </div>
             <div>
-              <div style={{ fontSize:11, fontWeight:700, color:'var(--text-2)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Role</div>
+              <div style={{ fontSize:11, fontWeight:700, color:'#64748b', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Role</div>
               <select style={{ ...inp, cursor:'pointer' }} value={form.role} onChange={e => setF('role', e.target.value)}>
                 {availableRoles.map(r => <option key={r} value={r}>{ROLE_INFO[r]?.label || r}</option>)}
               </select>
@@ -309,26 +273,26 @@ export default function Users() {
         <Modal title={`Edit — ${editUser.name}`} onClose={() => { setEditUser(null); reset() }}>
           <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
             <div>
-              <div style={{ fontSize:11, fontWeight:700, color:'var(--text-2)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Full Name</div>
+              <div style={{ fontSize:11, fontWeight:700, color:'#64748b', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Full Name</div>
               <input style={inp} value={form.name} onChange={e => setF('name', e.target.value)} />
             </div>
             <div>
-              <div style={{ fontSize:11, fontWeight:700, color:'var(--text-2)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Username</div>
+              <div style={{ fontSize:11, fontWeight:700, color:'#64748b', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Username</div>
               <input style={inp} value={form.username} onChange={e => setF('username', e.target.value)} />
-              <div style={{ fontSize:11, color:'var(--text-3)', marginTop:4 }}>Change this to update their login username</div>
+              <div style={{ fontSize:11, color:'#94a3b8', marginTop:4 }}>Change this to update their login username</div>
             </div>
             {user.role === 'manager' && (
               <div>
-                <div style={{ fontSize:11, fontWeight:700, color:'var(--text-2)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Role</div>
+                <div style={{ fontSize:11, fontWeight:700, color:'#64748b', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Role</div>
                 <select style={{ ...inp, cursor:'pointer' }} value={form.role} onChange={e => setF('role', e.target.value)}>
                   {availableRoles.map(r => <option key={r} value={r}>{ROLE_INFO[r]?.label || r}</option>)}
                 </select>
               </div>
             )}
             <div>
-              <div style={{ fontSize:11, fontWeight:700, color:'var(--text-2)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>New Password</div>
+              <div style={{ fontSize:11, fontWeight:700, color:'#64748b', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>New Password</div>
               <input type="password" style={inp} placeholder="Leave blank to keep current" value={form.password} onChange={e => setF('password', e.target.value)} />
-              <div style={{ fontSize:11, color:'var(--text-3)', marginTop:4 }}>Only fill in if you want to change it</div>
+              <div style={{ fontSize:11, color:'#94a3b8', marginTop:4 }}>Only fill in if you want to change it</div>
             </div>
             {error && <div style={{ background:'#fef2f2', border:'1px solid #fecaca', borderRadius:10, padding:'10px 14px', fontSize:13, color:'#dc2626' }}>⚠ {error}</div>}
             <div style={{ display:'flex', gap:10, paddingTop:4 }}>
@@ -341,16 +305,16 @@ export default function Users() {
 
       {/* Reset passwords results modal */}
       {resetResults && (
-        <Modal title={`🔑 ${resetType === 'ae' ? 'AE' : 'Purchaser'} Passwords Reset`} onClose={() => setResetResults(null)} wide>
+        <Modal title={`?? ${resetType === 'ae' ? 'AE' : 'Purchaser'} Passwords Reset`} onClose={() => setResetResults(null)} wide>
           <div style={{ background:'#fff7ed', border:'1px solid #fed7aa', borderRadius:12, padding:'10px 14px', marginBottom:14, fontSize:13, color:'#c2410c' }}>
             ⚠ Save these — they won't be shown again
           </div>
-          <div style={{ border:'1px solid var(--border)', borderRadius:12, overflow:'hidden', marginBottom:14 }}>
+          <div style={{ border:'1px solid #e2e8f0', borderRadius:12, overflow:'hidden', marginBottom:14 }}>
             <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
               <thead>
-                <tr style={{ background:'var(--row-alt)', borderBottom:'1px solid var(--border)' }}>
+                <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
                   {['Name','Username','New Password',''].map(h => (
-                    <th key={h} style={{ textAlign:'left', padding:'8px 14px', fontSize:11, fontWeight:700, color:'var(--text-2)' }}>{h}</th>
+                    <th key={h} style={{ textAlign:'left', padding:'8px 14px', fontSize:11, fontWeight:700, color:'#64748b' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -358,12 +322,12 @@ export default function Users() {
                 {resetResults.map((r, i) => (
                   <tr key={r.id} style={{ borderBottom: i < resetResults.length-1 ? '1px solid #f1f5f9' : 'none' }}>
                     <td style={{ padding:'10px 14px', fontWeight:600 }}>{r.name}</td>
-                    <td style={{ padding:'10px 14px', fontFamily:'monospace', color:'var(--text-2)' }}>{r.username}</td>
+                    <td style={{ padding:'10px 14px', fontFamily:'monospace', color:'#64748b' }}>{r.username}</td>
                     <td style={{ padding:'10px 14px' }}>
                       <span style={{ fontFamily:'monospace', fontWeight:700, background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:6, padding:'3px 8px' }}>{r.password}</span>
                     </td>
                     <td style={{ padding:'10px 14px' }}>
-                      <button onClick={() => navigator.clipboard.writeText(r.password)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:14 }}>📋</button>
+                      <button onClick={() => navigator.clipboard.writeText(r.password)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:14 }}>??</button>
                     </td>
                   </tr>
                 ))}
@@ -375,9 +339,9 @@ export default function Users() {
               navigator.clipboard.writeText(resetResults.map(r => `${r.name} (${r.username}): ${r.password}`).join('\n'))
               setCopiedAll(true); setTimeout(() => setCopiedAll(false), 2000)
             }} style={{ flex:1, padding:11, borderRadius:12, border:`1px solid ${BRAND}`, background:copiedAll?BRAND:`${BRAND}15`, color:copiedAll?'#0d0d0d':'#00b8ad', fontWeight:700, fontSize:13, cursor:'pointer', fontFamily:'"Plus Jakarta Sans", sans-serif' }}>
-              {copiedAll ? '✓ Copied!' : '📋 Copy All'}
+              {copiedAll ? '✓ Copied!' : '?? Copy All'}
             </button>
-            <button onClick={() => setResetResults(null)} style={{ flex:1, padding:11, borderRadius:12, border:'1px solid var(--border)', background:'var(--card)', color:'var(--text-2)', fontWeight:600, fontSize:13, cursor:'pointer', fontFamily:'"Plus Jakarta Sans", sans-serif' }}>Done</button>
+            <button onClick={() => setResetResults(null)} style={{ flex:1, padding:11, borderRadius:12, border:'1px solid #e2e8f0', background:'#fff', color:'#475569', fontWeight:600, fontSize:13, cursor:'pointer', fontFamily:'"Plus Jakarta Sans", sans-serif' }}>Done</button>
           </div>
         </Modal>
       )}

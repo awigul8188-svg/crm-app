@@ -46,7 +46,7 @@ export default function Customers() {
   const displayed = customers.filter(c => !filterSources.length || filterSources.includes(c.lead_source))
 
   return (
-    <div className="p-8 fade-in" style={{ overflowY:'auto', flex:1 }}>
+    <div className="p-8 fade-in">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="font-display font-bold text-2xl text-ink-900">◉ Customers</h1>
@@ -103,7 +103,7 @@ export default function Customers() {
                     <td className="table-cell" onClick={e => e.stopPropagation()}>
                       <button onClick={e => handleDelete(e, c.id, c.name)} disabled={deleting===c.id}
                         className="btn-icon btn-sm text-red-400 hover:text-red-600 hover:bg-red-50">
-                        {deleting===c.id ? '...' : '🗑'}
+                        {deleting===c.id ? '...' : '??'}
                       </button>
                     </td>
                   )}

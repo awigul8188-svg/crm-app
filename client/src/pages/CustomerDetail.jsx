@@ -39,7 +39,7 @@ export default function CustomerDetail({ id }) {
   if (!customer) return <div className="p-8 text-ink-400">Customer not found.</div>
 
   return (
-    <div className="p-8 max-w-5xl fade-in" style={{ overflowY:"auto", flex:1 }}>
+    <div className="p-8 max-w-5xl fade-in">
       <button onClick={() => navigate('customers')} className="flex items-center gap-1.5 text-xs text-ink-400 hover:text-ink-600 font-semibold mb-5 transition-colors">← Customers</button>
 
       <div className="card p-6 mb-5">
@@ -55,7 +55,7 @@ export default function CustomerDetail({ id }) {
           </div>
           <div className="flex gap-2 flex-shrink-0">
             {user.role==='manager' && !editMode && (
-              <button onClick={handleDelete} disabled={deleting} className="btn-danger btn-sm">{deleting ? '...' : '🗑 Delete'}</button>
+              <button onClick={handleDelete} disabled={deleting} className="btn-danger btn-sm">{deleting ? '...' : '?? Delete'}</button>
             )}
             {editMode
               ? <><button onClick={()=>setEditMode(false)} className="btn-secondary btn-sm">Cancel</button><button onClick={handleSave} disabled={saving} className="btn-primary btn-sm">{saving?'...':'Save'}</button></>
@@ -76,10 +76,10 @@ export default function CustomerDetail({ id }) {
           </div>
         ) : (
           <div className="flex flex-wrap gap-5 mt-4 text-sm text-ink-500">
-            {customer.email && <span>📧 {customer.email}</span>}
-            {customer.phone && <span>📞 {customer.phone}</span>}
-            {customer.lead_source && <span className="badge bg-teal-50 text-teal-700 border-teal-200">📌 {customer.lead_source}</span>}
-            {customer.assigned_name && <span>👤 {customer.assigned_name}</span>}
+            {customer.email && <span>?? {customer.email}</span>}
+            {customer.phone && <span>?? {customer.phone}</span>}
+            {customer.lead_source && <span className="badge bg-teal-50 text-teal-700 border-teal-200">?? {customer.lead_source}</span>}
+            {customer.assigned_name && <span>?? {customer.assigned_name}</span>}
             <span className="text-ink-300">Joined {timeAgo(customer.created_at)}</span>
           </div>
         )}
@@ -91,7 +91,7 @@ export default function CustomerDetail({ id }) {
       </div>
 
       {!customer.inquiries?.length ? (
-        <div className="card p-12 text-center"><div className="text-4xl mb-2 opacity-20">📋</div><div className="text-sm text-ink-400">No inquiries yet.</div></div>
+        <div className="card p-12 text-center"><div className="text-4xl mb-2 opacity-20">??</div><div className="text-sm text-ink-400">No inquiries yet.</div></div>
       ) : (
         <div className="card overflow-hidden">
           <table className="w-full">
@@ -112,9 +112,9 @@ export default function CustomerDetail({ id }) {
                   <td className="table-cell"><DispositionBadge disposition={inq.disposition} /></td>
                   <td className="table-cell">
                     <div className="flex flex-wrap gap-1">
-                      {inq.requirements?.slice(0,2).map((r,i)=><span key={i} style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:8, background:'var(--card-2)', color:'var(--text-2)', border:'1px solid var(--border)', fontFamily:'monospace', display:'inline-block', marginRight:4 }}>{r.part_number} ×{r.quantity}</span>)}
-                      {inq.requirements?.length > 2 && <span style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:8, background:'var(--brand-dim)', color:'var(--brand)', border:'1px solid rgba(0,212,200,0.2)' }}>+{inq.requirements.length-2}</span>}
-                      {!inq.requirements?.length && <span style={{ color:'var(--text-4)', fontSize:13 }}>—</span>}
+                      {inq.requirements?.slice(0,2).map((r,i)=><span key={i} className="badge bg-slate-50 text-ink-600 border-slate-200 font-mono">{r.part_number} ×{r.quantity}</span>)}
+                      {inq.requirements?.length > 2 && <span className="badge bg-slate-50 text-ink-400 border-slate-100">+{inq.requirements.length-2}</span>}
+                      {!inq.requirements?.length && <span className="text-ink-300 text-sm">—</span>}
                     </div>
                   </td>
                   <td className="table-cell font-medium text-ink-700">{inq.assigned_name||'—'}</td>

@@ -1,151 +1,137 @@
-import { useState, useEffect, createContext, useContext } from 'react'
-import Layout from './components/Layout'
+import { useState, useEffect, useRef, createContext, useContext } from 'react'
+import { api } from './api'
 import Login from './pages/Login'
-
-// ── Contexts ─────────────────────────────────────────────────
-const AuthCtx = createContext(null)
-const NavCtx  = createContext(null)
-export const useAuth = () => useContext(AuthCtx)
-export const useNav  = () => useContext(NavCtx)
-
-// ── Lazy page imports ─────────────────────────────────────────
-import Dashboard            from './pages/Dashboard'
-import AEDashboard          from './pages/AEDashboard'
-import PurchaserPartsView   from './pages/PurchaserPartsView'
-import PMPartDetail          from './pages/PMPartDetail'
-import PurchaserPartDetail  from './pages/PurchaserPartDetail'
-import PurchaserDashboard   from './pages/PurchaserDashboard'
+import Layout from './components/Layout'
+import Dashboard from './pages/Dashboard'
+import InquiryList from './pages/InquiryList'
+import Customers from './pages/Customers'
+import InquiryDetail from './pages/InquiryDetail'
+import CustomerDetail from './pages/CustomerDetail'
+import Users from './pages/Users'
+import ImportData from './pages/ImportData'
+import Notifications from './pages/Notifications'
+import AEDashboard from './pages/AEDashboard'
 import PurchasingManagerView from './pages/PurchasingManagerView'
-import InquiryList          from './pages/InquiryList'
-import InquiryDetail        from './pages/InquiryDetail'
-import Customers            from './pages/Customers'
-import CustomerDetail       from './pages/CustomerDetail'
-import Notifications        from './pages/Notifications'
-import Users                from './pages/Users'
-import ImportData           from './pages/ImportData'
+import PurchaserDashboard from './pages/PurchaserDashboard'
 
-function Loader() {
-  return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', background:'#0d1117' }}>
-      <div style={{ width:32, height:32, borderRadius:'50%', border:'2px solid #00D4C8', borderTopColor:'transparent', animation:'spin 0.8s linear infinite' }} />
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-    </div>
-  )
+export const AuthContext = createContext(null)
+export const useAuth = () => useContext(AuthContext)
+export const NavContext = createContext(null)
+export const useNav = () => useContext(NavContext)
+
+// Ringtone player for AEs \u2014 polls every 3 seconds
+function RingtonePlayer({ userId }) {
+  const audioRef = useRef(null)
+  const activeRef = useRef(false)
+
+  useEffect(() => {
+    let interval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/ringtone/status', { headers: { Authorization: `Bearer ${localStorage.getItem('crm_token')}` } })
+        const data = await res.json()
+
+        if (data.active && data.url) {
+          if (!activeRef.current) {
+            // Start playing
+            if (!audioRef.current) {
+              audioRef.current = new Audio(data.url)
+              audioRef.current.loop = true
+            }
+            audioRef.current.play().catch(() => {})
+            activeRef.current = true
+          }
+        } else {
+          if (activeRef.current) {
+            // Stop playing
+            if (audioRef.current) {
+              audioRef.current.pause()
+              audioRef.current.currentTime = 0
+            }
+            activeRef.current = false
+          }
+        }
+      } catch {}
+    }, 3000)
+
+    return () => {
+      clearInterval(interval)
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null }
+    }
+  }, [userId])
+
+  return null // invisible component
 }
 
 export default function App() {
-  const [user, setUser]           = useState(null)
-  const [loading, setLoading]     = useState(true)
-  const [page, setPage]           = useState('dashboard')
-  const [pageProps, setPageProps] = useState({})
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState({ name: 'dashboard', params: {} })
 
   useEffect(() => {
-    const t = localStorage.getItem('crm_token')
-    if (!t) { setLoading(false); return }
-    fetch('/api/auth/me', { headers: { Authorization: `Bearer ${t}` } })
-      .then(r => r.ok ? r.json() : null)
-      .then(u => {
-        if (u) {
-          setUser(u)
-          // Set default landing page by role
-          if (u.role === 'purchasing_manager') setPage('purchasing')
-          else if (u.role === 'purchaser')     setPage('dashboard')
-          else                                  setPage('dashboard')
-        }
-        setLoading(false)
-      })
-      .catch(() => setLoading(false))
+    const token = localStorage.getItem('crm_token')
+    if (token) {
+      api.me().then(u => { setUser(u); setLoading(false) })
+        .catch(() => { localStorage.removeItem('crm_token'); setLoading(false) })
+    } else setLoading(false)
   }, [])
 
   const login = async (username, password) => {
-    const r = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    })
-    const data = await r.json()
-    if (!r.ok) throw new Error(data.error || 'Login failed')
+    const data = await api.login(username, password)
     localStorage.setItem('crm_token', data.token)
     setUser(data.user)
-    if (data.user.role === 'purchasing_manager') setPage('purchasing')
-    else if (data.user.role === 'purchaser')     setPage('dashboard')
-    else                                          setPage('dashboard')
   }
 
   const logout = () => {
     localStorage.removeItem('crm_token')
     setUser(null)
-    setPage('dashboard')
+    setPage({ name: 'dashboard', params: {} })
   }
 
-  const navigate = (newPage, props = {}) => {
-    setPage(newPage)
-    setPageProps(props || {})
-    window.scrollTo(0, 0)
-  }
+  const navigate = (name, params = {}) => setPage({ name, params })
 
-  if (loading) return <Loader />
+  if (loading) return (
+    <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#f8fafc' }}>
+      <div style={{ width:32, height:32, borderRadius:'50%', border:'2px solid #00D4C8', borderTopColor:'transparent', animation:'spin 0.8s linear infinite' }} />
+      <style>{`@keyframes spin { to { transform:rotate(360deg); } }`}</style>
+    </div>
+  )
 
   if (!user) return (
-    <AuthCtx.Provider value={{ user, login, logout }}>
-      <NavCtx.Provider value={{ navigate, page, pageProps }}>
-        <Login />
-      </NavCtx.Provider>
-    </AuthCtx.Provider>
+    <AuthContext.Provider value={{ user, login, logout }}>
+      <Login />
+    </AuthContext.Provider>
   )
 
   const renderPage = () => {
-    const role = user.role
-
-    // ── Purchaser: only their own parts + dashboard ──────────
-    if (page === 'pm-part-detail') {
-      if (role === 'purchasing_manager' || role === 'manager') {
-        return <PMPartDetail assignmentId={pageProps.assignmentId} />
-      }
+    switch (page.name) {
+      case 'dashboard':
+        if (user.role === 'ae') return <AEDashboard />
+        if (user.role === 'purchaser') return <PurchaserDashboard />
+        if (user.role === 'purchasing_manager') return <PurchasingManagerView />
+        return <Dashboard />
+      case 'leads':           return <InquiryList type="lead" title="Leads" />
+      case 'repeat':          return <InquiryList type="repeat" title="Repeat Inquiries" />
+      case 'orders':          return <InquiryList type="online_order" title="Online Orders" />
+      case 'customers':       return <Customers />
+      case 'customer-detail': return <CustomerDetail id={page.params.id} />
+      case 'inquiry-detail':  return <InquiryDetail id={page.params.id} />
+      case 'users':           return user.role === 'manager' ? <Users /> : <Dashboard />
+      case 'import':          return user.role === 'manager' ? <ImportData /> : <Dashboard />
+      case 'notifications':   return <Notifications />
+      case 'purchasing':      return <PurchasingManagerView />
+      default:                return <Dashboard />
     }
-    if (page === 'purchaser-part-detail') {
-      if (role === 'purchaser') {
-        return <PurchaserPartDetail assignmentId={pageProps.assignmentId} />
-      }
-    }
-    if (role === 'purchaser') {
-      if (page === 'notifications') return <Notifications />
-      if (page === 'purchasing')    return <PurchaserPartsView />
-      return <PurchaserDashboard />
-    }
-
-    // ── All other roles ──────────────────────────────────────
-    if (page === 'dashboard') {
-      if (role === 'ae')                 return <AEDashboard />
-      if (role === 'purchasing_manager') return <PurchasingManagerView />
-      return <Dashboard />   // manager
-    }
-    if (page === 'ae-dashboard')      return <AEDashboard />
-    if (page === 'purchasing')        return <PurchasingManagerView />
-    if (page === 'purchasing-parts')  return <PurchasingManagerView />
-    if (page === 'leads')             return <InquiryList type="lead" />
-    if (page === 'repeat')            return <InquiryList type="repeat" />
-    if (page === 'orders')            return <InquiryList type="online_order" />
-    if (page === 'inquiry-detail')    return <InquiryDetail id={pageProps.id} />
-    if (page === 'customers')         return <Customers />
-    if (page === 'customer-detail')   return <CustomerDetail id={pageProps.id} />
-    if (page === 'notifications')     return <Notifications />
-    if (page === 'users')             return <Users />
-    if (page === 'import')            return <ImportData />
-
-    // Fallback
-    if (role === 'ae')                 return <AEDashboard />
-    if (role === 'purchasing_manager') return <PurchasingManagerView />
-    return <Dashboard />
   }
 
   return (
-    <AuthCtx.Provider value={{ user, login, logout }}>
-      <NavCtx.Provider value={{ navigate, page, pageProps }}>
-        <Layout page={page}>
+    <AuthContext.Provider value={{ user, login, logout }}>
+      <NavContext.Provider value={{ page, navigate }}>
+        {/* Ringtone poller \u2014 only for AEs */}
+        {user.role === 'ae' && <RingtonePlayer userId={user.id} />}
+        <Layout>
           {renderPage()}
         </Layout>
-      </NavCtx.Provider>
-    </AuthCtx.Provider>
+      </NavContext.Provider>
+    </AuthContext.Provider>
   )
 }

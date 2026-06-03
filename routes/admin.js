@@ -13,7 +13,7 @@ router.use((req, res, next) => {
   next();
 });
 
-// GET /api/admin/schema — returns full DB schema so Claude understands the data
+// GET /api/admin/schema \u2014 returns full DB schema so Claude understands the data
 router.get('/schema', (req, res) => {
   const db = getDB();
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all();
@@ -24,12 +24,12 @@ router.get('/schema', (req, res) => {
   res.json({ schema, tables: tables.map(t => t.name) });
 });
 
-// POST /api/admin/query — run any SELECT query
+// POST /api/admin/query \u2014 run any SELECT query
 router.post('/query', (req, res) => {
   const { sql, params = [] } = req.body;
   if (!sql) return res.status(400).json({ error: 'sql is required' });
 
-  // Only allow SELECT — no mutations through this endpoint
+  // Only allow SELECT \u2014 no mutations through this endpoint
   const normalized = sql.trim().toLowerCase();
   if (!normalized.startsWith('select') && !normalized.startsWith('with')) {
     return res.status(400).json({ error: 'Only SELECT queries are allowed' });
@@ -44,7 +44,7 @@ router.post('/query', (req, res) => {
   }
 });
 
-// GET /api/admin/stats — quick summary of everything
+// GET /api/admin/stats \u2014 quick summary of everything
 router.get('/stats', (req, res) => {
   const db = getDB();
   const today = new Date().toISOString().split('T')[0];

@@ -1,446 +1,427 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LineChart, Line } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts'
+import { api } from '../api'
 import { useAuth } from '../App'
 import { useNav } from '../App'
+import { DISPOSITIONS, LEAD_SOURCES, ORDER_SOURCES, formatDate, formatDateShort, DispositionBadge } from '../components/Badges'
+import MultiSelect from '../components/MultiSelect'
 
-// ── Design tokens (Atlantix light palette) ────────────────────
-const BRAND  = '#1FC9BE'
-const INK    = '#0E1525'
-const BLUE   = '#1361FF'
-const CORAL  = '#FF7466'
-const PURPLE = '#6F66F0'
-const PALETTE= ['#1FC9BE','#1361FF','#6F66F0','#FF7466','#FFB266','#0E807A','#0A4FE0','#4C44C0','#C2453A','#525866']
-const T = () => localStorage.getItem('crm_token')
-const fmt$ = v => v>=1000000?`$${(v/1000000).toFixed(1)}m`:v>=1000?`$${(v/1000).toFixed(1)}k`:`$${Math.round(v||0)}`
+const BRAND = '#00D4C8'
+const CHART_COLORS = ['#00D4C8','#3b82f6','#6366f1','#f59e0b','#ef4444','#10b981','#8b5cf6','#f97316','#ec4899','#84cc16']
 
-// ── Helpers ───────────────────────────────────────────────────
-function Avatar({ name, size=28, tone='neutral' }) {
-  const initials = (name||'?').split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()
-  const tones = { neutral:{bg:'#F3F3EF',fg:'#525866'}, brand:{bg:'#E8F8F2',fg:'#0E807A'}, blue:{bg:'#E6F0FF',fg:'#0A4FE0'} }
-  const t = tones[tone]||tones.neutral
-  return <span style={{ width:size,height:size,borderRadius:size,background:t.bg,color:t.fg,flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',fontWeight:600,fontSize:Math.round(size*0.38),letterSpacing:'0.02em' }}>{initials}</span>
-}
-function Pill({ children, tone='neutral', size='sm' }) {
-  const tones = { neutral:{bg:'#F3F3EF',fg:'#525866',bd:'#E5E5DE'}, brand:{bg:'#E8F8F2',fg:'#0E807A',bd:'#B8EFE9'}, success:{bg:'#E8F8F2',fg:'#0E807A',bd:'#B8EFE9'}, warn:{bg:'#FFF3E6',fg:'#A55B16',bd:'#FFD7B8'}, danger:{bg:'#FFEDEB',fg:'#C2453A',bd:'#FFCFCB'}, info:{bg:'#E6F0FF',fg:'#0A4FE0',bd:'#C7DBFF'}, purple:{bg:'#EFEEFE',fg:'#4C44C0',bd:'#D9D6FB'} }
-  const t = tones[tone]||tones.neutral
-  return <span style={{ display:'inline-flex',alignItems:'center',gap:4,background:t.bg,color:t.fg,border:`1px solid ${t.bd}`,fontSize:size==='xs'?10:11,fontWeight:600,padding:size==='xs'?'1px 6px':'2px 8px',borderRadius:999,whiteSpace:'nowrap' }}>{children}</span>
-}
-function SectionHeader({ children }) {
-  return <div style={{ fontSize:11,fontWeight:700,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.12em',marginBottom:12,marginTop:22,display:'flex',alignItems:'center',gap:8 }}>{children}<span style={{ flex:1,height:1,background:'#ECEAE3' }} /></div>
-}
-function Tip({ active, payload, label }) {
-  if (!active||!payload?.length) return null
-  return <div style={{ background:'#fff',border:'1px solid #ECEAE3',borderRadius:10,padding:'8px 12px',fontSize:12,boxShadow:'0 4px 12px rgba(0,0,0,0.08)' }}>
-    <div style={{ color:'#9CA3AF',marginBottom:4,fontSize:11 }}>{label}</div>
-    {payload.map(p=><div key={p.name} style={{ color:p.color||BRAND,display:'flex',gap:8,justifyContent:'space-between' }}><span>{p.name}</span><b>{p.value}</b></div>)}
-  </div>
+const PRESETS = [
+  { label: 'Today', value: 'today' },
+  { label: 'Week', value: 'week' },
+  { label: 'Month', value: 'month' },
+  { label: 'Quarter', value: 'quarter' },
+  { label: 'All Time', value: 'all' },
+  { label: 'Custom', value: 'custom' },
+]
+
+function getPresetDates(v) {
+  const fmt = d => d.toISOString().split('T')[0]
+  const now = new Date(); const today = fmt(now)
+  if (v === 'today')   return { from: today, to: today }
+  if (v === 'week')    { const d = new Date(now); d.setDate(d.getDate()-7); return { from: fmt(d), to: today } }
+  if (v === 'month')   { const d = new Date(now); d.setDate(1); return { from: fmt(d), to: today } }
+  if (v === 'quarter') { const d = new Date(now); d.setMonth(d.getMonth()-3); return { from: fmt(d), to: today } }
+  return { from: '', to: '' }
 }
 
-// ── Stat card ─────────────────────────────────────────────────
-function Stat({ label, value, color=INK, sub, delta, onClick }) {
-  const [hover,setHover] = useState(false)
+function getDateFilters(preset, customFrom, customTo) {
+  return preset === 'custom' ? { from: customFrom, to: customTo } : getPresetDates(preset)
+}
+
+const Tip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null
   return (
-    <div onClick={onClick} onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}
-      style={{ background:'#fff',borderRadius:18,padding:'18px 20px',border:`1px solid ${hover&&onClick?color:'#ECEAE3'}`,cursor:onClick?'pointer':'default',transition:'all 0.15s',boxShadow:hover&&onClick?`0 4px 16px ${color}20`:'none',position:'relative',overflow:'hidden' }}>
-      <div style={{ position:'absolute',top:0,left:0,width:3,height:'100%',background:color,borderRadius:'2px 0 0 2px' }} />
-      <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10 }}>
-        <span style={{ fontSize:11,fontWeight:700,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.08em' }}>{label}</span>
-      </div>
-      <div style={{ fontFamily:'"Poppins",sans-serif',fontWeight:700,fontSize:28,color:INK,letterSpacing:'-0.03em',lineHeight:1,marginBottom:5 }}>{typeof value==='number'?value.toLocaleString():value}</div>
-      <div style={{ display:'flex',alignItems:'center',gap:6,fontSize:11,color:'#9CA3AF' }}>
-        {delta&&<span style={{ color,fontWeight:600 }}>{delta}</span>}
-        {sub&&<span>{sub}</span>}
-      </div>
+    <div style={{ background:'#0d0d0d', border:'1px solid rgba(255,255,255,0.1)', borderRadius:10, padding:'8px 12px', fontSize:12 }}>
+      <div style={{ color:'rgba(255,255,255,0.6)', marginBottom:4 }}>{label}</div>
+      {payload.map(p => <div key={p.name} style={{ color: p.color||BRAND, display:'flex', gap:8 }}><span>{p.name}</span><b>{p.value}</b></div>)}
     </div>
   )
 }
 
-// ── Disposition tile ──────────────────────────────────────────
-function DisTile({ label, value, pct, color, onClick }) {
-  const [h,setH] = useState(false)
+// \u2500\u2500 Metric Card \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+function MetricCard({ label, value, sub, color = BRAND, prefix = '', suffix = '', onClick }) {
   return (
-    <div onClick={onClick} onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)}
-      style={{ background:h?`${color}06`:'#FBFBF8',border:`1px solid ${h?color:'#ECEAE3'}`,borderRadius:12,padding:'12px 14px',cursor:'pointer',transition:'all 0.15s' }}>
-      <div style={{ fontSize:11,color:'#9CA3AF',fontWeight:500,marginBottom:6,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{label}</div>
-      <div style={{ fontFamily:'"Poppins",sans-serif',fontWeight:700,fontSize:22,color:INK,letterSpacing:'-0.02em',lineHeight:1 }}>{value.toLocaleString()}</div>
-      <div style={{ height:3,background:'#ECEAE3',borderRadius:99,marginTop:8 }}>
-        <div style={{ height:'100%',background:color,borderRadius:99,width:`${pct}%`,transition:'width 0.5s' }} />
-      </div>
-      <div style={{ fontSize:10,color:'#9CA3AF',marginTop:4 }}>{pct}% of total</div>
+    <div onClick={onClick} style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:'16px 20px', position:'relative', overflow:'hidden', cursor: onClick ? 'pointer' : 'default', transition:'all 0.15s' }}
+      onMouseEnter={e => { if (onClick) { e.currentTarget.style.borderColor = color; e.currentTarget.style.boxShadow = `0 4px 16px ${color}20` }}}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = '#f1f5f9'; e.currentTarget.style.boxShadow = 'none' }}>
+      <div style={{ position:'absolute', top:0, left:0, width:3, height:'100%', background: color, borderRadius:'16px 0 0 16px' }} />
+      {onClick && <div style={{ position:'absolute', top:10, right:12, fontSize:10, color:'#94a3b8' }}>click to view \u2197</div>}
+      <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:8 }}>{label}</div>
+      <div style={{ fontSize:28, fontWeight:800, color:'#0f172a', fontFamily:'"Bricolage Grotesque", sans-serif' }}>{prefix}{typeof value === 'number' ? value.toLocaleString() : (value ?? '\u2014')}{suffix}</div>
+      {sub && <div style={{ fontSize:12, color:'#94a3b8', marginTop:4 }}>{sub}</div>}
     </div>
   )
 }
 
-// ── Top list card ─────────────────────────────────────────────
-function TopListCard({ title, data=[], accent, onDrill }) {
-  const max = data[0]?.count||1
-  return (
-    <div style={{ background:'#fff',borderRadius:18,border:'1px solid #ECEAE3',padding:'22px 24px' }}>
-      <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14 }}>
-        <h3 style={{ fontFamily:'"Poppins",sans-serif',fontSize:15,fontWeight:700,margin:0,letterSpacing:'-0.01em' }}>{title}</h3>
-      </div>
-      <div style={{ display:'flex',flexDirection:'column',gap:10 }}>
-        {data.slice(0,8).map((d,i)=>(
-          <div key={d.name||d.company} onClick={()=>onDrill&&onDrill(d)} style={{ display:'flex',alignItems:'center',gap:10,cursor:onDrill?'pointer':'default' }}>
-            <span style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:22,height:22,borderRadius:6,background:i===0?accent:'#F3F3EF',color:i===0?'#fff':'#525866',fontFamily:'"Poppins",sans-serif',fontWeight:700,fontSize:11,flexShrink:0 }}>{i+1}</span>
-            <div style={{ flex:1,minWidth:0 }}>
-              <div style={{ display:'flex',justifyContent:'space-between',marginBottom:3 }}>
-                <span style={{ fontSize:12,fontWeight:600,color:INK,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{d.name||d.company}</span>
-                <span style={{ fontSize:12,fontWeight:700,color:i===0?accent:INK,flexShrink:0 }}>{d.count}</span>
-              </div>
-              <div style={{ height:3,background:'#F3F3EF',borderRadius:99 }}>
-                <div style={{ height:'100%',background:i===0?accent:'#D1D5DB',borderRadius:99,width:`${(d.count/max)*100}%`,transition:'width 0.5s' }} />
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
+function SectionTitle({ children }) {
+  return <div style={{ fontFamily:'"Bricolage Grotesque", sans-serif', fontWeight:700, fontSize:14, color:'#0f172a', marginBottom:14 }}>{children}</div>
 }
 
-// ── Multi-select chip ─────────────────────────────────────────
-function MultiChip({ placeholder, options=[], selected=[], onChange }) {
-  const [open,setOpen] = useState(false)
-  const ref = useRef()
-  useEffect(()=>{
-    const h = e => { if(ref.current&&!ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown',h)
-    return ()=>document.removeEventListener('mousedown',h)
-  },[])
-  const toggle = v => onChange(selected.includes(v)?selected.filter(x=>x!==v):[...selected,v])
-  const active = selected.length > 0
-  return (
-    <div ref={ref} style={{ position:'relative' }}>
-      <button onClick={()=>setOpen(!open)} style={{ padding:'6px 12px',borderRadius:9,background:active?'#E8F8F2':'#fff',border:`1px solid ${active?'#B8EFE9':'#E5E5DE'}`,color:active?'#0E807A':'#525866',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'inherit',display:'inline-flex',alignItems:'center',gap:6 }}>
-        {active?`${placeholder} · ${selected.length}`:placeholder}
-        <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M6 9l6 6 6-6"/></svg>
-      </button>
-      {open&&(
-        <div style={{ position:'absolute',top:'calc(100% + 4px)',left:0,zIndex:500,background:'#fff',borderRadius:12,border:'1px solid #ECEAE3',boxShadow:'0 12px 32px rgba(15,17,23,0.10)',minWidth:200,maxHeight:260,overflowY:'auto',padding:6 }}>
-          {options.map(o=>{
-            const v = typeof o==='object'?o.value:o
-            const l = typeof o==='object'?o.label:o
-            const sel = selected.includes(v)
-            return (
-              <div key={v} onClick={()=>toggle(v)} style={{ padding:'7px 10px',borderRadius:7,cursor:'pointer',fontSize:12,color:INK,display:'flex',alignItems:'center',gap:8,background:sel?'#E8F8F2':'transparent' }}
-                onMouseEnter={e=>{if(!sel)e.currentTarget.style.background='#FBFBF8'}} onMouseLeave={e=>{if(!sel)e.currentTarget.style.background='transparent'}}>
-                <span style={{ width:14,height:14,borderRadius:4,border:`1.5px solid ${sel?BRAND:'#CBD5E1'}`,background:sel?BRAND:'#fff',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0 }}>
-                  {sel&&<svg width={9} height={9} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={3}><path d="M5 12l4 4 10-10"/></svg>}
-                </span>
-                {l}
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── Segmented ─────────────────────────────────────────────────
-function Segmented({ value, onChange, options }) {
-  return (
-    <div style={{ display:'inline-flex',background:'#F3F3EF',padding:3,borderRadius:10,gap:2 }}>
-      {options.map(o=>{
-        const active = value===o.value
-        return <button key={o.value} onClick={()=>onChange(o.value)} style={{ padding:'5px 12px',borderRadius:8,border:'none',background:active?'#fff':'transparent',color:active?INK:'#9CA3AF',fontSize:12,fontWeight:active?600:500,cursor:'pointer',fontFamily:'inherit',boxShadow:active?'0 1px 3px rgba(0,0,0,0.08)':'none',transition:'all 0.12s' }}>{o.label}</button>
-      })}
-    </div>
-  )
-}
-
-// ── Set Target Modal ──────────────────────────────────────────
-function SetTargetModal({ ae, existing, onClose, onSaved }) {
-  const now = new Date()
-  const [form,setForm] = useState({ year:existing?.year||now.getFullYear(), quarter:existing?.quarter||Math.ceil((now.getMonth()+1)/3), gp_target:existing?.gp_target||'', revenue_target:existing?.revenue_target||'', leads_target:existing?.leads_target||'', repeat_target:existing?.repeat_target||'', orders_target:existing?.orders_target||'' })
-  const [saving,setSaving] = useState(false)
-  const save = async () => {
-    setSaving(true)
-    await fetch('/api/analytics/targets',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+T()},body:JSON.stringify({ae_id:ae.id,...form})})
-    setSaving(false); onSaved()
-  }
-  const inp = { width:'100%',boxSizing:'border-box',background:'#FBFBF8',border:'1px solid #ECEAE3',borderRadius:10,padding:'9px 13px',fontSize:13,color:INK,fontFamily:'inherit',outline:'none' }
-  return createPortal(
-    <div onClick={onClose} style={{ position:'fixed',inset:0,zIndex:99999,background:'rgba(14,21,37,0.5)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',padding:16 }}>
-      <div onClick={e=>e.stopPropagation()} style={{ background:'#fff',borderRadius:20,boxShadow:'0 24px 80px rgba(0,0,0,0.15)',width:'100%',maxWidth:440,fontFamily:'inherit' }}>
-        <div style={{ padding:'20px 24px',borderBottom:'1px solid #ECEAE3' }}>
-          <div style={{ fontFamily:'"Poppins",sans-serif',fontWeight:700,fontSize:16,color:INK }}>Set Target — {ae.name}</div>
-          <div style={{ fontSize:12,color:'#9CA3AF',marginTop:3 }}>GP is the primary tracked metric</div>
-        </div>
-        <div style={{ padding:'20px 24px',display:'flex',flexDirection:'column',gap:12 }}>
-          <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10 }}>
-            <div><div style={{ fontSize:11,fontWeight:700,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6 }}>Year</div>
-              <select value={form.year} onChange={e=>setForm(f=>({...f,year:parseInt(e.target.value)}))} style={{ ...inp,cursor:'pointer' }}>{[2024,2025,2026,2027].map(y=><option key={y}>{y}</option>)}</select></div>
-            <div><div style={{ fontSize:11,fontWeight:700,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6 }}>Quarter</div>
-              <select value={form.quarter} onChange={e=>setForm(f=>({...f,quarter:parseInt(e.target.value)}))} style={{ ...inp,cursor:'pointer' }}>{[1,2,3,4].map(q=><option key={q} value={q}>Q{q}</option>)}</select></div>
-          </div>
-          <div>
-            <div style={{ fontSize:11,fontWeight:700,color:'#0E807A',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6 }}>GP Target ($) ★</div>
-            <input value={form.gp_target} onChange={e=>setForm(f=>({...f,gp_target:e.target.value}))} placeholder="e.g. 50000" style={inp} type="number" />
-          </div>
-          <div>
-            <div style={{ fontSize:11,fontWeight:700,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6 }}>Revenue Target ($)</div>
-            <input value={form.revenue_target} onChange={e=>setForm(f=>({...f,revenue_target:e.target.value}))} placeholder="e.g. 150000" style={inp} type="number" />
-          </div>
-          <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10 }}>
-            {[['Leads','leads_target'],['Repeats','repeat_target'],['Orders','orders_target']].map(([l,k])=>(
-              <div key={k}><div style={{ fontSize:11,fontWeight:700,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6 }}>{l}</div>
-                <input value={form[k]} onChange={e=>setForm(f=>({...f,[k]:e.target.value}))} placeholder="0" style={inp} type="number" /></div>
-            ))}
-          </div>
-          <div style={{ display:'flex',gap:10,marginTop:4 }}>
-            <button onClick={save} disabled={saving} style={{ flex:1,padding:'12px',borderRadius:12,border:'none',background:saving?'#F3F3EF':BRAND,color:saving?'#9CA3AF':'#fff',fontWeight:700,fontSize:14,cursor:saving?'not-allowed':'pointer',fontFamily:'inherit' }}>{saving?'Saving…':'Save Target'}</button>
-            <button onClick={onClose} style={{ padding:'12px 18px',borderRadius:12,border:'1px solid #ECEAE3',background:'#fff',color:'#525866',cursor:'pointer',fontFamily:'inherit' }}>Cancel</button>
-          </div>
-        </div>
-      </div>
-    </div>, document.body
-  )
-}
-
-// ── Drilldown Modal ───────────────────────────────────────────
-function DrilldownModal({ title, filters, onClose }) {
+// \u2500\u2500 Drilldown Modal \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+function DrilldownModal({ title, type, filters, onClose }) {
   const { navigate } = useNav()
-  const [rows,setRows] = useState([]); const [loading,setLoading] = useState(true)
-  useEffect(()=>{
-    const p = new URLSearchParams(); Object.entries(filters||{}).forEach(([k,v])=>{ if(v) p.set(k,v) })
-    fetch('/api/inquiries?'+p,{headers:{Authorization:'Bearer '+T()}}).then(r=>r.json()).then(d=>{setRows(Array.isArray(d)?d:[]);setLoading(false)}).catch(()=>setLoading(false))
-  },[])
-  const tc = { lead:BLUE, repeat:PURPLE, online_order:CORAL }
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const p = new URLSearchParams()
+    if (type) p.set('type', type)
+    if (filters.disposition) p.set('disposition', filters.disposition)
+    if (filters.from) p.set('from', filters.from)
+    if (filters.to) p.set('to', filters.to)
+    if (filters.assigned_to) p.set('assigned_to', filters.assigned_to)
+    fetch(`/api/inquiries?${p}`, { headers: { Authorization: `Bearer ${localStorage.getItem('crm_token')}` } })
+      .then(r => r.json()).then(d => { setRows(Array.isArray(d) ? d : []); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [])
+
+  const handleRowClick = (id) => { onClose(); navigate('inquiry-detail', { id }) }
+
   return createPortal(
-    <div onClick={onClose} style={{ position:'fixed',inset:0,zIndex:99999,background:'rgba(14,21,37,0.5)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',padding:16 }}>
-      <div onClick={e=>e.stopPropagation()} style={{ background:'#fff',borderRadius:20,boxShadow:'0 24px 80px rgba(0,0,0,0.15)',width:'100%',maxWidth:920,maxHeight:'88vh',display:'flex',flexDirection:'column',fontFamily:'inherit' }}>
-        <div style={{ padding:'18px 24px',borderBottom:'1px solid #ECEAE3',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0 }}>
+    <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:99999, background:'rgba(0,0,0,0.55)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:'#fff', borderRadius:20, boxShadow:'0 24px 80px rgba(0,0,0,0.25)', width:'100%', maxWidth:860, maxHeight:'85vh', display:'flex', flexDirection:'column', animation:'modalIn 0.18s ease-out', fontFamily:'"Plus Jakarta Sans", sans-serif' }}>
+        <style>{`@keyframes modalIn { from{opacity:0;transform:scale(0.96) translateY(8px)} to{opacity:1;transform:scale(1) translateY(0)} }`}</style>
+        <div style={{ padding:'18px 24px', borderBottom:'1px solid #f1f5f9', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
           <div>
-            <div style={{ fontFamily:'"Poppins",sans-serif',fontWeight:700,fontSize:16,color:INK }}>{title}</div>
-            <div style={{ fontSize:12,color:'#9CA3AF',marginTop:2 }}>{loading?'Loading…':`${rows.length} records — click to open`}</div>
+            <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:700, fontSize:16, color:'#0f172a' }}>{title}</div>
+            <div style={{ fontSize:12, color:'#94a3b8', marginTop:2 }}>{loading ? 'Loading...' : `${rows.length} records \u2014 click any row to open`}</div>
           </div>
-          <button onClick={onClose} style={{ width:32,height:32,borderRadius:10,border:'1px solid #ECEAE3',background:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'#9CA3AF',fontSize:18 }}>×</button>
+          <button onClick={onClose} style={{ width:32, height:32, borderRadius:10, border:'none', background:'#f1f5f9', cursor:'pointer', fontSize:18, color:'#64748b', display:'flex', alignItems:'center', justifyContent:'center' }}>\u00d7</button>
         </div>
-        <div style={{ overflowY:'auto',flex:1 }}>
-          {loading?(<div style={{ display:'flex',alignItems:'center',justifyContent:'center',padding:60 }}><div style={{ width:24,height:24,borderRadius:'50%',border:'2px solid '+BRAND,borderTopColor:'transparent',animation:'spin 0.8s linear infinite' }}/></div>)
-          :!rows.length?(<div style={{ textAlign:'center',padding:60,color:'#9CA3AF' }}>No records found</div>):(
-            <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13 }}>
-              <thead><tr style={{ background:'#FBFBF8',position:'sticky',top:0 }}>
-                {['Date','Customer','Company','AE','Type','Disposition'].map(h=><th key={h} style={{ textAlign:'left',padding:'10px 16px',fontSize:10,fontWeight:600,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.08em',borderBottom:'1px solid #ECEAE3' }}>{h}</th>)}
-              </tr></thead>
-              <tbody>{rows.map((r,i)=>(
-                <tr key={r.id} onClick={()=>{navigate('inquiry-detail',{id:r.id});onClose()}} style={{ borderTop:'1px solid #F2F1EC',cursor:'pointer',transition:'background 0.12s' }}
-                  onMouseEnter={e=>e.currentTarget.style.background='#FBFBF8'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                  <td style={{ padding:'12px 16px',color:'#9CA3AF',fontSize:11,whiteSpace:'nowrap' }}>{new Date(r.created_at).toLocaleDateString()}</td>
-                  <td style={{ padding:'12px 16px',fontWeight:600,color:INK }}>{r.customer_name}</td>
-                  <td style={{ padding:'12px 16px',color:'#6B7280',fontSize:12 }}>{r.customer_company||'—'}</td>
-                  <td style={{ padding:'12px 16px' }}><div style={{ display:'flex',alignItems:'center',gap:6 }}><Avatar name={r.assigned_name} size={22} /><span style={{ fontSize:12,color:'#525866' }}>{(r.assigned_name||'—').split(' ')[0]}</span></div></td>
-                  <td style={{ padding:'12px 16px' }}><span style={{ fontSize:11,fontWeight:600,color:tc[r.type]||'#9CA3AF',padding:'2px 8px',borderRadius:999,background:`${tc[r.type]||'#9CA3AF'}12` }}>{r.type==='online_order'?'Order':r.type==='lead'?'Lead':'Repeat'}</span></td>
-                  <td style={{ padding:'12px 16px' }}>
-                    <Pill tone={r.disposition==='Closed Won'||r.disposition==='Processed'?'success':r.disposition==='Closed Lost'||r.disposition==='Cancelled'?'danger':r.disposition==='Quoted'||r.disposition==='Bidding'?'info':'neutral'} size="xs">{r.disposition||'—'}</Pill>
-                  </td>
+        <div style={{ overflowY:'auto', flex:1 }}>
+          {loading ? (
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:60 }}>
+              <div style={{ width:28, height:28, borderRadius:'50%', border:`2px solid ${BRAND}`, borderTopColor:'transparent', animation:'spin 0.8s linear infinite' }} />
+            </div>
+          ) : rows.length === 0 ? (
+            <div style={{ textAlign:'center', padding:60, color:'#94a3b8' }}>No records found</div>
+          ) : (
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+              <thead>
+                <tr style={{ background:'#f8fafc', position:'sticky', top:0 }}>
+                  {['Date','Customer','Company','Assigned To','Disposition','Part Numbers'].map(h => (
+                    <th key={h} style={{ textAlign:'left', padding:'10px 16px', fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.06em', whiteSpace:'nowrap' }}>{h}</th>
+                  ))}
                 </tr>
-              ))}</tbody>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={r.id} onClick={() => handleRowClick(r.id)} style={{ borderBottom:'1px solid #f1f5f9', cursor:'pointer', background: i%2===0 ? '#fff':'#fafbfc', transition:'background 0.1s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = `${BRAND}08`}
+                    onMouseLeave={e => e.currentTarget.style.background = i%2===0 ? '#fff':'#fafbfc'}>
+                    <td style={{ padding:'10px 16px', color:'#64748b', whiteSpace:'nowrap', fontFamily:'monospace', fontSize:12 }}>{formatDateShort(r.created_at)}</td>
+                    <td style={{ padding:'10px 16px', fontWeight:600, color:'#0f172a' }}>{r.customer_name}</td>
+                    <td style={{ padding:'10px 16px', color:'#64748b', fontSize:12 }}>{r.customer_company||'\u2014'}</td>
+                    <td style={{ padding:'10px 16px', color:'#475569' }}>{r.assigned_name||'\u2014'}</td>
+                    <td style={{ padding:'10px 16px' }}><DispositionBadge disposition={r.disposition} /></td>
+                    <td style={{ padding:'10px 16px', fontFamily:'monospace', fontSize:11, color:'#475569', maxWidth:160, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                      {r.requirements?.map(req => req.part_number).join(', ') || '\u2014'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
             </table>
           )}
         </div>
       </div>
-    </div>, document.body
+    </div>,
+    document.body
   )
 }
 
-// ── My Performance (own target + stats) ───────────────────────
-function MyPerformance({ own, meta, onDrill, userId, onSetTarget }) {
-  const t = own?.target
-  const gpPct  = t?.gp_target>0  ? Math.min(100,Math.round((own.gp||0)/t.gp_target*100))     : 0
-  const revPct = t?.revenue_target>0 ? Math.min(100,Math.round((own.revenue||0)/t.revenue_target*100)) : 0
+// \u2500\u2500 Top List \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+function TopList({ data, label, color, showCompany, onDrilldown }) {
+  const [period, setPeriod] = useState('month')
+  const rows = data?.[period] || []
+  const max = rows[0]?.count || 1
   return (
-    <div style={{ marginBottom:28 }}>
-      {t ? (
-        <div style={{ background:`linear-gradient(135deg, ${INK} 0%, #1A2138 100%)`,borderRadius:20,padding:'22px 24px',marginBottom:16,position:'relative',overflow:'hidden' }}>
-          <div style={{ position:'absolute',top:-80,right:-40,width:200,height:200,borderRadius:'50%',background:`radial-gradient(circle,${BRAND}60 0%,transparent 65%)`,pointerEvents:'none' }} />
-          <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16,position:'relative' }}>
-            <div>
-              <div style={{ fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.4)',textTransform:'uppercase',letterSpacing:'0.12em',marginBottom:4 }}>Q{meta?.quarter} {meta?.year} Targets</div>
-              <div style={{ fontFamily:'"Poppins",sans-serif',fontSize:12,color:'rgba(255,255,255,0.6)' }}>GP is your primary tracked metric</div>
-            </div>
-            <button onClick={onSetTarget} style={{ fontSize:11,color:BRAND,background:BRAND+'20',border:`1px solid ${BRAND}40`,borderRadius:8,padding:'5px 12px',cursor:'pointer',fontFamily:'inherit',fontWeight:600 }}>Edit Target</button>
-          </div>
-          <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))',gap:16,position:'relative' }}>
-            {t.gp_target>0&&(
-              <div>
-                <div style={{ display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:6 }}>
-                  <span style={{ color:'rgba(255,255,255,0.5)' }}>GP Target</span>
-                  <span style={{ color:'#fff',fontWeight:700 }}>{fmt$(own.gp||0)} <span style={{ color:'rgba(255,255,255,0.35)',fontWeight:400 }}>/ {fmt$(t.gp_target)}</span></span>
-                </div>
-                <div style={{ height:6,background:'rgba(255,255,255,0.12)',borderRadius:99 }}>
-                  <div style={{ height:'100%',width:gpPct+'%',background:'#10b981',borderRadius:99,transition:'width 0.6s' }} />
-                </div>
-                <div style={{ fontSize:10,fontWeight:700,color:gpPct>=100?'#10b981':'#1FC9BE',marginTop:3 }}>{gpPct}%{gpPct>=100&&' ✓'}</div>
-              </div>
-            )}
-            {t.revenue_target>0&&(
-              <div>
-                <div style={{ display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:6 }}>
-                  <span style={{ color:'rgba(255,255,255,0.5)' }}>Revenue</span>
-                  <span style={{ color:'#fff',fontWeight:700 }}>{fmt$(own.revenue||0)} <span style={{ color:'rgba(255,255,255,0.35)',fontWeight:400 }}>/ {fmt$(t.revenue_target)}</span></span>
-                </div>
-                <div style={{ height:6,background:'rgba(255,255,255,0.12)',borderRadius:99 }}>
-                  <div style={{ height:'100%',width:revPct+'%',background:BRAND,borderRadius:99,transition:'width 0.6s' }} />
-                </div>
-                <div style={{ fontSize:10,fontWeight:700,color:BRAND,marginTop:3 }}>{revPct}%{revPct>=100&&' ✓'}</div>
-              </div>
-            )}
-          </div>
+    <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+        <SectionTitle>{label}</SectionTitle>
+        <div style={{ display:'flex', gap:2, background:'#f1f5f9', borderRadius:8, padding:3 }}>
+          {[['day','Today'],['month','Month'],['year','Year']].map(([val,lbl]) => (
+            <button key={val} onClick={() => setPeriod(val)} style={{ padding:'4px 10px', borderRadius:6, border:'none', background:period===val?'#fff':'transparent', color:period===val?'#0f172a':'#64748b', fontSize:11, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', boxShadow:period===val?'0 1px 3px rgba(0,0,0,0.08)':'none', transition:'all 0.12s' }}>{lbl}</button>
+          ))}
         </div>
-      ) : (
-        <div style={{ background:'#fff',borderRadius:16,border:`2px dashed ${BRAND}60`,padding:'16px 20px',marginBottom:16,display:'flex',alignItems:'center',gap:14,cursor:'pointer' }} onClick={onSetTarget}>
-          <span style={{ fontSize:24 }}>🎯</span>
-          <div><div style={{ fontWeight:700,color:INK,fontSize:14 }}>No quarterly target set</div><div style={{ fontSize:13,color:'#9CA3AF' }}>Click to set your GP and revenue targets for Q{meta?.quarter}</div></div>
-        </div>
-      )}
-      <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(145px,1fr))',gap:12 }}>
-        <Stat label="My Total" value={own?.total||0} color={INK} onClick={()=>onDrill('My Inquiries',{assigned_to:userId})} />
-        <Stat label="Closed Won" value={own?.won||0} color="#0E807A" delta={`${own?.winRate||0}%`} sub="win rate" onClick={()=>onDrill('My Wins',{assigned_to:userId,disposition:'Closed Won'})} />
-        <Stat label="Closed Lost" value={own?.lost||0} color="#C2453A" onClick={()=>onDrill('My Losses',{assigned_to:userId,disposition:'Closed Lost'})} />
-        <Stat label="In Progress" value={own?.active||0} color={BLUE} onClick={()=>onDrill('My Pipeline',{assigned_to:userId})} />
-        <Stat label="Revenue" value={fmt$(own?.revenue||0)} color="#0E807A" onClick={()=>onDrill('My Revenue',{assigned_to:userId,disposition:'Closed Won'})} />
-        <Stat label="Gross Profit" value={(own?.gp||0)>0?fmt$(own.gp):'—'} color={BRAND} sub={(own?.gp||0)===0?'Tracking from new closes':t?.gp_target?gpPct+'% of target':null} />
       </div>
-      {(own?.revByMonth||[]).length>0&&(
-        <div style={{ background:'#fff',borderRadius:18,border:'1px solid #ECEAE3',padding:'20px 24px',marginTop:14 }}>
-          <h3 style={{ fontFamily:'"Poppins",sans-serif',fontSize:15,fontWeight:700,margin:'0 0 14px',letterSpacing:'-0.01em' }}>Revenue & GP — Last 6 Months</h3>
-          <ResponsiveContainer width="100%" height={150}>
-            <BarChart data={own.revByMonth} barSize={10} barGap={3}>
-              <XAxis dataKey="month" tick={{ fontSize:11,fill:'#9CA3AF' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize:11,fill:'#9CA3AF' }} axisLine={false} tickLine={false} tickFormatter={v=>'$'+(v/1000).toFixed(0)+'k'} />
-              <Tooltip content={<Tip />} />
-              <Bar dataKey="revenue" name="Revenue" fill={BRAND+'80'} radius={[4,4,0,0]} />
-              <Bar dataKey="gp" name="GP" fill="#10b981" radius={[4,4,0,0]} />
-            </BarChart>
-          </ResponsiveContainer>
+      {rows.length === 0 ? (
+        <div style={{ textAlign:'center', color:'#94a3b8', fontSize:13, padding:'24px 0' }}>No data for this period</div>
+      ) : (
+        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+          {rows.map((row, i) => (
+            <div key={row.name+i} style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <div style={{ width:22, height:22, borderRadius:6, background:i===0?color:'#f1f5f9', color:i===0?'#fff':'#94a3b8', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, flexShrink:0 }}>{i+1}</div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:3 }}>
+                  <div><span style={{ fontSize:13, fontWeight:600, color:'#0f172a' }}>{row.name||'Unknown'}</span>
+                    {showCompany && row.company && <span style={{ fontSize:11, color:'#94a3b8', marginLeft:6 }}>\u00b7 {row.company}</span>}
+                  </div>
+                  <span style={{ fontSize:13, fontWeight:700, color:i===0?color:'#475569', flexShrink:0, marginLeft:8 }}>{row.count}</span>
+                </div>
+                <div style={{ height:4, background:'#f1f5f9', borderRadius:4 }}>
+                  <div style={{ height:'100%', borderRadius:4, background:i===0?color:'#cbd5e1', width:`${Math.round(row.count/max*100)}%`, transition:'width 0.3s' }} />
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
   )
 }
 
-// ── Overview tab ─────────────────────────────────────────────
-function OverviewTab({ data, onDrill }) {
-  const { own, team, trend14=[], today={}, meta } = data
-  const total = (trend14||[]).reduce((s,d)=>s+d.total,0)
-  const won   = (trend14||[]).reduce((s,d)=>s+d.won,0)
-  const winRate = total>0?Math.round(won/total*100):0
+// \u2500\u2500 Shared filter bar \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+function FilterBar({ preset, setPreset, customFrom, setCustomFrom, customTo, setCustomTo, filterDispositions, setFilterDispositions, filterSources, setFilterSources, filterUsers, setFilterUsers, users, activeTab }) {
+  const dispositionOpts = activeTab === 'orders' ? ['Processed','Cancelled'] : DISPOSITIONS.filter(d => d !== 'Processed' && d !== 'Cancelled')
+  const sourceOpts = activeTab === 'orders' ? ORDER_SOURCES : LEAD_SOURCES
+  const hasFilters = filterDispositions.length || filterSources.length || filterUsers.length
+  return (
+    <div style={{ marginBottom:20 }}>
+      {/* Date presets */}
+      <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:12, flexWrap:'wrap' }}>
+        <div style={{ display:'flex', background:'#fff', border:'1px solid #e2e8f0', borderRadius:12, padding:4, gap:2 }}>
+          {PRESETS.map(r => (
+            <button key={r.value} onClick={() => setPreset(r.value)} style={{ padding:'6px 12px', borderRadius:8, border:'none', background:preset===r.value?BRAND:'transparent', color:preset===r.value?'#0d0d0d':'#64748b', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', transition:'all 0.15s', whiteSpace:'nowrap' }}>{r.label}</button>
+          ))}
+        </div>
+        {preset === 'custom' && (
+          <div style={{ display:'flex', alignItems:'center', gap:8, background:'#fff', border:`1px solid ${BRAND}40`, borderRadius:12, padding:'6px 14px' }}>
+            <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} style={{ padding:'4px 8px', border:'1px solid #e2e8f0', borderRadius:8, fontSize:13, outline:'none' }} />
+            <span style={{ color:'#94a3b8' }}>\u2192</span>
+            <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} style={{ padding:'4px 8px', border:'1px solid #e2e8f0', borderRadius:8, fontSize:13, outline:'none' }} />
+          </div>
+        )}
+      </div>
+      {/* Filter dropdowns */}
+      <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
+        <MultiSelect placeholder={activeTab === 'orders' ? 'All Statuses' : 'All Dispositions'} options={dispositionOpts} selected={filterDispositions} onChange={setFilterDispositions} />
+        <MultiSelect placeholder="All Sources" options={sourceOpts} selected={filterSources} onChange={setFilterSources} />
+        <MultiSelect placeholder="All Team Members" options={users.map(u => ({ value: String(u.id), label: u.name }))} selected={filterUsers} onChange={setFilterUsers} />
+        {hasFilters && <button onClick={() => { setFilterDispositions([]); setFilterSources([]); setFilterUsers([]) }} style={{ fontSize:12, fontWeight:600, color:'#ef4444', background:'#fef2f2', border:'1px solid #fecaca', borderRadius:10, padding:'6px 12px', cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>\u2715 Clear filters</button>}
+      </div>
+    </div>
+  )
+}
+
+// \u2500\u2500 Loader \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+function Loader() {
+  return <div style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:'80px 0' }}><div style={{ width:32, height:32, borderRadius:'50%', border:`2px solid ${BRAND}`, borderTopColor:'transparent', animation:'spin 0.8s linear infinite' }} /></div>
+}
+
+// \u2500\u2500 Overview Tab \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+function OverviewTab({ filters, users, onDrilldown }) {
+  const { navigate } = useNav()
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    api.getAnalytics({ from: filters.from, to: filters.to, disposition: filters.dispositions, lead_source: filters.sources, assigned_to: filters.users })
+      .then(d => { setData(d); setLoading(false) }).catch(() => setLoading(false))
+  }, [JSON.stringify(filters)])
+
+  if (loading) return <Loader />
+  const getTotal = type => data?.totals?.find(t => t.type === type)?.count || 0
+  const totalAll = (data?.totals||[]).reduce((s,t) => s + t.count, 0)
+  const wonRate = data?.totalCount > 0 ? Math.round(data.wonCount / data.totalCount * 100) : 0
+  const trendDates = [...new Set((data?.trend||[]).map(t => t.date))].sort()
+  const trendData = trendDates.map(date => {
+    const row = { date: date.slice(5) }
+    ;['lead','repeat','online_order'].forEach(type => { row[type] = data?.trend?.find(t => t.date===date && t.type===type)?.count || 0 })
+    return row
+  })
+
   return (
     <div>
-      <div style={{ display:'grid',gridTemplateColumns:'1.3fr 1fr 1fr 1fr',gap:14,marginBottom:16 }}>
-        {/* Hero */}
-        <div style={{ background:`linear-gradient(135deg,${INK} 0%,#1A2138 100%)`,borderRadius:20,padding:'22px 24px',color:'#fff',position:'relative',overflow:'hidden' }}>
-          <div style={{ position:'absolute',inset:0,opacity:0.05,backgroundImage:'radial-gradient(circle at 1px 1px,#fff 1px,transparent 0)',backgroundSize:'16px 16px',pointerEvents:'none' }} />
-          <div style={{ position:'absolute',top:-80,right:-40,width:200,height:200,borderRadius:'50%',background:`radial-gradient(circle,${BRAND}80 0%,transparent 65%)`,pointerEvents:'none' }} />
-          <div style={{ position:'relative' }}>
-            <div style={{ display:'flex',alignItems:'center',gap:6,marginBottom:10 }}>
-              <span style={{ width:6,height:6,borderRadius:99,background:BRAND,boxShadow:`0 0 10px ${BRAND}` }} />
-              <span style={{ fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.55)',textTransform:'uppercase',letterSpacing:'0.14em' }}>Total activity</span>
-            </div>
-            <div style={{ fontFamily:'"Poppins",sans-serif',fontWeight:700,fontSize:52,lineHeight:1,letterSpacing:'-0.04em',marginBottom:8 }}>{total.toLocaleString()}</div>
-            <div style={{ display:'flex',alignItems:'center',gap:6,fontSize:12,color:'rgba(255,255,255,0.55)' }}>
-              <span style={{ background:`${BRAND}25`,color:BRAND,padding:'3px 8px',borderRadius:99,fontWeight:600,fontSize:11,border:`1px solid ${BRAND}30` }}>{winRate}% win</span>
-              <span>{won} closed wins</span>
-            </div>
-          </div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:16, marginBottom:24 }}>
+        <MetricCard label="Total Leads" value={getTotal('lead')} color="#3b82f6" onClick={() => onDrilldown({ title:'All Leads', type:'lead', filters: { from: filters.from, to: filters.to } })} sub={<button onClick={e => { e.stopPropagation(); navigate('leads') }} style={{ color:BRAND, background:'none', border:'none', cursor:'pointer', fontSize:12, padding:0, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>View all \u2192</button>} />
+        <MetricCard label="Repeat Inquiries" value={getTotal('repeat')} color="#6366f1" onClick={() => onDrilldown({ title:'All Repeat Inquiries', type:'repeat', filters: { from: filters.from, to: filters.to } })} sub={<button onClick={e => { e.stopPropagation(); navigate('repeat') }} style={{ color:BRAND, background:'none', border:'none', cursor:'pointer', fontSize:12, padding:0, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>View all \u2192</button>} />
+        <MetricCard label="Online Orders" value={getTotal('online_order')} color="#f59e0b" onClick={() => onDrilldown({ title:'All Online Orders', type:'online_order', filters: { from: filters.from, to: filters.to } })} sub={<button onClick={e => { e.stopPropagation(); navigate('orders') }} style={{ color:BRAND, background:'none', border:'none', cursor:'pointer', fontSize:12, padding:0, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>View all \u2192</button>} />
+        <MetricCard label="Win Rate" value={`${wonRate}%`} color={BRAND} sub={`${data?.wonCount||0} of ${data?.totalCount||0}`} />
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:20, marginBottom:20 }}>
+        <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
+          <SectionTitle>Activity Trend</SectionTitle>
+          {trendData.length === 0 ? <div style={{ height:180, display:'flex', alignItems:'center', justifyContent:'center', color:'#94a3b8' }}>No data</div> : (
+            <ResponsiveContainer width="100%" height={200}><BarChart data={trendData} barSize={6} barGap={2}><XAxis dataKey="date" tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} /><Tooltip content={<Tip />} /><Bar dataKey="lead" name="Leads" fill="#3b82f6" radius={[3,3,0,0]} /><Bar dataKey="repeat" name="Repeat" fill="#6366f1" radius={[3,3,0,0]} /><Bar dataKey="online_order" name="Orders" fill="#f59e0b" radius={[3,3,0,0]} /></BarChart></ResponsiveContainer>
+          )}
         </div>
-        <Stat label="Leads" value={data.leads?.total||0} color={BLUE} delta={today?.leads>0?`+${today.leads} today`:null} onClick={()=>onDrill('All Leads',{type:'lead'})} />
-        <Stat label="Repeat" value={data.repeats?.total||0} color={PURPLE} delta={today?.repeat>0?`+${today.repeat} today`:null} onClick={()=>onDrill('Repeat Inquiries',{type:'repeat'})} />
-        <Stat label="Online Orders" value={data.orders?.total||0} color={CORAL} delta={today?.orders>0?`+${today.orders} today`:null} sub={fmt$(data.orders?.totalValue||0)+' value'} onClick={()=>onDrill('Online Orders',{type:'online_order'})} />
+        <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
+          <SectionTitle>By Team Member</SectionTitle>
+          {!data?.byPerson?.filter(p=>p.name)?.length ? <div style={{ height:180, display:'flex', alignItems:'center', justifyContent:'center', color:'#94a3b8' }}>No data</div> : (
+            <ResponsiveContainer width="100%" height={200}><BarChart data={data.byPerson.filter(p=>p.name)} layout="vertical" barSize={12}><XAxis type="number" tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} /><YAxis type="category" dataKey="name" tick={{ fontSize:11, fill:'#475569' }} axisLine={false} tickLine={false} width={55} /><Tooltip content={<Tip />} /><Bar dataKey="count" name="Total" fill={BRAND} radius={[0,4,4,0]} /></BarChart></ResponsiveContainer>
+          )}
+        </div>
+      </div>
+      {data?.upcomingFollowups?.length > 0 && (
+        <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
+          <SectionTitle>\ud83d\udcc5 Upcoming Follow-ups</SectionTitle>
+          {data.upcomingFollowups.map(fu => (
+            <div key={fu.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid #f8fafc' }}>
+              <div><div style={{ fontWeight:600, fontSize:14, color:'#0f172a' }}>{fu.customer_name}</div><div style={{ fontSize:12, color:'#94a3b8' }}>{fu.note}</div></div>
+              <div style={{ textAlign:'right' }}><div style={{ fontSize:12, fontWeight:700, color:BRAND }}>{formatDate(fu.follow_up_date)}</div><div style={{ fontSize:11, color:'#94a3b8' }}>{fu.assigned_name}</div></div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// \u2500\u2500 Module data fetcher hook \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+function useModuleData(type, filters) {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const key = JSON.stringify({ type, ...filters })
+
+  useEffect(() => {
+    setLoading(true)
+    const p = new URLSearchParams({ type })
+    if (filters.from) p.set('from', filters.from)
+    if (filters.to) p.set('to', filters.to)
+    if (filters.dispositions?.length) p.set('disposition', filters.dispositions.join(','))
+    if (filters.sources?.length) p.set('lead_source', filters.sources.join(','))
+    if (filters.users?.length) p.set('assigned_to', filters.users.join(','))
+    fetch(`/api/analytics/module?${p}`, { headers: { Authorization: `Bearer ${localStorage.getItem('crm_token')}` } })
+      .then(r => r.json()).then(d => { setData(d); setLoading(false) }).catch(() => setLoading(false))
+  }, [key])
+
+  return { data, loading }
+}
+
+// \u2500\u2500 Leads Tab \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+function LeadsTab({ filters, onDrilldown }) {
+  const { data, loading } = useModuleData('lead', filters)
+  if (loading) return <Loader />
+  if (!data) return null
+  const p = data.period
+  const trendData = (data.trend||[]).map(t => ({ ...t, date: t.date?.slice(5) }))
+
+  const aeSourceMap = {}
+  ;(data.aeSourceBreakdown||[]).forEach(row => {
+    if (!aeSourceMap[row.ae_name]) aeSourceMap[row.ae_name] = []
+    aeSourceMap[row.ae_name].push({ source: row.source, count: row.count })
+  })
+
+  const drill = (title, extra = {}) => onDrilldown({ title, type:'lead', filters: { from: filters.from, to: filters.to, assigned_to: filters.users?.join(','), ...extra } })
+
+  return (
+    <div>
+      <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:12 }}>Today</div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:24 }}>
+        <MetricCard label="Leads Received" value={data.today.total} color="#3b82f6" onClick={() => drill('Leads Today', { from: new Date().toISOString().split('T')[0], to: new Date().toISOString().split('T')[0] })} />
+        {(data.today.perAE||[]).slice(0,3).map((ae,i) => (
+          <MetricCard key={ae.name} label={`${ae.name} \u2014 Today`} value={ae.count} color={CHART_COLORS[i+1]} />
+        ))}
       </div>
 
-      {/* Activity trend */}
-      <div style={{ display:'grid',gridTemplateColumns:'1.6fr 1fr',gap:16,marginBottom:16 }}>
-        <div style={{ background:'#fff',borderRadius:18,border:'1px solid #ECEAE3',padding:'22px 24px' }}>
-          <h3 style={{ fontFamily:'"Poppins",sans-serif',fontSize:16,fontWeight:700,margin:'0 0 4px',letterSpacing:'-0.01em' }}>Activity trend</h3>
-          <div style={{ fontSize:12,color:'#9CA3AF',marginBottom:14 }}>New inquiries per day, last 14 days</div>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={trend14} barSize={7} barGap={2}>
-              <XAxis dataKey="date" tick={{ fontSize:9,fill:'#9CA3AF' }} axisLine={false} tickLine={false} tickFormatter={d=>d?.slice(5)} />
-              <YAxis tick={{ fontSize:9,fill:'#9CA3AF' }} axisLine={false} tickLine={false} allowDecimals={false} />
-              <Tooltip content={<Tip />} />
-              <Bar dataKey="lead" name="Leads" fill={BLUE} radius={[3,3,0,0]} stackId="a" />
-              <Bar dataKey="repeat" name="Repeat" fill={PURPLE} radius={[0,0,0,0]} stackId="a" />
-              <Bar dataKey="online_order" name="Orders" fill={CORAL} radius={[3,3,0,0]} stackId="a" />
-            </BarChart>
-          </ResponsiveContainer>
-          <div style={{ display:'flex',gap:14,justifyContent:'center',marginTop:8 }}>
-            {[{label:'Leads',color:BLUE},{label:'Repeat',color:PURPLE},{label:'Orders',color:CORAL}].map(l=>(
-              <div key={l.label} style={{ display:'flex',alignItems:'center',gap:5,fontSize:11,color:'#9CA3AF' }}>
-                <span style={{ width:9,height:9,borderRadius:2,background:l.color }} />{l.label}
+      <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:12 }}>Period Summary</div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:20 }}>
+        <MetricCard label="Total Leads" value={p.total} color="#3b82f6" onClick={() => drill('All Leads')} />
+        <MetricCard label="Closed Won" value={p.closed_won} color="#10b981" sub={`${p.win_rate}% win rate`} onClick={() => drill('Closed Won Leads', { disposition:'Closed Won' })} />
+        <MetricCard label="Closed Lost" value={p.closed_lost} color="#ef4444" onClick={() => drill('Closed Lost Leads', { disposition:'Closed Lost' })} />
+        <MetricCard label="In Progress" value={p.in_progress} color="#f59e0b" />
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:28 }}>
+        <MetricCard label="Quoted" value={p.quoted} color="#6366f1" onClick={() => drill('Quoted Leads', { disposition:'Quoted' })} />
+        <MetricCard label="Bidding" value={p.bidding} color="#8b5cf6" onClick={() => drill('Bidding Leads', { disposition:'Bidding' })} />
+        <MetricCard label="Fake Leads" value={p.fake} color="#94a3b8" onClick={() => drill('Fake Leads', { disposition:'Fake Lead' })} />
+        <MetricCard label="No Response" value={p.no_response} color="#64748b" onClick={() => drill('No Response Leads', { disposition:'No response' })} />
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:20, marginBottom:20 }}>
+        <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
+          <SectionTitle>Lead Trend \u2014 Won vs Total</SectionTitle>
+          {trendData.length === 0 ? <div style={{ height:180, display:'flex', alignItems:'center', justifyContent:'center', color:'#94a3b8' }}>No data</div> : (
+            <ResponsiveContainer width="100%" height={200}><BarChart data={trendData} barSize={8} barGap={2}><XAxis dataKey="date" tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} /><Tooltip content={<Tip />} /><Bar dataKey="total" name="Total" fill="#3b82f6" radius={[3,3,0,0]} /><Bar dataKey="won" name="Won" fill="#10b981" radius={[3,3,0,0]} /></BarChart></ResponsiveContainer>
+          )}
+        </div>
+        <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
+          <SectionTitle>By Lead Source</SectionTitle>
+          <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
+            {(data.bySource||[]).filter(s=>s.source).slice(0,8).map((s,i) => (
+              <div key={s.source} style={{ cursor:'pointer' }} onClick={() => drill(`Source: ${s.source}`, { lead_source: s.source })}>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:3 }}>
+                  <span style={{ color:'#475569', fontWeight:500 }}>{s.source}</span>
+                  <span style={{ fontWeight:700, color:'#0f172a' }}>{s.count}</span>
+                </div>
+                <div style={{ height:5, background:'#f1f5f9', borderRadius:4 }}>
+                  <div style={{ height:'100%', borderRadius:4, background:CHART_COLORS[i%CHART_COLORS.length], width:`${p.total>0?Math.round(s.count/p.total*100):0}%` }} />
+                </div>
               </div>
             ))}
           </div>
         </div>
-        <div style={{ background:'#fff',borderRadius:18,border:'1px solid #ECEAE3',padding:'22px 24px' }}>
-          <h3 style={{ fontFamily:'"Poppins",sans-serif',fontSize:16,fontWeight:700,margin:'0 0 4px',letterSpacing:'-0.01em' }}>By team member</h3>
-          <div style={{ fontSize:12,color:'#9CA3AF',marginBottom:16 }}>Total inquiries owned</div>
-          <div style={{ display:'flex',flexDirection:'column',gap:12 }}>
-            {(team?.aes||[]).sort((a,b)=>b.total-a.total).slice(0,5).map((ae,i)=>{
-              const max = Math.max(...(team?.aes||[]).map(a=>a.total),1)
-              const pct = Math.round((ae.total/max)*100)
-              return (
-                <div key={ae.id} style={{ display:'flex',alignItems:'center',gap:10,cursor:'pointer' }} onClick={()=>onDrill(`${ae.name}'s inquiries`,{assigned_to:ae.id})}>
-                  <Avatar name={ae.name} size={28} tone={i===0?'brand':'neutral'} />
-                  <div style={{ flex:1,minWidth:0 }}>
-                    <div style={{ display:'flex',justifyContent:'space-between',marginBottom:4 }}>
-                      <span style={{ fontSize:12,fontWeight:600,color:INK }}>{ae.name.split(' ')[0]}</span>
-                      <span style={{ fontFamily:'"Poppins",sans-serif',fontSize:14,fontWeight:700,color:INK }}>{ae.total}</span>
-                    </div>
-                    <div style={{ height:4,background:'#F3F3EF',borderRadius:99,overflow:'hidden' }}>
-                      <div style={{ height:'100%',background:PALETTE[i],width:pct+'%',transition:'width 0.5s' }} />
-                    </div>
-                  </div>
+      </div>
+
+      <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20, marginBottom:20 }}>
+        <SectionTitle>By Disposition</SectionTitle>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(170px,1fr))', gap:10 }}>
+          {(data.byDisposition||[]).filter(d=>d.disposition).map((d,i) => {
+            const pct = p.total>0 ? Math.round(d.count/p.total*100) : 0
+            return (
+              <div key={d.disposition} onClick={() => drill(`${d.disposition}`, { disposition: d.disposition })} style={{ background:'#f8fafc', borderRadius:12, padding:'12px 14px', border:'1px solid #f1f5f9', cursor:'pointer', transition:'all 0.15s' }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor=CHART_COLORS[i%CHART_COLORS.length]; e.currentTarget.style.background='#fff' }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor='#f1f5f9'; e.currentTarget.style.background='#f8fafc' }}>
+                <div style={{ fontSize:11, color:'#64748b', fontWeight:500, marginBottom:6, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.disposition}</div>
+                <div style={{ fontSize:22, fontWeight:800, color:'#0f172a', fontFamily:'"Bricolage Grotesque",sans-serif' }}>{d.count}</div>
+                <div style={{ height:3, background:'#e2e8f0', borderRadius:4, marginTop:8 }}>
+                  <div style={{ height:'100%', borderRadius:4, background:CHART_COLORS[i%CHART_COLORS.length], width:`${pct}%` }} />
                 </div>
-              )
-            })}
-          </div>
+                <div style={{ fontSize:10, color:'#94a3b8', marginTop:4 }}>{pct}% of total</div>
+              </div>
+            )
+          })}
         </div>
       </div>
 
-      {/* Team GP table */}
-      <div style={{ background:'#fff',borderRadius:18,border:'1px solid #ECEAE3',overflow:'hidden',marginBottom:16 }}>
-        <div style={{ padding:'20px 24px 14px',display:'flex',alignItems:'center',justifyContent:'space-between' }}>
-          <h3 style={{ fontFamily:'"Poppins",sans-serif',fontSize:16,fontWeight:700,margin:0,letterSpacing:'-0.01em' }}>Team performance</h3>
-          <Pill tone="brand" size="xs">{(team?.aes||[]).length} reps</Pill>
+      <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
+          <SectionTitle>AE Performance</SectionTitle>
+          <div style={{ fontSize:11, color:'#94a3b8' }}>Click a row to drill down</div>
         </div>
-        <div style={{ borderTop:'1px solid #F2F1EC',overflowX:'auto' }}>
-          <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13 }}>
-            <thead><tr style={{ background:'#FBFBF8' }}>
-              {['Rep','Total','Won','Win Rate','Revenue','GP','Q GP Target',''].map(h=>(
-                <th key={h} style={{ textAlign:h==='Rep'?'left':'center',padding:'10px 14px',fontSize:10,fontWeight:600,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.08em',whiteSpace:'nowrap' }}>{h}</th>
-              ))}
-            </tr></thead>
+        <div style={{ overflowX:'auto' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+            <thead>
+              <tr style={{ borderBottom:'2px solid #f1f5f9' }}>
+                {['Rep','Total','Today','Month','Won','Lost','Quoted','Bidding','Fake','No Resp.','Cold','Win Rate','Top Source'].map(h => (
+                  <th key={h} style={{ textAlign:h==='Rep'?'left':'center', padding:'8px 10px', fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.06em', whiteSpace:'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
             <tbody>
-              {(team?.aes||[]).sort((a,b)=>b.won-a.won).map((ae,i)=>{
-                const gpP = ae.target?.gp_target>0?Math.min(100,Math.round((ae.gp||0)/ae.target.gp_target*100)):null
+              {(data.aePerformance||[]).filter(ae=>ae.name).map((ae,i) => {
+                const wr = ae.total>0 ? Math.round(ae.won/ae.total*100) : 0
+                const topSrc = (aeSourceMap[ae.name]||[])[0]?.source || '\u2014'
                 return (
-                  <tr key={ae.id} onClick={()=>onDrill(`${ae.name}'s inquiries`,{assigned_to:ae.id})} style={{ borderTop:'1px solid #F2F1EC',cursor:'pointer',transition:'background 0.12s' }}
-                    onMouseEnter={e=>e.currentTarget.style.background='#FBFBF8'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                    <td style={{ padding:'14px' }}>
-                      <div style={{ display:'flex',alignItems:'center',gap:10 }}>
-                        <Avatar name={ae.name} size={30} tone={i===0?'brand':'neutral'} />
-                        <div><div style={{ fontSize:13,fontWeight:600,color:INK }}>{ae.name}</div><div style={{ fontSize:11,color:'#9CA3AF' }}>AE · #{i+1}</div></div>
+                  <tr key={ae.id||ae.name} onClick={() => drill(`${ae.name}'s Leads`, { assigned_to: String(ae.id) })} style={{ background:i%2===0?'#fff':'#fafbfc', borderBottom:'1px solid #f1f5f9', cursor:'pointer', transition:'background 0.1s' }}
+                    onMouseEnter={e => e.currentTarget.style.background=`${BRAND}08`}
+                    onMouseLeave={e => e.currentTarget.style.background=i%2===0?'#fff':'#fafbfc'}>
+                    <td style={{ padding:'12px 10px' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                        {ae.avatar_url ? <img src={ae.avatar_url} alt={ae.name} style={{ width:28, height:28, borderRadius:8, objectFit:'cover', flexShrink:0 }} /> : <div style={{ width:28, height:28, borderRadius:8, background:`${CHART_COLORS[i]}25`, color:CHART_COLORS[i], display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:12, flexShrink:0 }}>{ae.name?.[0]}</div>}
+                        <span style={{ fontWeight:700, color:'#0f172a', whiteSpace:'nowrap' }}>{ae.name}</span>
                       </div>
                     </td>
-                    <td style={{ padding:'14px',textAlign:'center',fontFamily:'"Poppins",sans-serif',fontWeight:700,fontSize:15 }}>{ae.total}</td>
-                    <td style={{ padding:'14px',textAlign:'center',fontFamily:'"Poppins",sans-serif',fontWeight:700,color:'#0E807A' }}>{ae.won}</td>
-                    <td style={{ padding:'14px',textAlign:'center' }}>
-                      <span style={{ padding:'3px 10px',borderRadius:99,fontSize:11,fontWeight:700,background:ae.winRate>=20?'#E8F8F2':ae.winRate>=10?'#FFF3E6':'#FFEDEB',color:ae.winRate>=20?'#0E807A':ae.winRate>=10?'#A55B16':'#C2453A' }}>{ae.winRate}%</span>
+                    <td style={{ padding:'12px 10px', textAlign:'center', fontWeight:700, color:'#0f172a' }}>{ae.total}</td>
+                    <td style={{ padding:'12px 10px', textAlign:'center', color:'#475569' }}>{ae.today}</td>
+                    <td style={{ padding:'12px 10px', textAlign:'center', color:'#475569' }}>{ae.this_month}</td>
+                    <td style={{ padding:'12px 10px', textAlign:'center', fontWeight:700, color:'#10b981' }}>{ae.won}</td>
+                    <td style={{ padding:'12px 10px', textAlign:'center', color:'#ef4444' }}>{ae.lost}</td>
+                    <td style={{ padding:'12px 10px', textAlign:'center', color:'#6366f1' }}>{ae.quoted}</td>
+                    <td style={{ padding:'12px 10px', textAlign:'center', color:'#8b5cf6' }}>{ae.bidding}</td>
+                    <td style={{ padding:'12px 10px', textAlign:'center', color:'#94a3b8' }}>{ae.fake}</td>
+                    <td style={{ padding:'12px 10px', textAlign:'center', color:'#64748b' }}>{ae.no_response}</td>
+                    <td style={{ padding:'12px 10px', textAlign:'center', color:'#64748b' }}>{ae.cold}</td>
+                    <td style={{ padding:'12px 10px', textAlign:'center' }}>
+                      <span style={{ padding:'3px 10px', borderRadius:20, fontSize:12, fontWeight:700, background:wr>=20?'#f0fdf4':wr>=10?'#fff7ed':'#fef2f2', color:wr>=20?'#16a34a':wr>=10?'#d97706':'#dc2626' }}>{wr}%</span>
                     </td>
-                    <td style={{ padding:'14px',textAlign:'center',fontWeight:600,color:INK }}>{fmt$(ae.revenue||0)}</td>
-                    <td style={{ padding:'14px',textAlign:'center',fontWeight:700,color:(ae.gp||0)>0?'#0E807A':'#9CA3AF' }}>{(ae.gp||0)>0?fmt$(ae.gp):'—'}</td>
-                    <td style={{ padding:'14px',textAlign:'center' }}>
-                      {gpP!==null?(<div style={{ display:'flex',alignItems:'center',gap:6,justifyContent:'center' }}><div style={{ width:50,height:4,background:'#F3F3EF',borderRadius:99 }}><div style={{ height:'100%',width:gpP+'%',background:gpP>=100?'#10b981':BRAND,borderRadius:99 }} /></div><span style={{ fontSize:11,color:'#9CA3AF' }}>{gpP}%</span></div>)
-                      :<span style={{ fontSize:11,color:'#9CA3AF' }}>No target</span>}
-                    </td>
-                    <td style={{ padding:'14px',textAlign:'center' }} onClick={e=>e.stopPropagation()}>
-                      <span data-set-target={ae.id} style={{ fontSize:11,color:BRAND,background:'#E8F8F2',border:'1px solid #B8EFE9',borderRadius:8,padding:'4px 10px',cursor:'pointer',fontWeight:600 }}>{ae.target?'Edit':'+ Target'}</span>
-                    </td>
+                    <td style={{ padding:'12px 10px', textAlign:'center', fontSize:11, color:'#64748b', whiteSpace:'nowrap' }}>{topSrc}</td>
                   </tr>
                 )
               })}
@@ -452,426 +433,202 @@ function OverviewTab({ data, onDrill }) {
   )
 }
 
-// ── Leads tab ─────────────────────────────────────────────────
-function LeadsTab({ data, onDrill, filterDispositions, filterSources, filterUsers }) {
-  const { leads, leadsAEBreakdown=[], today={} } = data
-  if (!leads) return null
+// \u2500\u2500 Repeat Tab \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+function RepeatTab({ filters, onDrilldown }) {
+  const { data, loading } = useModuleData('repeat', filters)
+  if (loading) return <Loader />
+  if (!data) return null
+  const p = data.period
+  const drill = (title, extra = {}) => onDrilldown({ title, type:'repeat', filters: { from: filters.from, to: filters.to, assigned_to: filters.users?.join(','), ...extra } })
+
   return (
     <div>
-      <SectionHeader>Today</SectionHeader>
-      <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:22 }}>
-        <Stat label="Leads received" value={today?.leads||0} color={BLUE} sub="last 24h" />
-        {(leadsAEBreakdown||[]).slice(0,3).map((ae,i)=>(
-          <Stat key={ae.id} label={ae.name.split(' ')[0]+' today'} value={ae.today||0} color={PALETTE[i+1]} sub={`${ae.total} this period`} />
-        ))}
+      <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:12 }}>Today</div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:24 }}>
+        <MetricCard label="Inquiries Received" value={data.today.total} color="#6366f1" onClick={() => drill('Repeat Inquiries Today', { from: new Date().toISOString().split('T')[0], to: new Date().toISOString().split('T')[0] })} />
+        <MetricCard label="PPC (Period)" value={p.ppc} color="#3b82f6" onClick={() => drill('PPC Inquiries')} />
+        <MetricCard label="Outbound Repeat (Period)" value={p.outbound} color="#8b5cf6" onClick={() => drill('Outbound Repeat Inquiries')} />
+      </div>
+      <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:12 }}>Period Summary</div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:24 }}>
+        <MetricCard label="Total Inquiries" value={p.total} color="#6366f1" onClick={() => drill('All Repeat Inquiries')} />
+        <MetricCard label="Closed Won" value={p.closed_won} color="#10b981" onClick={() => drill('Closed Won', { disposition:'Closed Won' })} />
+        <MetricCard label="Win Rate" value={`${p.win_rate}%`} color={BRAND} />
+        <MetricCard label="PPC vs Outbound" value={`${p.ppc} / ${p.outbound}`} color="#8b5cf6" />
       </div>
 
-      <SectionHeader>Period summary</SectionHeader>
-      <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:12 }}>
-        <Stat label="Total leads" value={leads.total||0} color={BLUE} onClick={()=>onDrill('All Leads',{type:'lead'})} />
-        <Stat label="Closed Won" value={leads.won||0} color="#0E807A" delta={`${leads.winRate||0}%`} sub="win rate" onClick={()=>onDrill('Leads — Closed Won',{type:'lead',disposition:'Closed Won'})} />
-        <Stat label="Closed Lost" value={leads.lost||0} color="#C2453A" onClick={()=>onDrill('Leads — Closed Lost',{type:'lead',disposition:'Closed Lost'})} />
-        <Stat label="In progress" value={leads.active||0} color="#FFB266" />
-      </div>
-      <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:22 }}>
-        <Stat label="Quoted" value={(leads.byDisposition||[]).find(d=>d.disposition==='Quoted')?.count||0} color={PURPLE} onClick={()=>onDrill('Leads — Quoted',{type:'lead',disposition:'Quoted'})} />
-        <Stat label="Bidding" value={(leads.byDisposition||[]).find(d=>d.disposition==='Bidding')?.count||0} color="#4C44C0" onClick={()=>onDrill('Leads — Bidding',{type:'lead',disposition:'Bidding'})} />
-        <Stat label="Fake leads" value={leads.fake||0} color="#9CA3AF" onClick={()=>onDrill('Fake Leads',{type:'lead',disposition:'Fake Lead'})} />
-        <Stat label="No response" value={(leads.byDisposition||[]).find(d=>d.disposition==='No response'||d.disposition==='No Response')?.count||0} color="#525866" onClick={()=>onDrill('No Response',{type:'lead',disposition:'No response'})} />
+      {/* Top 3 lists side by side */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:20, marginBottom:20 }}>
+        <TopList data={data.topCustomers} label="\ud83c\udfc6 Top Customers" color="#6366f1" showCompany onDrilldown={onDrilldown} />
+        <TopList data={data.topReps} label="\u2b50 Top Reps" color={BRAND} showCompany={false} onDrilldown={onDrilldown} />
+        <TopList data={data.topCompanies} label="\ud83c\udfe2 Top Companies" color="#f59e0b" showCompany={false} onDrilldown={onDrilldown} />
       </div>
 
-      <div style={{ display:'grid',gridTemplateColumns:'1.5fr 1fr',gap:16,marginBottom:16 }}>
-        <div style={{ background:'#fff',borderRadius:18,border:'1px solid #ECEAE3',padding:'22px 24px' }}>
-          <h3 style={{ fontFamily:'"Poppins",sans-serif',fontSize:16,fontWeight:700,margin:'0 0 14px',letterSpacing:'-0.01em' }}>By lead source</h3>
-          <div style={{ display:'flex',flexDirection:'column',gap:10 }}>
-            {(leads.bySource||[]).slice(0,8).map((s,i)=>{
-              const max = leads.bySource[0]?.count||1
-              return (
-                <div key={s.source} onClick={()=>onDrill('Leads — '+s.source,{type:'lead',lead_source:s.source})} style={{ cursor:'pointer' }}>
-                  <div style={{ display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4 }}>
-                    <span style={{ color:'#525866',fontWeight:500 }}>{s.source}</span>
-                    <span style={{ fontWeight:700,color:INK }}>{s.count}</span>
-                  </div>
-                  <div style={{ height:18,background:'#F3F3EF',borderRadius:6,overflow:'hidden',position:'relative' }}>
-                    <div style={{ height:'100%',width:`${(s.count/max)*100}%`,background:PALETTE[i%PALETTE.length],borderRadius:6,display:'flex',alignItems:'center',justifyContent:'flex-end',paddingRight:8,fontSize:10,fontWeight:700,color:'#fff',transition:'width 0.5s' }}>
-                      {s.count/max>0.2&&s.count}
-                    </div>
-                  </div>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, marginBottom:20 }}>
+        <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
+          <SectionTitle>By Disposition</SectionTitle>
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            {(data.byDisposition||[]).slice(0,10).map((d,i) => (
+              <div key={d.disposition} onClick={() => drill(d.disposition, { disposition: d.disposition })} style={{ cursor:'pointer' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:3 }}>
+                  <span style={{ color:'#475569', fontWeight:500 }}>{d.disposition||'Unknown'}</span>
+                  <span style={{ fontWeight:700, color:'#0f172a' }}>{d.count}</span>
                 </div>
-              )
-            })}
-          </div>
-        </div>
-        <div style={{ background:'#fff',borderRadius:18,border:'1px solid #ECEAE3',padding:'22px 24px' }}>
-          <h3 style={{ fontFamily:'"Poppins",sans-serif',fontSize:16,fontWeight:700,margin:'0 0 14px',letterSpacing:'-0.01em' }}>By disposition</h3>
-          <div style={{ display:'flex',flexDirection:'column',gap:8 }}>
-            {(leads.byDisposition||[]).slice(0,8).map((d,i)=>{
-              const pct = leads.total>0?Math.round((d.count/leads.total)*100):0
-              return (
-                <div key={d.disposition} onClick={()=>onDrill('Leads — '+d.disposition,{type:'lead',disposition:d.disposition})} style={{ cursor:'pointer' }}>
-                  <div style={{ display:'flex',justifyContent:'space-between',marginBottom:4 }}>
-                    <span style={{ fontSize:12,fontWeight:500,color:'#525866' }}>{d.disposition}</span>
-                    <span style={{ fontSize:12,fontWeight:700,color:INK }}>{d.count} <span style={{ color:'#9CA3AF',fontWeight:400 }}>· {pct}%</span></span>
-                  </div>
-                  <div style={{ height:4,background:'#F3F3EF',borderRadius:99 }}><div style={{ height:'100%',background:PALETTE[i%PALETTE.length],borderRadius:99,width:pct+'%',transition:'width 0.5s' }} /></div>
+                <div style={{ height:5, background:'#f1f5f9', borderRadius:4 }}>
+                  <div style={{ height:'100%', borderRadius:4, background:CHART_COLORS[i%CHART_COLORS.length], width:`${p.total>0?Math.round(d.count/p.total*100):0}%` }} />
                 </div>
-              )
-            })}
+              </div>
+            ))}
           </div>
+        </div>
+        <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
+          <SectionTitle>Inquiries by Rep</SectionTitle>
+          <ResponsiveContainer width="100%" height={220}><BarChart data={(data.byPerson||[]).filter(p=>p.name)} layout="vertical" barSize={14}><XAxis type="number" tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} /><YAxis type="category" dataKey="name" tick={{ fontSize:11, fill:'#475569' }} axisLine={false} tickLine={false} width={55} /><Tooltip content={<Tip />} /><Bar dataKey="count" name="Inquiries" fill="#6366f1" radius={[0,4,4,0]} /></BarChart></ResponsiveContainer>
         </div>
       </div>
 
-      {/* Disposition tiles */}
-      <div style={{ background:'#fff',borderRadius:18,border:'1px solid #ECEAE3',padding:'22px 24px',marginBottom:16 }}>
-        <h3 style={{ fontFamily:'"Poppins",sans-serif',fontSize:16,fontWeight:700,margin:'0 0 4px',letterSpacing:'-0.01em' }}>Disposition breakdown</h3>
-        <div style={{ fontSize:12,color:'#9CA3AF',marginBottom:16 }}>Click a tile to drill in</div>
-        <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))',gap:10 }}>
-          {(leads.byDisposition||[]).map((d,i)=>(
-            <DisTile key={d.disposition} label={d.disposition} value={d.count} pct={leads.total>0?Math.round((d.count/leads.total)*100):0} color={PALETTE[i%PALETTE.length]} onClick={()=>onDrill('Leads — '+d.disposition,{type:'lead',disposition:d.disposition})} />
-          ))}
-        </div>
-      </div>
-
-      {/* AE performance table */}
-      <div style={{ background:'#fff',borderRadius:18,border:'1px solid #ECEAE3',overflow:'hidden' }}>
-        <div style={{ padding:'22px 24px 14px',display:'flex',alignItems:'center',justifyContent:'space-between' }}>
-          <div>
-            <h3 style={{ fontFamily:'"Poppins",sans-serif',fontSize:16,fontWeight:700,margin:0,letterSpacing:'-0.01em' }}>AE performance</h3>
-            <div style={{ fontSize:12,color:'#9CA3AF',marginTop:2 }}>Click any row to view their leads</div>
-          </div>
-          <Pill tone="brand" size="xs">{(leadsAEBreakdown||[]).length} reps</Pill>
-        </div>
-        <div style={{ overflowX:'auto',borderTop:'1px solid #F2F1EC' }}>
-          <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13 }}>
-            <thead><tr style={{ background:'#FBFBF8' }}>
-              {['Rep','Total','Today','Won','Lost','Quoted','Bidding','Fake','No Resp.','Cold','Win Rate'].map(h=>(
-                <th key={h} style={{ textAlign:h==='Rep'?'left':'center',padding:'10px 14px',fontSize:10,fontWeight:600,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.08em',whiteSpace:'nowrap' }}>{h}</th>
-              ))}
-            </tr></thead>
-            <tbody>
-              {(leadsAEBreakdown||[]).map((ae,i)=>(
-                <tr key={ae.id} onClick={()=>onDrill(`${ae.name}'s Leads`,{type:'lead',assigned_to:ae.id})} style={{ borderTop:'1px solid #F2F1EC',cursor:'pointer',transition:'background 0.12s' }}
-                  onMouseEnter={e=>e.currentTarget.style.background='#FBFBF8'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                  <td style={{ padding:'14px' }}>
-                    <div style={{ display:'flex',alignItems:'center',gap:10 }}>
-                      <Avatar name={ae.name} size={30} tone={i===0?'brand':'neutral'} />
-                      <div><div style={{ fontSize:13,fontWeight:600,color:INK }}>{ae.name}</div><div style={{ fontSize:11,color:'#9CA3AF' }}>#{i+1} rank</div></div>
-                    </div>
-                  </td>
-                  <td style={{ padding:'14px',textAlign:'center',fontFamily:'"Poppins",sans-serif',fontWeight:700,fontSize:15 }}>{ae.total}</td>
-                  <td style={{ padding:'14px',textAlign:'center',color:'#525866' }}>{ae.today||0}</td>
-                  <td style={{ padding:'14px',textAlign:'center',fontFamily:'"Poppins",sans-serif',fontWeight:700,color:'#0E807A' }}>{ae.won}</td>
-                  <td style={{ padding:'14px',textAlign:'center',color:'#C2453A' }}>{ae.lost}</td>
-                  <td style={{ padding:'14px',textAlign:'center',color:PURPLE }}>{ae.quoted}</td>
-                  <td style={{ padding:'14px',textAlign:'center',color:'#4C44C0' }}>{ae.bidding}</td>
-                  <td style={{ padding:'14px',textAlign:'center',color:'#9CA3AF' }}>{ae.fake}</td>
-                  <td style={{ padding:'14px',textAlign:'center',color:'#525866' }}>{ae.noResp}</td>
-                  <td style={{ padding:'14px',textAlign:'center',color:'#525866' }}>{ae.cold}</td>
-                  <td style={{ padding:'14px',textAlign:'center' }}>
-                    <span style={{ padding:'3px 10px',borderRadius:99,fontSize:11,fontWeight:700,background:ae.winRate>=20?'#E8F8F2':ae.winRate>=10?'#FFF3E6':'#FFEDEB',color:ae.winRate>=20?'#0E807A':ae.winRate>=10?'#A55B16':'#C2453A' }}>{ae.winRate}%</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
+        <SectionTitle>Volume Trend</SectionTitle>
+        <ResponsiveContainer width="100%" height={180}><LineChart data={(data.trend||[]).map(t => ({ ...t, date: t.date?.slice(5) }))}><XAxis dataKey="date" tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} /><Tooltip content={<Tip />} /><Line type="monotone" dataKey="total" name="Inquiries" stroke="#6366f1" strokeWidth={2} dot={false} /></LineChart></ResponsiveContainer>
       </div>
     </div>
   )
 }
 
-// ── Repeat tab ────────────────────────────────────────────────
-function RepeatTab({ data, onDrill }) {
-  const { repeats, today={} } = data
-  if (!repeats) return null
+// \u2500\u2500 Orders Tab \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+function OrdersTab({ filters, onDrilldown }) {
+  const { data, loading } = useModuleData('online_order', filters)
+  if (loading) return <Loader />
+  if (!data) return null
+  const t = data.today; const p = data.period
+  const drill = (title, extra = {}) => onDrilldown({ title, type:'online_order', filters: { from: filters.from, to: filters.to, assigned_to: filters.users?.join(','), ...extra } })
+
   return (
     <div>
-      <SectionHeader>Today</SectionHeader>
-      <div style={{ display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:22 }}>
-        <Stat label="Inquiries received" value={today?.repeat||0} color={PURPLE} sub="last 24h" />
-        <Stat label="Win rate (period)" value={`${repeats.winRate||0}%`} color={BRAND} sub={`${repeats.won}/${repeats.total}`} />
-        <Stat label="In progress" value={repeats.active||0} color="#FFB266" />
+      <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:12 }}>Today</div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:12, marginBottom:24 }}>
+        <MetricCard label="Orders Received" value={t.total} color="#f59e0b" onClick={() => drill('Orders Today', { from: new Date().toISOString().split('T')[0], to: new Date().toISOString().split('T')[0] })} />
+        <MetricCard label="Verified" value={t.verified} color="#10b981" />
+        <MetricCard label="Not Verified" value={t.not_verified} color="#ef4444" />
+        <MetricCard label="Order Value" value={t.value.toFixed(0)} color={BRAND} prefix="$" />
+        <MetricCard label="Processed" value={t.processed} color="#10b981" />
+        <MetricCard label="Cancelled" value={t.cancelled} color="#ef4444" />
       </div>
-
-      <SectionHeader>Period summary</SectionHeader>
-      <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:22 }}>
-        <Stat label="Total inquiries" value={repeats.total||0} color={PURPLE} onClick={()=>onDrill('Repeat Inquiries',{type:'repeat'})} />
-        <Stat label="Closed Won" value={repeats.won||0} color="#0E807A" delta={`${repeats.winRate||0}%`} sub="win rate" onClick={()=>onDrill('Repeat — Closed Won',{type:'repeat',disposition:'Closed Won'})} />
-        <Stat label="Closed Lost" value={repeats.lost||0} color="#C2453A" onClick={()=>onDrill('Repeat — Closed Lost',{type:'repeat',disposition:'Closed Lost'})} />
-        <Stat label="Active" value={repeats.active||0} color="#FFB266" />
+      <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:12 }}>Period</div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:12, marginBottom:24 }}>
+        <MetricCard label="Total Orders" value={p.total} color="#f59e0b" onClick={() => drill('All Orders')} />
+        <MetricCard label="Verified" value={p.verified} color="#10b981" />
+        <MetricCard label="Not Verified" value={p.not_verified} color="#ef4444" />
+        <MetricCard label="Total Value" value={p.value.toFixed(0)} color={BRAND} prefix="$" />
+        <MetricCard label="Processed" value={p.processed} color="#10b981" sub={p.total>0?`${Math.round(p.processed/p.total*100)}%`:''} onClick={() => drill('Processed Orders', { disposition:'Processed' })} />
+        <MetricCard label="Cancelled" value={p.cancelled} color="#ef4444" sub={p.total>0?`${Math.round(p.cancelled/p.total*100)}%`:''} onClick={() => drill('Cancelled Orders', { disposition:'Cancelled' })} />
       </div>
-
-      <div style={{ display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16,marginBottom:16 }}>
-        <TopListCard title="Top Customers" data={repeats.topCustomers||[]} accent={PURPLE} onDrill={(d)=>onDrill('Repeats — '+d.name,{type:'repeat',search:d.name})} />
-        <TopListCard title="Top Reps" data={(repeats.topReps||[]).map(r=>({...r,name:r.name}))} accent={BRAND} onDrill={(d)=>onDrill(`${d.name}'s Repeats`,{type:'repeat',assigned_to:d.id})} />
-        <TopListCard title="Top Companies" data={(repeats.topCompanies||[]).map(c=>({...c,name:c.company}))} accent={CORAL} onDrill={(d)=>onDrill('Repeats — '+d.company,{type:'repeat',search:d.company})} />
-      </div>
-
-      <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:16 }}>
-        <div style={{ background:'#fff',borderRadius:18,border:'1px solid #ECEAE3',padding:'22px 24px' }}>
-          <h3 style={{ fontFamily:'"Poppins",sans-serif',fontSize:16,fontWeight:700,margin:'0 0 14px',letterSpacing:'-0.01em' }}>By disposition</h3>
-          <div style={{ display:'flex',flexDirection:'column',gap:8 }}>
-            {(repeats.byDisposition||[]).slice(0,8).map((d,i)=>{
-              const pct = repeats.total>0?Math.round((d.count/repeats.total)*100):0
-              return (
-                <div key={d.disposition} onClick={()=>onDrill('Repeat — '+d.disposition,{type:'repeat',disposition:d.disposition})} style={{ cursor:'pointer' }}>
-                  <div style={{ display:'flex',justifyContent:'space-between',marginBottom:4 }}>
-                    <span style={{ fontSize:12,fontWeight:500,color:'#525866' }}>{d.disposition}</span>
-                    <span style={{ fontSize:12,fontWeight:700,color:INK }}>{d.count} <span style={{ color:'#9CA3AF',fontWeight:400 }}>· {pct}%</span></span>
-                  </div>
-                  <div style={{ height:4,background:'#F3F3EF',borderRadius:99 }}><div style={{ height:'100%',background:PALETTE[i%PALETTE.length],borderRadius:99,width:pct+'%',transition:'width 0.5s' }} /></div>
-                </div>
-              )
-            })}
-          </div>
+      <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:20, marginBottom:20 }}>
+        <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
+          <SectionTitle>Processed vs Cancelled Trend</SectionTitle>
+          {!data.trend?.length ? <div style={{ height:160, display:'flex', alignItems:'center', justifyContent:'center', color:'#94a3b8' }}>No data</div> : (
+            <ResponsiveContainer width="100%" height={180}><BarChart data={data.trend.map(t => ({ ...t, date: t.date?.slice(5) }))} barSize={8}><XAxis dataKey="date" tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} /><Tooltip content={<Tip />} /><Bar dataKey="processed" name="Processed" fill="#10b981" radius={[3,3,0,0]} /><Bar dataKey="cancelled" name="Cancelled" fill="#ef4444" radius={[3,3,0,0]} /></BarChart></ResponsiveContainer>
+          )}
         </div>
-        <div style={{ background:'#fff',borderRadius:18,border:'1px solid #ECEAE3',padding:'22px 24px' }}>
-          <h3 style={{ fontFamily:'"Poppins",sans-serif',fontSize:16,fontWeight:700,margin:'0 0 14px',letterSpacing:'-0.01em' }}>Disposition tiles</h3>
-          <div style={{ display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:8 }}>
-            {(repeats.byDisposition||[]).slice(0,6).map((d,i)=>(
-              <DisTile key={d.disposition} label={d.disposition} value={d.count} pct={repeats.total>0?Math.round((d.count/repeats.total)*100):0} color={PALETTE[i%PALETTE.length]} onClick={()=>onDrill('Repeat — '+d.disposition,{type:'repeat',disposition:d.disposition})} />
+        <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
+          <SectionTitle>By Source</SectionTitle>
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {(data.bySource||[]).filter(s=>s.source).map((s,i) => (
+              <div key={s.source} style={{ cursor:'pointer' }} onClick={() => drill(`Source: ${s.source}`)}>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:4 }}><span style={{ color:'#475569', fontWeight:500 }}>{s.source}</span><span style={{ fontWeight:700, color:'#0f172a' }}>{s.count}</span></div>
+                <div style={{ height:6, background:'#f1f5f9', borderRadius:4 }}><div style={{ height:'100%', borderRadius:4, background:CHART_COLORS[i], width:`${p.total>0?Math.round(s.count/p.total*100):0}%` }} /></div>
+              </div>
             ))}
           </div>
         </div>
       </div>
-    </div>
-  )
-}
-
-// ── Orders tab ────────────────────────────────────────────────
-function OrdersTab({ data, onDrill }) {
-  const { orders, ordersAEBreakdown=[], today={}, trend14=[] } = data
-  if (!orders) return null
-  return (
-    <div>
-      <SectionHeader>Today</SectionHeader>
-      <div style={{ display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:10,marginBottom:22 }}>
-        <Stat label="Received" value={today?.orders||0} color={CORAL} sub="last 24h" />
-        <Stat label="Verified" value={orders.verified||0} color="#0E807A" />
-        <Stat label="Not Verified" value={orders.notVerified||0} color="#C2453A" />
-        <Stat label="Total Value" value={fmt$(orders.totalValue||0)} color={BRAND} />
-        <Stat label="Processed" value={orders.processed||0} color="#0E807A" sub={`${orders.processRate||0}%`} />
-        <Stat label="Cancelled" value={orders.cancelled||0} color="#C2453A" />
-      </div>
-
-      <SectionHeader>Period</SectionHeader>
-      <div style={{ display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:10,marginBottom:22 }}>
-        <Stat label="Total orders" value={orders.total||0} color={CORAL} onClick={()=>onDrill('All Orders',{type:'online_order'})} />
-        <Stat label="Verified" value={orders.verified||0} color="#0E807A" onClick={()=>onDrill('Verified Orders',{type:'online_order'})} />
-        <Stat label="Not Verified" value={orders.notVerified||0} color="#C2453A" onClick={()=>onDrill('Unverified Orders',{type:'online_order'})} />
-        <Stat label="Total value" value={fmt$(orders.totalValue||0)} color={BRAND} onClick={()=>onDrill('Processed Orders',{type:'online_order',disposition:'Processed'})} />
-        <Stat label="Processed" value={orders.processed||0} color="#0E807A" delta={`${orders.processRate||0}%`} onClick={()=>onDrill('Processed',{type:'online_order',disposition:'Processed'})} />
-        <Stat label="Cancelled" value={orders.cancelled||0} color="#C2453A" onClick={()=>onDrill('Cancelled',{type:'online_order',disposition:'Cancelled'})} />
-      </div>
-
-      <div style={{ display:'grid',gridTemplateColumns:'1.5fr 1fr',gap:16,marginBottom:16 }}>
-        <div style={{ background:'#fff',borderRadius:18,border:'1px solid #ECEAE3',padding:'22px 24px' }}>
-          <h3 style={{ fontFamily:'"Poppins",sans-serif',fontSize:16,fontWeight:700,margin:'0 0 4px',letterSpacing:'-0.01em' }}>Processed vs cancelled trend</h3>
-          <div style={{ fontSize:12,color:'#9CA3AF',marginBottom:14 }}>Last 14 days</div>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={trend14} barSize={10} barGap={3}>
-              <XAxis dataKey="date" tick={{ fontSize:9,fill:'#9CA3AF' }} axisLine={false} tickLine={false} tickFormatter={d=>d?.slice(5)} />
-              <YAxis tick={{ fontSize:9,fill:'#9CA3AF' }} axisLine={false} tickLine={false} allowDecimals={false} />
-              <Tooltip content={<Tip />} />
-              <Bar dataKey="processed" name="Processed" fill="#0E807A" radius={[3,3,0,0]} />
-              <Bar dataKey="cancelled" name="Cancelled" fill="#C2453A" radius={[3,3,0,0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-        <div style={{ background:'#fff',borderRadius:18,border:'1px solid #ECEAE3',padding:'22px 24px' }}>
-          <h3 style={{ fontFamily:'"Poppins",sans-serif',fontSize:16,fontWeight:700,margin:'0 0 14px',letterSpacing:'-0.01em' }}>By disposition</h3>
-          <div style={{ display:'flex',flexDirection:'column',gap:8 }}>
-            {(orders.byDisposition||[]).map((d,i)=>{
-              const pct = orders.total>0?Math.round((d.count/orders.total)*100):0
+      <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
+        <SectionTitle>Team Performance</SectionTitle>
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+          <thead><tr style={{ borderBottom:'2px solid #f1f5f9' }}>{['Name','Total','Processed','Rate'].map(h => <th key={h} style={{ textAlign:h==='Name'?'left':'right', padding:'8px 10px', fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.06em' }}>{h}</th>)}</tr></thead>
+          <tbody>
+            {(data.byPerson||[]).filter(p=>p.name).map((p,i) => {
+              const rate = p.count>0?Math.round((p.processed||0)/p.count*100):0
               return (
-                <div key={d.disposition} onClick={()=>onDrill('Orders — '+d.disposition,{type:'online_order',disposition:d.disposition})} style={{ cursor:'pointer' }}>
-                  <div style={{ display:'flex',justifyContent:'space-between',marginBottom:4 }}>
-                    <span style={{ fontSize:12,fontWeight:500,color:'#525866' }}>{d.disposition}</span>
-                    <span style={{ fontSize:12,fontWeight:700,color:INK }}>{d.count} <span style={{ color:'#9CA3AF',fontWeight:400 }}>· {pct}%</span></span>
-                  </div>
-                  <div style={{ height:4,background:'#F3F3EF',borderRadius:99 }}><div style={{ height:'100%',background:PALETTE[i%PALETTE.length],borderRadius:99,width:pct+'%',transition:'width 0.5s' }} /></div>
-                </div>
+                <tr key={p.name} onClick={() => drill(`${p.name}'s Orders`)} style={{ borderBottom:'1px solid #f1f5f9', cursor:'pointer', background:i%2===0?'#fff':'#fafbfc' }}
+                  onMouseEnter={e => e.currentTarget.style.background=`${BRAND}08`}
+                  onMouseLeave={e => e.currentTarget.style.background=i%2===0?'#fff':'#fafbfc'}>
+                  <td style={{ padding:'10px 10px', fontWeight:600, color:'#0f172a' }}>{p.name}</td>
+                  <td style={{ padding:'10px 10px', textAlign:'right', color:'#475569' }}>{p.count}</td>
+                  <td style={{ padding:'10px 10px', textAlign:'right', color:'#10b981', fontWeight:600 }}>{p.processed||0}</td>
+                  <td style={{ padding:'10px 10px', textAlign:'right' }}><span style={{ padding:'3px 10px', borderRadius:20, fontSize:12, fontWeight:700, background:rate>=50?'#f0fdf4':rate>=25?'#fff7ed':'#fef2f2', color:rate>=50?'#16a34a':rate>=25?'#d97706':'#dc2626' }}>{rate}%</span></td>
+                </tr>
               )
             })}
-          </div>
-        </div>
-      </div>
-
-      {/* Team table */}
-      <div style={{ background:'#fff',borderRadius:18,border:'1px solid #ECEAE3',overflow:'hidden' }}>
-        <div style={{ padding:'20px 24px 14px' }}>
-          <h3 style={{ fontFamily:'"Poppins",sans-serif',fontSize:16,fontWeight:700,margin:0,letterSpacing:'-0.01em' }}>Team performance</h3>
-          <div style={{ fontSize:12,color:'#9CA3AF',marginTop:2 }}>Processing rate by rep</div>
-        </div>
-        <div style={{ borderTop:'1px solid #F2F1EC' }}>
-          <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13 }}>
-            <thead><tr style={{ background:'#FBFBF8' }}>
-              {['Rep','Total','Today','Processed','Cancelled','Rate'].map(h=>(
-                <th key={h} style={{ textAlign:h==='Rep'?'left':'center',padding:'10px 16px',fontSize:10,fontWeight:600,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.08em' }}>{h}</th>
-              ))}
-            </tr></thead>
-            <tbody>
-              {(ordersAEBreakdown||[]).map((ae,i)=>(
-                <tr key={ae.id} onClick={()=>onDrill(`${ae.name}'s Orders`,{type:'online_order',assigned_to:ae.id})} style={{ borderTop:'1px solid #F2F1EC',cursor:'pointer',transition:'background 0.12s' }}
-                  onMouseEnter={e=>e.currentTarget.style.background='#FBFBF8'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                  <td style={{ padding:'14px 16px' }}>
-                    <div style={{ display:'flex',alignItems:'center',gap:10 }}>
-                      <Avatar name={ae.name} size={28} tone={i===0?'brand':'neutral'} />
-                      <span style={{ fontSize:13,fontWeight:600,color:INK }}>{ae.name}</span>
-                    </div>
-                  </td>
-                  <td style={{ padding:'14px 16px',textAlign:'center',fontFamily:'"Poppins",sans-serif',fontWeight:700,fontSize:15 }}>{ae.total}</td>
-                  <td style={{ padding:'14px 16px',textAlign:'center',color:'#525866' }}>{ae.today||0}</td>
-                  <td style={{ padding:'14px 16px',textAlign:'center',color:'#0E807A',fontWeight:600 }}>{ae.processed}</td>
-                  <td style={{ padding:'14px 16px',textAlign:'center',color:'#C2453A' }}>{ae.cancelled}</td>
-                  <td style={{ padding:'14px 16px',textAlign:'center' }}>
-                    <span style={{ padding:'3px 10px',borderRadius:99,fontSize:11,fontWeight:700,background:ae.rate>=50?'#E8F8F2':ae.rate>=25?'#FFF3E6':'#FFEDEB',color:ae.rate>=50?'#0E807A':ae.rate>=25?'#A55B16':'#C2453A' }}>{ae.rate}%</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+          </tbody>
+        </table>
       </div>
     </div>
   )
 }
 
-// ── Main Dashboard ────────────────────────────────────────────
+// \u2500\u2500 Main Dashboard \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 export default function Dashboard() {
-  const { user } = useAuth(); const { navigate } = useNav()
-
-  // Load Poppins font (used by this dashboard)
-  useEffect(() => {
-    if (!document.getElementById('poppins-font')) {
-      const link = document.createElement('link')
-      link.id = 'poppins-font'
-      link.rel = 'stylesheet'
-      link.href = 'https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap'
-      document.head.appendChild(link)
-    }
-  }, [])
-  const [data,    setData]    = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [tab,     setTab]     = useState('overview')
-  const [preset,  setPreset]  = useState('month')
-  const [filterDisp,  setFilterDisp]  = useState([])
-  const [filterSrc,   setFilterSrc]   = useState([])
+  const { user } = useAuth()
+  const [activeTab, setActiveTab] = useState('overview')
+  const [preset, setPreset] = useState('all')
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo, setCustomTo] = useState('')
+  const [filterDispositions, setFilterDispositions] = useState([])
+  const [filterSources, setFilterSources] = useState([])
   const [filterUsers, setFilterUsers] = useState([])
-  const [drilldown, setDrilldown]     = useState(null)
-  const [targetModal, setTargetModal] = useState(null)
+  const [users, setUsers] = useState([])
+  const [drilldown, setDrilldown] = useState(null)
 
-  // Map preset to date range
-  const dateRange = useMemo(() => {
-    const now = new Date(); const to = now.toISOString().split('T')[0]
-    if (preset==='today')   { return { from:to, to } }
-    if (preset==='week')    { const d=new Date(now); d.setDate(d.getDate()-7); return { from:d.toISOString().split('T')[0], to } }
-    if (preset==='month')   { const d=new Date(now); d.setDate(d.getDate()-30); return { from:d.toISOString().split('T')[0], to } }
-    if (preset==='quarter') { const d=new Date(now); d.setDate(d.getDate()-90); return { from:d.toISOString().split('T')[0], to } }
-    return {}
-  }, [preset])
+  useEffect(() => { api.getUsers().then(setUsers) }, [])
 
-  const load = useCallback(() => {
-    setLoading(true)
-    const p = new URLSearchParams()
-    if (dateRange.from) p.set('from', dateRange.from)
-    if (dateRange.to)   p.set('to',   dateRange.to)
-    fetch('/api/analytics/manager-dashboard?'+p, { headers:{ Authorization:'Bearer '+T() } })
-      .then(r=>r.json()).then(d=>{ setData(d); setLoading(false) }).catch(()=>setLoading(false))
-  }, [dateRange])
-  useEffect(()=>{ load() },[load])
+  const dateF = getDateFilters(preset, customFrom, customTo)
+  const filters = { from: dateF.from, to: dateF.to, dispositions: filterDispositions, sources: filterSources, users: filterUsers }
 
-  const drill = (title, filters={}) => {
-    const f = { ...filters, ...(dateRange.from?{from:dateRange.from}:{}), ...(dateRange.to?{to:dateRange.to}:{}) }
-    if (filterUsers.length) f.assigned_to = filterUsers.join(',')
-    setDrilldown({ title, filters:f })
-  }
-
-  // Handle set target click in team table (via data attribute)
-  const handleTableClick = (e) => {
-    const btn = e.target.closest('[data-set-target]')
-    if (btn && data) {
-      const aeId = parseInt(btn.getAttribute('data-set-target'))
-      const ae = data.team?.aes?.find(a=>a.id===aeId)
-      if (ae) { e.stopPropagation(); setTargetModal({ ae, existing:ae.target }) }
-    }
-  }
+  const greeting = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening' }
 
   const tabs = [
-    { value:'overview', label:'Overview' },
-    { value:'lead',     label:'Leads' },
-    { value:'repeat',   label:'Repeat' },
-    { value:'orders',   label:'Online Orders' },
+    { key: 'overview', label: '\u25a3 Overview' },
+    { key: 'leads',    label: '\u25ce Leads' },
+    { key: 'repeat',   label: '\u21bb Repeat' },
+    { key: 'orders',   label: '\u25c8 Online Orders' },
   ]
 
-  const dispositionOpts = tab==='orders' ? ['Processed','Cancelled','Quoted','Initial Contact'] : tab==='repeat' ? ['Closed Won','Quoted','Bidding','Initial Contact','Hold','Closed Lost'] : ['Closed Won','Closed Lost','Quoted','Bidding','Initial Contact','Cold','Cold Lead','Hold','Fake Lead','No response']
-  const aeOpts = (data?.team?.aes||[]).map(a=>({ value:String(a.id), label:a.name }))
-
-  const greet = () => { const h=new Date().getHours(); return h<12?'Good morning':h<17?'Good afternoon':'Good evening' }
-
   return (
-    <div style={{ padding:'28px 32px',flex:1,overflowY:'auto',fontFamily:'"Plus Jakarta Sans",sans-serif',background:'#FAFAF7',color:'#0F1117' }} onClick={handleTableClick}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}} * { box-sizing: border-box; }`}</style>
+    <div className="p-8 fade-in">
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
-      {/* Header */}
-      <div style={{ display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:22,gap:16,flexWrap:'wrap' }}>
-        <div>
-          <div style={{ fontSize:12,color:'#9CA3AF',fontWeight:500,marginBottom:4 }}>Dashboard</div>
-          <h1 style={{ fontFamily:'"Poppins",sans-serif',fontSize:34,fontWeight:700,margin:0,letterSpacing:'-0.03em',color:INK }}>{greet()}, {user?.name?.split(' ')[0]}.</h1>
-          <p style={{ color:'#9CA3AF',fontSize:13,marginTop:5,marginBottom:0 }}>Tech Atlantix · Sales analytics for the {preset==='all'?'all time':preset}</p>
-        </div>
-        <div style={{ display:'flex',alignItems:'center',gap:8 }}>
-          <button onClick={()=>setTargetModal({ ae:user, existing:data?.own?.target })} style={{ padding:'9px 16px',borderRadius:10,border:'1px solid #ECEAE3',background:'#fff',color:'#525866',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'inherit' }}>🎯 My Target</button>
-          <button onClick={()=>navigate('leads')} style={{ padding:'9px 16px',borderRadius:10,border:'none',background:BRAND,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit' }}>+ New inquiry</button>
-        </div>
+      <div style={{ marginBottom:20 }}>
+        <h1 className="font-display font-bold text-2xl text-ink-900">{greeting()}, {user.name} \ud83d\udc4b</h1>
+        <p className="text-ink-400 text-sm mt-0.5">Tech Atlantix \u00b7 Sales Analytics</p>
       </div>
 
-      {/* My Performance */}
-      {data && <MyPerformance own={data.own} meta={data.meta} userId={user?.id} onDrill={drill} onSetTarget={()=>setTargetModal({ ae:user, existing:data?.own?.target })} />}
-
-      {/* Filter bar */}
-      <div style={{ display:'flex',alignItems:'center',gap:12,flexWrap:'wrap',marginBottom:22 }}>
-        <Segmented value={preset} onChange={setPreset} options={[{value:'today',label:'Today'},{value:'week',label:'Week'},{value:'month',label:'Month'},{value:'quarter',label:'Quarter'},{value:'all',label:'All'}]} />
-        <div style={{ display:'flex',gap:8,flexWrap:'wrap' }}>
-          <MultiChip placeholder="Disposition" options={dispositionOpts} selected={filterDisp} onChange={setFilterDisp} />
-          <MultiChip placeholder="Team member" options={aeOpts} selected={filterUsers} onChange={setFilterUsers} />
-        </div>
-        {(filterDisp.length>0||filterSrc.length>0||filterUsers.length>0)&&(
-          <button onClick={()=>{ setFilterDisp([]); setFilterSrc([]); setFilterUsers([]) }} style={{ padding:'6px 12px',borderRadius:9,background:'#FFEDEB',border:'1px solid #FFCFCB',color:'#C2453A',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'inherit' }}>× Clear</button>
-        )}
-      </div>
+      {/* Shared filter bar \u2014 same for ALL tabs */}
+      <FilterBar
+        preset={preset} setPreset={setPreset}
+        customFrom={customFrom} setCustomFrom={setCustomFrom}
+        customTo={customTo} setCustomTo={setCustomTo}
+        filterDispositions={filterDispositions} setFilterDispositions={setFilterDispositions}
+        filterSources={filterSources} setFilterSources={setFilterSources}
+        filterUsers={filterUsers} setFilterUsers={setFilterUsers}
+        users={users} activeTab={activeTab}
+      />
 
       {/* Tabs */}
-      <div style={{ marginBottom:22,borderBottom:'1px solid #ECEAE3' }}>
-        <div style={{ display:'flex',gap:4 }}>
-          {tabs.map(t=>{
-            const active = tab===t.value
-            return (
-              <button key={t.value} onClick={()=>setTab(t.value)} style={{ padding:'10px 16px',border:'none',background:'transparent',fontSize:13,fontWeight:600,cursor:'pointer',color:active?INK:'#9CA3AF',position:'relative',fontFamily:'inherit',transition:'color 0.15s' }}>
-                {t.label}
-                {active&&<span style={{ position:'absolute',bottom:-1,left:6,right:6,height:2,background:BRAND,borderRadius:99 }} />}
-              </button>
-            )
-          })}
-        </div>
+      <div style={{ display:'flex', gap:2, background:'#f1f5f9', borderRadius:14, padding:4, marginBottom:24, width:'fit-content' }}>
+        {tabs.map(tab => (
+          <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{ padding:'9px 18px', borderRadius:10, border:'none', background:activeTab===tab.key?'#fff':'transparent', color:activeTab===tab.key?'#0f172a':'#64748b', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', boxShadow:activeTab===tab.key?'0 1px 4px rgba(0,0,0,0.08)':'none', transition:'all 0.15s', whiteSpace:'nowrap' }}>{tab.label}</button>
+        ))}
       </div>
 
-      {/* Tab content */}
-      {loading?(
-        <div style={{ display:'flex',alignItems:'center',justifyContent:'center',padding:80 }}>
-          <div style={{ width:28,height:28,borderRadius:'50%',border:'2px solid '+BRAND,borderTopColor:'transparent',animation:'spin 0.8s linear infinite' }}/>
-        </div>
-      ):data&&(
-        <>
-          {tab==='overview'&&<OverviewTab data={data} onDrill={drill} />}
-          {tab==='lead'    &&<LeadsTab    data={data} onDrill={drill} filterDispositions={filterDisp} filterSources={filterSrc} filterUsers={filterUsers} />}
-          {tab==='repeat'  &&<RepeatTab   data={data} onDrill={drill} />}
-          {tab==='orders'  &&<OrdersTab   data={data} onDrill={drill} />}
-        </>
-      )}
+      {/* Tab content \u2014 all receive same filters */}
+      {activeTab === 'overview' && <OverviewTab filters={filters} users={users} onDrilldown={setDrilldown} />}
+      {activeTab === 'leads'    && <LeadsTab    filters={filters} onDrilldown={setDrilldown} />}
+      {activeTab === 'repeat'   && <RepeatTab   filters={filters} onDrilldown={setDrilldown} />}
+      {activeTab === 'orders'   && <OrdersTab   filters={filters} onDrilldown={setDrilldown} />}
 
-      {drilldown&&<DrilldownModal title={drilldown.title} filters={drilldown.filters} onClose={()=>setDrilldown(null)} />}
-      {targetModal&&<SetTargetModal ae={targetModal.ae} existing={targetModal.existing} onClose={()=>setTargetModal(null)} onSaved={()=>{ setTargetModal(null); load() }} />}
+      {/* Drilldown modal */}
+      {drilldown && <DrilldownModal {...drilldown} onClose={() => setDrilldown(null)} />}
     </div>
   )
 }
