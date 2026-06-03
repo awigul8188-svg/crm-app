@@ -65,10 +65,12 @@ router.post('/', (req, res) => {
   // Use custom_date if provided, otherwise now
   const createdAt = custom_date ? new Date(custom_date).toISOString() : new Date().toISOString();
 
-  const result = db.prepare('INSERT INTO inquiries (customer_id, type, disposition, assigned_to, notes, ppc_or_outbound, order_amount, order_ref, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, [...]
+  const result = db.prepare(`
+    INSERT INTO inquiries (customer_id, type, disposition, assigned_to, notes, ppc_or_outbound, order_amount, order_ref, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `)
+    .run(customerId, type, disposition, assignedTo, notes, ppcOrOutbound, orderAmount || 0, orderRef || '', now, now);
   const inquiryId = result.lastInsertRowid;
-
-  if (requirements?.length) {
     const ins = db.prepare('INSERT INTO requirements (inquiry_id, part_number, quantity) VALUES (?, ?, ?)');
     requirements.forEach(r => { if (r.part_number?.trim()) ins.run(inquiryId, r.part_number, r.quantity); });
   }
