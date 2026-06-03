@@ -67,3 +67,39 @@ export const api = {
   markAllRead: () => req('POST', '/notifications/read-all'),
   completeFollowup: (id) => req('PATCH', `/notifications/followup/${id}/complete`),
 };
+
+// Purchasing-related convenience wrapper
+export const purchasingApi = {
+  getStats: () => req('GET', '/purchasing/stats'),
+  getPurchasers: () => req('GET', '/purchasing/purchasers'),
+  getInquiryParts: (inquiryId) => req('GET', `/purchasing/inquiry/${inquiryId}`),
+  assignBulk: (data) => req('POST', '/purchasing/assign-bulk', data),
+  assign: (data) => req('POST', '/purchasing/assign', data),
+  unassign: (requirementId) => req('DELETE', `/purchasing/assign/${requirementId}`),
+  resetPurchaserPasswords: () => req('POST', '/purchasing/reset-purchaser-passwords'),
+  getParts: (params = {}) => {
+    const p = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (Array.isArray(v) && v.length) p.set(k, v.join(','));
+      else if (v || v === 0) p.set(k, v);
+    });
+    return req('GET', `/purchasing/parts?${p}`);
+  },
+  getMyParts: (params = {}) => {
+    const p = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (Array.isArray(v) && v.length) p.set(k, v.join(','));
+      else if (v || v === 0) p.set(k, v);
+    });
+    return req('GET', `/purchasing/my-parts?${p}`);
+  },
+  getQuotes: (params = {}) => {
+    const p = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (Array.isArray(v) && v.length) p.set(k, v.join(','));
+      else if (v || v === 0) p.set(k, v);
+    });
+    return req('GET', `/purchasing/quotes?${p}`);
+  },
+  submitQuote: (data) => req('POST', '/purchasing/quote', data),
+};
