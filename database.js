@@ -65,19 +65,17 @@ router.post('/', (req, res) => {
   // Use custom_date if provided, otherwise now
   const createdAt = custom_date ? new Date(custom_date).toISOString() : new Date().toISOString();
 
-  const result = db.prepare(`
-    INSERT INTO inquiries (customer_id, type, disposition, assigned_to, notes, ppc_or_outbound, order_amount, order_ref, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `)
+  const result = db.prepare('INSERT INTO inquiries (customer_id, type, disposition, assigned_to, notes, ppc_or_outbound, order_amount, order_ref, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
     .run(customerId, type, disposition, assignedTo, notes, ppcOrOutbound, orderAmount || 0, orderRef || '', now, now);
+  
   const inquiryId = result.lastInsertRowid;
-    const ins = db.prepare('INSERT INTO requirements (inquiry_id, part_number, quantity) VALUES (?, ?, ?)');
-    requirements.forEach(r => { if (r.part_number?.trim()) ins.run(inquiryId, r.part_number, r.quantity); });
-  }
+
+  const ins = db.prepare('INSERT INTO requirements (inquiry_id, part_number, quantity) VALUES (?, ?, ?)');
+  requirements.forEach(r => { 
+    if (r.part_number?.trim()) ins.run(inquiryId, r.part_number, r.quantity); 
+  });
 
   logActivity(db, inquiryId, req.user, `${type} created`);
-
-  // Notify managers if AE created this
   const customer = db.prepare('SELECT name FROM customers WHERE id = ?').get(customer_id);
   notifyManagers(db, {
     inquiry_id: inquiryId, inquiry_type: type,
@@ -89,7 +87,6 @@ router.post('/', (req, res) => {
   });
 
   res.json({ id: inquiryId });
-});
 
 router.get('/:id', (req, res) => {
   const db = getDB();
