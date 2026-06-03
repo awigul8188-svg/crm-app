@@ -53,7 +53,7 @@ router.get('/stats', (req, res) => {
   const count = (type) => db.prepare(`SELECT COUNT(*) as c FROM inquiries WHERE type=? ${w}`).get(...p([type])).c;
   const today = new Date().toISOString().split('T')[0];
   const next7 = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
-  const upcomingFollowups = db.prepare(`SELECT COUNT(*) as c FROM followups f JOIN inquiries i ON f.inquiry_id = i.id WHERE f.completed=0 AND f.follow_up_date BETWEEN ? AND ? ${userId ? 'AND i.assigned_to=?' : ''}`).get(...(userId ? [today, next7, userId] : [today, next7])).c;
+  const upcomingFollowups = db.prepare(`SELECT COUNT(*) as c FROM followups f JOIN inquiries i ON f.inquiry_id = i.id WHERE f.completed=0 AND f.follow_up_date BETWEEN ? AND ? ${userId ? 'AND i.ass[...]
   res.json({ leads: count('lead'), repeat: count('repeat'), orders: count('online_order'), upcomingFollowups });
 });
 
@@ -66,7 +66,7 @@ router.post('/', (req, res) => {
   // Use custom_date if provided, otherwise now
   const createdAt = custom_date ? new Date(custom_date).toISOString() : new Date().toISOString();
 
-  const result = db.prepare('INSERT INTO inquiries (customer_id, type, disposition, assigned_to, notes, ppc_or_outbound, order_amount, order_ref, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(customer_id, type, disposition || 'Initial Contact', assignee, notes || null, ppc_or_outbound || null, order_amount || null, order_ref || null, createdAt, createdAt);
+  const result = db.prepare('INSERT INTO inquiries (customer_id, type, disposition, assigned_to, notes, ppc_or_outbound, order_amount, order_ref, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, [...]
   const inquiryId = result.lastInsertRowid;
 
   if (requirements?.length) {
@@ -92,10 +92,10 @@ router.post('/', (req, res) => {
 
 router.get('/:id', (req, res) => {
   const db = getDB();
-  const inquiry = db.prepare(`SELECT i.*, c.name as customer_name, c.email as customer_email, c.phone as customer_phone, c.company as customer_company, c.lead_source, u.name as assigned_name FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id LEFT JOIN users u ON i.assigned_to = u.id WHERE i.id = ?`).get(req.params.id);
+  const inquiry = db.prepare(`SELECT i.*, c.name as customer_name, c.email as customer_email, c.phone as customer_phone, c.company as customer_company, c.lead_source, u.name as assigned_name FROM [...]
   if (!inquiry) return res.status(404).json({ error: 'Not found' });
   const requirements = db.prepare('SELECT * FROM requirements WHERE inquiry_id = ? ORDER BY id').all(req.params.id);
-  const followups = db.prepare(`SELECT f.*, u.name as created_by_name FROM followups f LEFT JOIN users u ON f.created_by = u.id WHERE f.inquiry_id = ? ORDER BY f.created_at DESC`).all(req.params.id);
+  const followups = db.prepare(`SELECT f.*, u.name as created_by_name FROM followups f LEFT JOIN users u ON f.created_by = u.id WHERE f.inquiry_id = ? ORDER BY f.created_at DESC`).all(req.params.i[...]
   const activity = db.prepare("SELECT * FROM activity_log WHERE entity_type='inquiry' AND entity_id=? ORDER BY created_at DESC").all(req.params.id);
   res.json({ ...inquiry, requirements, followups, activity });
 });
@@ -107,10 +107,10 @@ router.put('/:id', (req, res) => {
   // Get inquiry info for notification
   const inquiry = db.prepare('SELECT i.type, c.name as customer_name FROM inquiries i JOIN customers c ON i.customer_id = c.id WHERE i.id = ?').get(req.params.id);
 
-  db.prepare('UPDATE inquiries SET disposition=?, assigned_to=?, notes=?, ppc_or_outbound=?, order_amount=?, order_ref=?, updated_at=CURRENT_TIMESTAMP WHERE id=?').run(disposition, assigned_to, notes, ppc_or_outbound || null, order_amount || null, order_ref || null, req.params.id);
+  db.prepare('UPDATE inquiries SET disposition=?, assigned_to=?, notes=?, ppc_or_outbound=?, order_amount=?, order_ref=?, updated_at=CURRENT_TIMESTAMP WHERE id=?').run(disposition, assigned_to, n[...]
   if (requirements !== undefined) {
     db.prepare('DELETE FROM requirements WHERE inquiry_id = ?').run(req.params.id);
-    if (requirements.length) { const ins = db.prepare('INSERT INTO requirements (inquiry_id, part_number, quantity) VALUES (?, ?, ?)'); requirements.forEach(r => { if (r.part_number?.trim()) ins.run(req.params.id, r.part_number, r.quantity); }); }
+    if (requirements.length) { const ins = db.prepare('INSERT INTO requirements (inquiry_id, part_number, quantity) VALUES (?, ?, ?)'); requirements.forEach(r => { if (r.part_number?.trim()) ins.[...]
   }
 
   logActivity(db, req.params.id, req.user, 'Inquiry updated');
@@ -246,7 +246,7 @@ module.exports.runPurchasingMigrations = runPurchasingMigrations;
 
 function runPurchasingV2Migrations() {
   const db = getDB();
-  const cols = ['urgency TEXT DEFAULT 'normal'', 'pm_notes TEXT', 'purchaser_notes TEXT', 'not_in_stock INTEGER DEFAULT 0'];
+  const cols = ["urgency TEXT DEFAULT 'normal'", 'pm_notes TEXT', 'purchaser_notes TEXT', 'not_in_stock INTEGER DEFAULT 0'];
   cols.forEach(col => { try { db.exec('ALTER TABLE purchase_assignments ADD COLUMN ' + col); } catch(e) {} });
 }
 module.exports.runPurchasingV2Migrations = runPurchasingV2Migrations;
