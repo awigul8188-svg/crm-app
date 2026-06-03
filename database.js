@@ -53,10 +53,9 @@ router.get('/stats', (req, res) => {
   const count = (type) => db.prepare(`SELECT COUNT(*) as c FROM inquiries WHERE type=? ${w}`).get(...p([type])).c;
   const today = new Date().toISOString().split('T')[0];
   const next7 = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
-  const upcomingFollowups = db.prepare(`SELECT COUNT(*) as c FROM followups f JOIN inquiries i ON f.inquiry_id = i.id WHERE f.completed=0 AND f.follow_up_date BETWEEN ? AND ? ${userId ? 'AND i.ass[...]
+  const upcomingFollowups = db.prepare(`SELECT COUNT(*) as c FROM followups f JOIN inquiries i ON f.inquiry_id = i.id WHERE f.completed=0 AND f.follow_up_date BETWEEN ? AND ? ${userId ? 'AND i.assigned_to = ?' : ''}`).get(...p([today, next7])).c;
   res.json({ leads: count('lead'), repeat: count('repeat'), orders: count('online_order'), upcomingFollowups });
 });
-
 router.post('/', (req, res) => {
   const { customer_id, type, disposition, assigned_to, notes, requirements, ppc_or_outbound, order_amount, order_ref, custom_date } = req.body;
   if (!customer_id || !type) return res.status(400).json({ error: 'customer_id and type required' });
