@@ -68,4 +68,38 @@ router.get('/stats', (req, res) => {
   res.json(stats);
 });
 
+// POST /api/admin/clear-data \u2014 delete all inquiry data
+router.post('/clear-data', (req, res) => {
+  const { confirm } = req.body;
+  if (confirm !== 'DELETE_ALL_DATA') {
+    return res.status(400).json({ error: 'Confirmation token required' });
+  }
+
+  try {
+    const db = getDB();
+    
+    // Clear in reverse order of foreign key dependencies
+    const tablesToClear = [
+      'part_comments',
+      'purchaser_followups',
+      'purchase_quotes',
+      'purchase_assignments',
+      'followups',
+      'requirements',
+      'inquiries',
+      'activity_log',
+      'notifications',
+      'customers'
+    ];
+
+    tablesToClear.forEach(table => {
+      db.prepare(`DELETE FROM ${table}`).run();
+    });
+
+    res.json({ success: true, message: 'All CRM data cleared successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
