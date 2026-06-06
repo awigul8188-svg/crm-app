@@ -40,7 +40,13 @@ const server = http.createServer((req, res) => {
 });
 
 app.use(cors());
-app.use(express.json());
+
+// FIX: Set UTF-8 encoding for JSON responses to fix Unicode display issues
+app.use(express.json({ charset: 'utf-8' }));
+app.use((req, res, next) => {
+  res.header('Content-Type', 'application/json; charset=utf-8');
+  next();
+});
 
 // Serve uploaded files (avatars, ringtones)
 app.use('/uploads', express.static(UPLOAD_DIR));
