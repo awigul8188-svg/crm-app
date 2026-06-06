@@ -17,7 +17,7 @@ const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads');
 
 const ALLOWED_IPS = (process.env.ALLOWED_IPS || '203.99.187.217').split(',').map(ip => ip.trim());
 const DISABLED = process.env.DISABLE_IP_WHITELIST === 'true';
-const BLOCKED_HTML = `<!DOCTYPE html><html><head><title>Access Restricted</title></head><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0d0d0d;color:white;text-align:center"><div><div style="font-size:48px;margin-bottom:16px">\ud83d\udd12</div><h2 style="color:#00D4C8;margin:0 0 8px">Access Restricted</h2><p style="color:rgba(255,255,255,0.5);margin:0">Only accessible from the Tech Atlantix office.</p></div></body></html>`;
+const BLOCKED_HTML = `<!DOCTYPE html><html><head><title>Access Restricted</title></head><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0d0d0d;color:white;text-align:center"><div><div style="font-size:48px;margin-bottom:16px">🔒</div><h2 style="color:#00D4C8;margin:0 0 8px">Access Restricted</h2><p style="color:rgba(255,255,255,0.5);margin:0">Only accessible from the Tech Atlantix office.</p></div></body></html>`;
 
 const server = http.createServer((req, res) => {
   if (req.url === '/debug-ip') {
@@ -57,6 +57,8 @@ app.use('/api/import', require('./routes/import'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/ringtone', require('./routes/ringtone'));
 app.use('/api/upload', require('./routes/upload'));
+app.use('/api/admin', require('./routes/admin'));
+app.use('/api/purchasing', require('./routes/purchasing'));
 
 const clientDist = path.join(__dirname, 'client', 'dist');
 app.use(express.static(clientDist));

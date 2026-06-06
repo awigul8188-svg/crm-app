@@ -1,5 +1,13 @@
 const jwt = require('jsonwebtoken');
-const JWT_SECRET = process.env.JWT_SECRET || 'crm-jwt-secret-change-in-prod';
+
+// SECURITY: Fail hard if JWT_SECRET is not configured
+let JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) {
+  console.error('❌ FATAL ERROR: JWT_SECRET environment variable is not set!');
+  console.error('Set JWT_SECRET in your .env file or environment before running the app.');
+  process.exit(1);
+}
 
 function authenticate(req, res, next) {
   const token = req.headers.authorization?.split(' ')[1];

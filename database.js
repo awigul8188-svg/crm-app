@@ -30,6 +30,7 @@ function initializeDB() {
       phone TEXT,
       company TEXT,
       lead_source TEXT,
+      assigned_to INTEGER REFERENCES users(id),
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
