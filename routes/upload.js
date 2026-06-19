@@ -48,9 +48,9 @@ router.post('/:type/:userId', upload.single('file'), (req, res) => {
   const url = `/uploads/${subDir}/${userId}${ext}`;
 
   if (type === 'avatar') {
-    db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').run(url, userId);
+    db.prepare('UPDATE users SET avatar = ? WHERE id = ?').run(url, userId);
   } else if (type === 'ringtone') {
-    db.prepare('UPDATE users SET ringtone_url = ? WHERE id = ?').run(url, userId);
+    db.prepare('UPDATE users SET ringtone = ? WHERE id = ?').run(url, userId);
   }
 
   res.json({ success: true, url });
@@ -64,19 +64,19 @@ router.delete('/:type/:userId', (req, res) => {
   const subDir = type === 'avatar' ? 'avatars' : 'ringtones';
 
   if (type === 'avatar') {
-    const user = db.prepare('SELECT avatar_url FROM users WHERE id = ?').get(userId);
-    if (user?.avatar_url) {
-      const filePath = path.join(uploadDir, subDir, path.basename(user.avatar_url));
+    const user = db.prepare('SELECT avatar FROM users WHERE id = ?').get(userId);
+    if (user?.avatar) {
+      const filePath = path.join(uploadDir, subDir, path.basename(user.avatar));
       try { fs.unlinkSync(filePath); } catch {}
     }
-    db.prepare('UPDATE users SET avatar_url = NULL WHERE id = ?').run(userId);
+    db.prepare('UPDATE users SET avatar = NULL WHERE id = ?').run(userId);
   } else if (type === 'ringtone') {
-    const user = db.prepare('SELECT ringtone_url FROM users WHERE id = ?').get(userId);
-    if (user?.ringtone_url) {
-      const filePath = path.join(uploadDir, subDir, path.basename(user.ringtone_url));
+    const user = db.prepare('SELECT ringtone FROM users WHERE id = ?').get(userId);
+    if (user?.ringtone) {
+      const filePath = path.join(uploadDir, subDir, path.basename(user.ringtone));
       try { fs.unlinkSync(filePath); } catch {}
     }
-    db.prepare('UPDATE users SET ringtone_url = NULL, ringtone_active = 0 WHERE id = ?').run(userId);
+    db.prepare('UPDATE users SET ringtone = NULL WHERE id = ?').run(userId);
   }
 
   res.json({ success: true });
