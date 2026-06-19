@@ -41,9 +41,8 @@ const server = http.createServer((req, res) => {
 
 app.use(cors());
 
-// FIX: Set UTF-8 encoding for JSON responses to fix Unicode display issues
-app.use(express.json({ charset: 'utf-8' }));
-app.use((req, res, next) => {
+app.use(express.json());
+app.use('/api', (req, res, next) => {
   res.header('Content-Type', 'application/json; charset=utf-8');
   next();
 });
