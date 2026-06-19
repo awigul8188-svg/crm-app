@@ -1,28 +1,28 @@
+const express = require('express');
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { getDB } = require('../database');
+const { authenticate, JWT_SECRET } = require('../middleware/auth');
 
-// SECURITY: Fail hard if JWT_SECRET is not configured
-let JWT_SECRET = process.env.JWT_SECRET;
+const router = express.Router();
 
-if (!JWT_SECRET) {
-  console.error('❌ FATAL ERROR: JWT_SECRET environment variable is not set!');
-  console.error('Set JWT_SECRET in your .env file or environment before running the app.');
-  process.exit(1);
-}
-
-function authenticate(req, res, next) {
-  const token = req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'No token provided' });
-  try {
-    req.user = jwt.verify(token, JWT_SECRET);
-    next();
-  } catch (err) {
-    res.status(401).json({ error: 'Invalid or expired token' });
+router.post('/login', (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
+  const db = getDB();
+  const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username.toLowerCase().trim());
+  if (!user || !bcrypt.compareSync(password, user.password)) {
+    return res.status(401).json({ error: 'Invalid credentials' });
   }
-}
+  const token = jwt.sign({ id: user.id, username: user.username, name: user.name, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+  res.json({ token, user: { id: user.id, username: user.username, name: user.name, role: user.role } });
+});
 
-function requireManager(req, res, next) {
-  if (req.user?.role !== 'manager') return res.status(403).json({ error: 'Managers only' });
-  next();
-}
+router.get('/me', authenticate, (req, res) => {
+  const db = getDB();
+  const user = db.prepare('SELECT id, username, name, role FROM users WHERE id = ?').get(req.user.id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json(user);
+});
 
-module.exports = { authenticate, requireManager, JWT_SECRET };
+module.exports = router;
