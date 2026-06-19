@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { useAuth } from '../App'
 import { useNav } from '../App'
 import { api } from '../api'
@@ -15,11 +15,11 @@ function TALogo({ size = 36 }) {
 }
 
 const NAV = [
-  { name: 'dashboard', label: 'Dashboard',       icon: '\u25a3' },
-  { name: 'leads',     label: 'Leads',            icon: '\u25ce' },
-  { name: 'repeat',    label: 'Repeat Inquiries', icon: '\u21bb' },
-  { name: 'orders',    label: 'Online Orders',    icon: '\u25c8' },
-  { name: 'customers', label: 'Customers',        icon: '\u25c9' },
+  { name: 'dashboard', label: 'Dashboard',       icon: '▣' },
+  { name: 'leads',     label: 'Leads',            icon: '◎' },
+  { name: 'repeat',    label: 'Repeat Inquiries', icon: '↻' },
+  { name: 'orders',    label: 'Online Orders',    icon: '◈' },
+  { name: 'customers', label: 'Customers',        icon: '◉' },
 ]
 
 export default function Layout({ children }) {
@@ -97,7 +97,7 @@ export default function Layout({ children }) {
           {/* Notifications */}
           <button onClick={() => navigate('notifications')}
             className={`nav-item ${page.name === 'notifications' ? 'nav-active' : 'nav-inactive'}`}>
-            <span className="text-sm w-5 text-center flex-shrink-0">\ud83d\udd14</span>
+            <span className="text-sm w-5 text-center flex-shrink-0">🔔</span>
             <span>Notifications</span>
             {notifCount > 0 && page.name !== 'notifications' && (
               <span className="ml-auto font-bold leading-none flex-shrink-0"
@@ -113,8 +113,8 @@ export default function Layout({ children }) {
                 Admin
               </div>
               {[
-                { name: 'import', label: 'Import Data', icon: '\ud83d\udce5' },
-                { name: 'users',  label: 'Users',       icon: '\u2699' },
+                { name: 'import', label: 'Import Data', icon: '📥' },
+                { name: 'users',  label: 'Users',       icon: '⚙' },
               ].map(item => (
                 <button key={item.name} onClick={() => navigate(item.name)}
                   className={`nav-item ${page.name === item.name ? 'nav-active' : 'nav-inactive'}`}>
@@ -130,11 +130,11 @@ export default function Layout({ children }) {
         {/* Footer */}
         <div className="px-3 pb-5 pt-2" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
           <button onClick={logout} className="nav-item nav-inactive mt-2">
-            <span className="text-sm w-5 text-center">\u2192</span>
+            <span className="text-sm w-5 text-center">→</span>
             <span>Sign out</span>
           </button>
           <div className="text-center mt-3" style={{ color: 'rgba(255,255,255,0.12)', fontSize: '9px' }}>
-            Beyond Tech \u00b7 Above Integration
+            Beyond Tech · Above Integration
           </div>
         </div>
       </aside>

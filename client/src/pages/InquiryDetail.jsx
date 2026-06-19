@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { api } from '../api'
 import { useAuth } from '../App'
 import { useNav } from '../App'
@@ -66,7 +66,7 @@ export default function InquiryDetail({ id }) {
   return (
     <div className="p-8 max-w-5xl fade-in">
       <button onClick={() => navigate(backPage)} className="flex items-center gap-1.5 text-xs text-ink-400 hover:text-ink-600 font-semibold mb-5 transition-colors">
-        \u2190 {backLabel}
+        ← {backLabel}
       </button>
 
       <div className="card p-6 mb-5">
@@ -79,21 +79,21 @@ export default function InquiryDetail({ id }) {
             </div>
             <h1 className="font-display font-bold text-xl text-ink-900">
               {inquiry.customer_name}
-              {inquiry.customer_company && <span className="text-ink-400 font-normal ml-2 text-base">\u2014 {inquiry.customer_company}</span>}
+              {inquiry.customer_company && <span className="text-ink-400 font-normal ml-2 text-base">— {inquiry.customer_company}</span>}
             </h1>
             <div className="flex flex-wrap gap-4 text-sm text-ink-500 mt-2">
-              {inquiry.customer_email && <a href={`mailto:${inquiry.customer_email}`} className="hover:text-brand-600 transition-colors">\ud83d\udce7 {inquiry.customer_email}</a>}
-              {inquiry.customer_phone && <span>\ud83d\udcde {inquiry.customer_phone}</span>}
-              {inquiry.lead_source && <span className="badge bg-teal-50 text-teal-700 border-teal-200">\ud83d\udccc {inquiry.lead_source}</span>}
+              {inquiry.customer_email && <a href={`mailto:${inquiry.customer_email}`} className="hover:text-brand-600 transition-colors">📧 {inquiry.customer_email}</a>}
+              {inquiry.customer_phone && <span>📞 {inquiry.customer_phone}</span>}
+              {inquiry.lead_source && <span className="badge bg-teal-50 text-teal-700 border-teal-200">📌 {inquiry.lead_source}</span>}
             </div>
           </div>
           <div className="flex gap-2 ml-4 flex-shrink-0">
             {user.role === 'manager' && !editMode && (
-              <button onClick={handleDelete} disabled={deleting} className="btn-danger btn-sm">{deleting ? '...' : '\ud83d\uddd1 Delete'}</button>
+              <button onClick={handleDelete} disabled={deleting} className="btn-danger btn-sm">{deleting ? '...' : '🗑 Delete'}</button>
             )}
             {editMode
               ? <><button onClick={() => setEditMode(false)} className="btn-secondary btn-sm">Cancel</button><button onClick={handleSave} disabled={saving} className="btn-primary btn-sm">{saving ? 'Saving...' : 'Save'}</button></>
-              : <button onClick={() => setEditMode(true)} className="btn-secondary btn-sm">\u270f\ufe0f Edit</button>}
+              : <button onClick={() => setEditMode(true)} className="btn-secondary btn-sm">✏️ Edit</button>}
           </div>
         </div>
       </div>
@@ -112,7 +112,7 @@ export default function InquiryDetail({ id }) {
                   <div key={i} className="flex gap-2">
                     <input className="input flex-1" placeholder="Part number" value={r.part_number} onChange={e => updateReq(i,'part_number',e.target.value)} />
                     <input className="input w-28" placeholder="Qty" value={r.quantity} onChange={e => updateReq(i,'quantity',e.target.value)} />
-                    <button onClick={() => removeReq(i)} className="btn-icon text-red-400 hover:text-red-600 text-lg">\u00d7</button>
+                    <button onClick={() => removeReq(i)} className="btn-icon text-red-400 hover:text-red-600 text-lg">×</button>
                   </div>
                 ))}
               </div>
@@ -137,7 +137,7 @@ export default function InquiryDetail({ id }) {
           {/* Activity / Followups */}
           <div className="card overflow-hidden">
             <div className="flex border-b border-slate-100">
-              {[['activity','\ud83d\udcac Activity'],['followups',`\ud83d\udcc5 Follow-ups${pendingFu > 0 ? ` (${pendingFu})` : ''}`]].map(([tab, label]) => (
+              {[['activity','💬 Activity'],['followups',`📅 Follow-ups${pendingFu > 0 ? ` (${pendingFu})` : ''}`]].map(([tab, label]) => (
                 <button key={tab} onClick={() => setActiveTab(tab)}
                   className={`px-5 py-3.5 text-sm font-semibold transition-all border-b-2 -mb-px ${activeTab===tab ? 'text-brand-600 border-brand-500' : 'text-ink-400 border-transparent hover:text-ink-600'}`}>
                   {label}
@@ -163,7 +163,7 @@ export default function InquiryDetail({ id }) {
                           </div>
                           {a.action==='Comment'
                             ? <div className="text-sm bg-surface-50 rounded-xl px-4 py-2.5 border text-ink-700 leading-relaxed">{a.comment}</div>
-                            : <span className="text-sm text-ink-400">{a.action}{a.comment ? ` \u2014 ${a.comment}` : ''}</span>}
+                            : <span className="text-sm text-ink-400">{a.action}{a.comment ? ` — ${a.comment}` : ''}</span>}
                         </div>
                       </div>
                     ))}
@@ -196,12 +196,12 @@ export default function InquiryDetail({ id }) {
                         <div className="flex-1">
                           <p className={`text-sm font-medium ${fu.completed ? 'line-through text-ink-300' : 'text-ink-700'}`}>{fu.note}</p>
                           <div className="flex gap-3 text-xs text-ink-300 mt-1">
-                            {fu.follow_up_date && <span className="text-amber-500 font-semibold">\ud83d\udcc5 {formatDate(fu.follow_up_date)}</span>}
-                            <span>by {fu.created_by_name} \u00b7 {timeAgo(fu.created_at)}</span>
+                            {fu.follow_up_date && <span className="text-amber-500 font-semibold">📅 {formatDate(fu.follow_up_date)}</span>}
+                            <span>by {fu.created_by_name} · {timeAgo(fu.created_at)}</span>
                           </div>
                         </div>
                         {user.role === 'manager' && (
-                          <button onClick={() => api.deleteFollowup(fu.id).then(load)} className="text-red-400 hover:text-red-500 text-xs flex-shrink-0">\ud83d\uddd1</button>
+                          <button onClick={() => api.deleteFollowup(fu.id).then(load)} className="text-red-400 hover:text-red-500 text-xs flex-shrink-0">🗑</button>
                         )}
                       </div>
                     ))}
@@ -227,30 +227,30 @@ export default function InquiryDetail({ id }) {
               <Detail label="Assigned to">
                 {editMode && user.role==='manager'
                   ? <select className="input" value={editForm.assigned_to} onChange={e => setEF('assigned_to',e.target.value)}>{users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select>
-                  : <span className="font-semibold text-ink-700">{inquiry.assigned_name||'\u2014'}</span>}
+                  : <span className="font-semibold text-ink-700">{inquiry.assigned_name||'—'}</span>}
               </Detail>
               {inquiry.type==='repeat' && (
                 <Detail label="PPC / Outbound">
                   {editMode
-                    ? <select className="input" value={editForm.ppc_or_outbound} onChange={e => setEF('ppc_or_outbound',e.target.value)}><option value="">\u2014</option>{PPC_OPTIONS.map(o=><option key={o}>{o}</option>)}</select>
-                    : <span className="text-ink-700">{inquiry.ppc_or_outbound||'\u2014'}</span>}
+                    ? <select className="input" value={editForm.ppc_or_outbound} onChange={e => setEF('ppc_or_outbound',e.target.value)}><option value="">—</option>{PPC_OPTIONS.map(o=><option key={o}>{o}</option>)}</select>
+                    : <span className="text-ink-700">{inquiry.ppc_or_outbound||'—'}</span>}
                 </Detail>
               )}
               {inquiry.type==='online_order' && <>
                 <Detail label="Verification">
                   {editMode
                     ? <select className="input" value={editForm.order_ref} onChange={e => setEF('order_ref',e.target.value)}>
-                        <option value="">\u2014</option>
+                        <option value="">—</option>
                         {VERIFICATION_OPTIONS.map(v=><option key={v}>{v}</option>)}
                       </select>
                     : <span className={`badge ${inquiry.order_ref === 'Verified' ? 'bg-green-50 text-green-700 border-green-200' : inquiry.order_ref === 'Not Verified' ? 'bg-red-50 text-red-500 border-red-200' : 'bg-gray-100 text-gray-500 border-gray-200'}`}>
-                        {inquiry.order_ref || '\u2014'}
+                        {inquiry.order_ref || '—'}
                       </span>}
                 </Detail>
                 <Detail label="Order Amount">
                   {editMode
                     ? <input className="input" value={editForm.order_amount} onChange={e=>setEF('order_amount',e.target.value)} />
-                    : <span className="font-bold text-green-700">{inquiry.order_amount ? `$${inquiry.order_amount}` : '\u2014'}</span>}
+                    : <span className="font-bold text-green-700">{inquiry.order_amount ? `$${inquiry.order_amount}` : '—'}</span>}
                 </Detail>
               </>}
               {inquiry.lead_source && <Detail label="Source"><span className="badge bg-teal-50 text-teal-700 border-teal-200">{inquiry.lead_source}</span></Detail>}
@@ -261,7 +261,7 @@ export default function InquiryDetail({ id }) {
 
           <div className="card p-4">
             <h3 className="font-display font-bold text-sm text-ink-900 mb-2">Customer</h3>
-            <button onClick={() => navigate('customer-detail',{id:inquiry.customer_id})} className="text-sm text-brand-600 hover:text-brand-700 font-semibold transition-colors">{inquiry.customer_name} \u2192</button>
+            <button onClick={() => navigate('customer-detail',{id:inquiry.customer_id})} className="text-sm text-brand-600 hover:text-brand-700 font-semibold transition-colors">{inquiry.customer_name} →</button>
             {inquiry.customer_company && <div className="text-xs text-ink-400 mt-0.5">{inquiry.customer_company}</div>}
           </div>
         </div>

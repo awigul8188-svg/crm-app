@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+﻿import { useState, useRef, useEffect } from 'react'
 
 export default function MultiSelect({ label, options, selected, onChange, placeholder }) {
   const [open, setOpen] = useState(false)
@@ -60,9 +60,9 @@ export default function MultiSelect({ label, options, selected, onChange, placeh
           <span
             onClick={(e) => { e.stopPropagation(); clearAll() }}
             style={{ width: '16px', height: '16px', background: '#e2e8f0', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', cursor: 'pointer', color: '#64748b', flexShrink: 0 }}
-          >\u00d7</span>
+          >×</span>
         )}
-        <span style={{ color: '#94a3b8', fontSize: '10px', flexShrink: 0, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>\u25be</span>
+        <span style={{ color: '#94a3b8', fontSize: '10px', flexShrink: 0, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▾</span>
       </button>
 
       {/* Dropdown */}
@@ -85,7 +85,7 @@ export default function MultiSelect({ label, options, selected, onChange, placeh
           {/* Select all / None */}
           <div style={{ display: 'flex', gap: '8px', padding: '8px 12px', borderBottom: '1px solid #f1f5f9', flexShrink: 0, background: '#fafafa', borderRadius: '12px 12px 0 0' }}>
             <button type="button" onClick={selectAll} style={{ fontSize: '11px', fontWeight: 600, color: '#00b8ad', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}>All</button>
-            <span style={{ color: '#e2e8f0' }}>\u00b7</span>
+            <span style={{ color: '#e2e8f0' }}>·</span>
             <button type="button" onClick={clearAll} style={{ fontSize: '11px', fontWeight: 600, color: '#94a3b8', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}>None</button>
             {selected.length > 0 && <span style={{ fontSize: '11px', color: '#00b8ad', marginLeft: 'auto' }}>{selected.length} selected</span>}
           </div>

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+﻿import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 
 export default function Modal({ title, onClose, children, wide }) {
@@ -57,7 +57,7 @@ export default function Modal({ title, onClose, children, wide }) {
             }}
             onMouseEnter={e => e.target.style.background = '#e2e8f0'}
             onMouseLeave={e => e.target.style.background = '#f1f5f9'}
-          >\u00d7</button>
+          >×</button>
         </div>
 
         {/* Body */}

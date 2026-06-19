@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+﻿import { useState, useRef } from 'react'
 import { useAuth } from '../App'
 
 export default function ImportData() {
@@ -12,7 +12,7 @@ export default function ImportData() {
 
   if (user.role !== 'manager') return (
     <div className="p-8 text-center text-ink-400">
-      <div className="text-4xl mb-2">\ud83d\udd12</div>
+      <div className="text-4xl mb-2">🔒</div>
       <div className="font-semibold">Managers only</div>
     </div>
   )
@@ -58,17 +58,17 @@ export default function ImportData() {
   return (
     <div className="p-8 max-w-2xl fade-in">
       <div className="mb-6">
-        <h1 className="font-display font-bold text-2xl text-ink-900">\ud83d\udce5 Import Data</h1>
+        <h1 className="font-display font-bold text-2xl text-ink-900">📥 Import Data</h1>
         <p className="text-ink-400 text-sm mt-0.5">Upload your Excel file to import Leads, Repeat Inquiries, and Online Orders</p>
       </div>
 
       {/* Instructions */}
       <div className="card p-4 mb-5 bg-brand-50 border-brand-200">
-        <div className="text-sm font-semibold text-brand-700 mb-2">\ud83d\udccb Expected Sheet Names</div>
+        <div className="text-sm font-semibold text-brand-700 mb-2">📋 Expected Sheet Names</div>
         <div className="space-y-1 text-sm text-brand-600">
-          <div className="flex items-center gap-2"><span className="font-mono bg-brand-100 px-1.5 py-0.5 rounded text-xs">New Leads</span> \u2192 Imports as Leads</div>
-          <div className="flex items-center gap-2"><span className="font-mono bg-brand-100 px-1.5 py-0.5 rounded text-xs">Repeat Inquiries</span> \u2192 Imports as Repeat Inquiries</div>
-          <div className="flex items-center gap-2"><span className="font-mono bg-brand-100 px-1.5 py-0.5 rounded text-xs">Online Orders</span> \u2192 Imports as Online Orders</div>
+          <div className="flex items-center gap-2"><span className="font-mono bg-brand-100 px-1.5 py-0.5 rounded text-xs">New Leads</span> → Imports as Leads</div>
+          <div className="flex items-center gap-2"><span className="font-mono bg-brand-100 px-1.5 py-0.5 rounded text-xs">Repeat Inquiries</span> → Imports as Repeat Inquiries</div>
+          <div className="flex items-center gap-2"><span className="font-mono bg-brand-100 px-1.5 py-0.5 rounded text-xs">Online Orders</span> → Imports as Online Orders</div>
         </div>
         <div className="text-xs text-brand-500 mt-2">Other sheets (Dashboard, Chat Orders, etc.) are ignored.</div>
       </div>
@@ -86,14 +86,14 @@ export default function ImportData() {
         <input ref={inputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={e => handleFile(e.target.files[0])} />
         {file ? (
           <div>
-            <div className="text-3xl mb-2">\ud83d\udcca</div>
+            <div className="text-3xl mb-2">📊</div>
             <div className="font-semibold text-green-700">{file.name}</div>
-            <div className="text-sm text-green-600 mt-0.5">{(file.size / 1024).toFixed(0)} KB \u00b7 Ready to import</div>
+            <div className="text-sm text-green-600 mt-0.5">{(file.size / 1024).toFixed(0)} KB · Ready to import</div>
             <button onClick={e => { e.stopPropagation(); setFile(null); setResult(null) }} className="text-xs text-red-500 hover:text-red-600 mt-2">Remove</button>
           </div>
         ) : (
           <div>
-            <div className="text-4xl mb-3 opacity-30">\ud83d\udcc1</div>
+            <div className="text-4xl mb-3 opacity-30">📁</div>
             <div className="font-semibold text-ink-600">Drop your Excel file here</div>
             <div className="text-sm text-ink-400 mt-1">or click to browse</div>
             <div className="text-xs text-ink-300 mt-2">.xlsx or .xls only</div>
@@ -103,7 +103,7 @@ export default function ImportData() {
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-3 rounded-xl mb-4">
-          \u26a0 {error}
+          ⚠ {error}
         </div>
       )}
 
@@ -117,14 +117,14 @@ export default function ImportData() {
             <span className="w-4 h-4 rounded-full border-2 border-dark-900 border-t-transparent spinner" />
             Importing {file?.name}...
           </span>
-        ) : '\ud83d\udce5 Start Import'}
+        ) : '📥 Start Import'}
       </button>
 
       {/* Results */}
       {result && (
         <div className={`card p-5 ${result.created > 0 ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
           <div className="flex items-center gap-3 mb-3">
-            <div className="text-3xl">{result.created > 0 ? '\u2705' : '\u26a0\ufe0f'}</div>
+            <div className="text-3xl">{result.created > 0 ? '✅' : '⚠️'}</div>
             <div>
               <div className="font-display font-bold text-lg text-ink-900">{result.created} records imported successfully</div>
               {result.errors?.length > 0 && <div className="text-sm text-amber-600">{result.errors.length} rows had issues (see below)</div>}

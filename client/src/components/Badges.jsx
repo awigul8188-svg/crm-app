@@ -1,4 +1,4 @@
-export const DISPOSITIONS = [
+﻿export const DISPOSITIONS = [
   'Initial Contact', 'Quoted', 'Bidding', 'Waiting for approval',
   'Shopping Around', 'Cold', 'Cold Lead', 'Hold', 'Needed in stock',
   'Pricing Issue', 'Part Not Available', 'Condition Not Available',
@@ -44,21 +44,21 @@ const DISPOSITION_COLORS = {
 
 export function DispositionBadge({ disposition }) {
   const cls = DISPOSITION_COLORS[disposition] || 'bg-gray-100 text-gray-600 border-gray-200'
-  return <span className={`badge ${cls}`}>{disposition || '\u2014'}</span>
+  return <span className={`badge ${cls}`}>{disposition || '—'}</span>
 }
 
 export function TypeBadge({ type }) {
   const map = {
-    lead:         { label: '\u25ce Lead',         cls: 'bg-blue-50 text-blue-600 border-blue-100' },
-    repeat:       { label: '\u21bb Repeat',        cls: 'bg-violet-50 text-violet-600 border-violet-100' },
-    online_order: { label: '\u25c8 Online Order',  cls: 'bg-amber-50 text-amber-600 border-amber-100' },
+    lead:         { label: '◎ Lead',         cls: 'bg-blue-50 text-blue-600 border-blue-100' },
+    repeat:       { label: '↻ Repeat',        cls: 'bg-violet-50 text-violet-600 border-violet-100' },
+    online_order: { label: '◈ Online Order',  cls: 'bg-amber-50 text-amber-600 border-amber-100' },
   }
   const t = map[type] || { label: type, cls: 'bg-gray-100 text-gray-600' }
   return <span className={`badge ${t.cls}`}>{t.label}</span>
 }
 
 export function timeAgo(dateStr) {
-  if (!dateStr) return '\u2014'
+  if (!dateStr) return '—'
   const diff = Date.now() - new Date(dateStr)
   const mins = Math.floor(diff / 60000)
   if (mins < 1) return 'just now'
@@ -71,11 +71,11 @@ export function timeAgo(dateStr) {
 }
 
 export function formatDate(dateStr) {
-  if (!dateStr) return '\u2014'
+  if (!dateStr) return '—'
   return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 export function formatDateShort(dateStr) {
-  if (!dateStr) return '\u2014'
+  if (!dateStr) return '—'
   return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }

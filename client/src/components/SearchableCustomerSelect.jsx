@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+﻿import { useState, useRef, useEffect } from 'react'
 
 const BRAND = '#00D4C8'
 
@@ -59,7 +59,7 @@ export default function SearchableCustomerSelect({ customers, value, onChange, p
         {selected ? (
           <div style={{ flex: 1, overflow: 'hidden' }}>
             <span style={{ fontWeight: 600, color: '#0f172a' }}>{selected.name}</span>
-            {selected.company && <span style={{ color: '#94a3b8', marginLeft: '6px', fontSize: '12px' }}>\u2014 {selected.company}</span>}
+            {selected.company && <span style={{ color: '#94a3b8', marginLeft: '6px', fontSize: '12px' }}>— {selected.company}</span>}
           </div>
         ) : (
           <span style={{ color: '#94a3b8' }}>{placeholder}</span>
@@ -69,9 +69,9 @@ export default function SearchableCustomerSelect({ customers, value, onChange, p
             <span
               onClick={(e) => { e.stopPropagation(); onChange(''); }}
               style={{ width: 16, height: 16, background: '#e2e8f0', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#64748b', cursor: 'pointer' }}
-            >\u00d7</span>
+            >×</span>
           )}
-          <span style={{ color: '#94a3b8', fontSize: '10px', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>\u25be</span>
+          <span style={{ color: '#94a3b8', fontSize: '10px', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▾</span>
         </div>
       </div>
 
@@ -88,7 +88,7 @@ export default function SearchableCustomerSelect({ customers, value, onChange, p
           {/* Search input */}
           <div style={{ padding: '10px', borderBottom: '1px solid #f1f5f9', flexShrink: 0 }}>
             <div style={{ position: 'relative' }}>
-              <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '14px' }}>\u2315</span>
+              <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '14px' }}>⌕</span>
               <input
                 ref={inputRef}
                 value={query}
@@ -139,11 +139,11 @@ export default function SearchableCustomerSelect({ customers, value, onChange, p
                     <div>
                       <div style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>{c.name}</div>
                       <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                        {[c.company, c.email].filter(Boolean).join(' \u00b7 ') || 'No details'}
+                        {[c.company, c.email].filter(Boolean).join(' · ') || 'No details'}
                       </div>
                     </div>
                     {String(c.id) === String(value) && (
-                      <span style={{ marginLeft: 'auto', color: BRAND, fontSize: '14px' }}>\u2713</span>
+                      <span style={{ marginLeft: 'auto', color: BRAND, fontSize: '14px' }}>✓</span>
                     )}
                   </div>
                 </div>

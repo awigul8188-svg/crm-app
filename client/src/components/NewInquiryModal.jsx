@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { api } from '../api'
 import { useAuth } from '../App'
@@ -7,9 +7,9 @@ import SearchableCustomerSelect from './SearchableCustomerSelect'
 
 const BRAND = '#00D4C8'
 const TYPES = [
-  { value: 'lead',         label: '\u25ce Lead',        color: '#3b82f6' },
-  { value: 'repeat',       label: '\u21bb Repeat',       color: '#6366f1' },
-  { value: 'online_order', label: '\u25c8 Online Order', color: '#f59e0b' },
+  { value: 'lead',         label: '◎ Lead',        color: '#3b82f6' },
+  { value: 'repeat',       label: '↻ Repeat',       color: '#6366f1' },
+  { value: 'online_order', label: '◈ Online Order', color: '#f59e0b' },
 ]
 
 const inp = { width: '100%', boxSizing: 'border-box', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px 14px', fontSize: '13px', color: '#0f172a', fontFamily: '"Plus Jakarta Sans", sans-serif', outline: 'none', transition: 'border 0.15s' }
@@ -121,7 +121,7 @@ export default function NewInquiryModal({ defaultType = 'lead', customerId, onCl
         {/* Header */}
         <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, background: '#fff', zIndex: 10, borderRadius: '20px 20px 0 0' }}>
           <div style={{ fontFamily: '"Bricolage Grotesque", sans-serif', fontWeight: 700, fontSize: '16px', color: '#0f172a' }}>New Inquiry</div>
-          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 10, border: 'none', background: '#f1f5f9', cursor: 'pointer', fontSize: 18, color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>\u00d7</button>
+          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 10, border: 'none', background: '#f1f5f9', cursor: 'pointer', fontSize: 18, color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
         </div>
 
         <div style={{ padding: '20px 24px 24px' }}>
@@ -158,7 +158,7 @@ export default function NewInquiryModal({ defaultType = 'lead', customerId, onCl
                 <span>Customer</span>
                 <button type="button" onClick={() => { setIsNewCustomer(!isNewCustomer); setSelectedCustomerId('') }}
                   style={{ fontSize: '11px', color: BRAND, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', textTransform: 'none', letterSpacing: 0 }}>
-                  {isNewCustomer ? '\u2190 Select existing' : '+ New customer'}
+                  {isNewCustomer ? '← Select existing' : '+ New customer'}
                 </button>
               </div>
             }>
@@ -193,7 +193,7 @@ export default function NewInquiryModal({ defaultType = 'lead', customerId, onCl
                 <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   <div style={{ flex: 1 }}><SInput value={r.part_number} onChange={e => updateReq(i, 'part_number', e.target.value)} placeholder="Part number / SKU" /></div>
                   <div style={{ width: '100px' }}><SInput value={r.quantity} onChange={e => updateReq(i, 'quantity', e.target.value)} placeholder="Qty" /></div>
-                  {requirements.length > 1 && <button type="button" onClick={() => removeReq(i)} style={{ width: 32, height: 40, border: 'none', background: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '18px', flexShrink: 0 }}>\u00d7</button>}
+                  {requirements.length > 1 && <button type="button" onClick={() => removeReq(i)} style={{ width: 32, height: 40, border: 'none', background: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '18px', flexShrink: 0 }}>×</button>}
                 </div>
               ))}
             </div>
@@ -242,7 +242,7 @@ export default function NewInquiryModal({ defaultType = 'lead', customerId, onCl
             <STextarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Add any notes or comments..." />
           </Field>
 
-          {error && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '12px', padding: '10px 14px', fontSize: '13px', color: '#dc2626', marginBottom: '14px' }}>\u26a0 {error}</div>}
+          {error && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '12px', padding: '10px 14px', fontSize: '13px', color: '#dc2626', marginBottom: '14px' }}>⚠ {error}</div>}
 
           <div style={{ display: 'flex', gap: '10px' }}>
             <button onClick={onClose} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', background: '#fff', color: '#475569', fontWeight: 600, fontSize: '14px', cursor: 'pointer', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Cancel</button>

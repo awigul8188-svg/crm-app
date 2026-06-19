@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { api } from '../api'
 import { useAuth } from '../App'
 import { useNav } from '../App'
 import { formatDate, timeAgo } from '../components/Badges'
 
 const BRAND = '#00D4C8'
-const TYPE_ICONS = { lead: '\u25ce', repeat: '\u21bb', online_order: '\u25c8' }
+const TYPE_ICONS = { lead: '◎', repeat: '↻', online_order: '◈' }
 const TYPE_LABELS = { lead: 'Lead', repeat: 'Repeat', online_order: 'Online Order' }
 const TYPE_COLORS = { lead: '#3b82f6', repeat: '#6366f1', online_order: '#f59e0b' }
 
@@ -29,7 +29,7 @@ function FollowUpCard({ fu, onComplete, onNavigate }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '3px' }}>
           <span style={{ fontWeight: 700, fontSize: '14px', color: '#0f172a' }}>{fu.customer_name}</span>
-          {fu.customer_company && <span style={{ fontSize: '12px', color: '#94a3b8' }}>\u00b7 {fu.customer_company}</span>}
+          {fu.customer_company && <span style={{ fontSize: '12px', color: '#94a3b8' }}>· {fu.customer_company}</span>}
           {fu.inquiry_type && (
             <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px', background: `${TYPE_COLORS[fu.inquiry_type]}18`, color: TYPE_COLORS[fu.inquiry_type] }}>
               {TYPE_ICONS[fu.inquiry_type]} {TYPE_LABELS[fu.inquiry_type]}
@@ -38,8 +38,8 @@ function FollowUpCard({ fu, onComplete, onNavigate }) {
         </div>
         <p style={{ fontSize: '13px', color: '#475569', margin: '0 0 4px' }}>{fu.note}</p>
         <div style={{ display: 'flex', gap: '12px', fontSize: '11px', color: '#94a3b8' }}>
-          {fu.follow_up_date && <span style={{ color: '#f59e0b', fontWeight: 600 }}>\ud83d\udcc5 {formatDate(fu.follow_up_date)}</span>}
-          <span>\ud83d\udc64 {fu.assigned_name || '\u2014'}</span>
+          {fu.follow_up_date && <span style={{ color: '#f59e0b', fontWeight: 600 }}>📅 {formatDate(fu.follow_up_date)}</span>}
+          <span>👤 {fu.assigned_name || '—'}</span>
         </div>
       </div>
       <button
@@ -50,7 +50,7 @@ function FollowUpCard({ fu, onComplete, onNavigate }) {
         onMouseEnter={e => { e.currentTarget.style.borderColor = BRAND; e.currentTarget.style.background = `${BRAND}12` }}
         onMouseLeave={e => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.background = 'transparent' }}
       >
-        {completing ? <div style={{ width: 12, height: 12, borderRadius: '50%', border: `2px solid ${BRAND}`, borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} /> : <span style={{ color: '#94a3b8', fontSize: '13px' }}>\u2713</span>}
+        {completing ? <div style={{ width: 12, height: 12, borderRadius: '50%', border: `2px solid ${BRAND}`, borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} /> : <span style={{ color: '#94a3b8', fontSize: '13px' }}>✓</span>}
       </button>
     </div>
   )
@@ -111,7 +111,7 @@ function ActivityCard({ notif, onNavigate, onRead }) {
 
         <div style={{ fontSize: '11px', color: '#94a3b8' }}>
           {timeAgo(notif.created_at)}
-          {notif.inquiry_id && <span style={{ color: BRAND, marginLeft: '8px' }}>View inquiry \u2192</span>}
+          {notif.inquiry_id && <span style={{ color: BRAND, marginLeft: '8px' }}>View inquiry →</span>}
         </div>
       </div>
     </div>
@@ -131,7 +131,7 @@ export default function Notifications() {
     api.getNotifications().then(d => {
       setData(d)
       setLocalActivity(d.activity || [])
-      // Default tab: managers \u2192 activity, AEs \u2192 followups
+      // Default tab: managers → activity, AEs → followups
       if (user.role === 'ae') setActiveTab('followups')
       setLoading(false)
     }).catch(() => setLoading(false))
@@ -162,7 +162,7 @@ export default function Notifications() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="font-display font-bold text-2xl text-ink-900 flex items-center gap-2">
-            \ud83d\udd14 Notifications
+            🔔 Notifications
           </h1>
           <p className="text-ink-400 text-sm mt-0.5">
             {user.role === 'manager' ? 'Team activity and follow-up reminders' : 'Your follow-up reminders'}
@@ -172,10 +172,10 @@ export default function Notifications() {
           {user.role === 'manager' && unreadActivity > 0 && (
             <button onClick={handleMarkAllRead}
               style={{ padding: '8px 14px', borderRadius: '10px', border: `1px solid ${BRAND}40`, background: `${BRAND}10`, color: '#00b8ad', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
-              \u2713 Mark all read
+              ✓ Mark all read
             </button>
           )}
-          <button onClick={load} className="btn-secondary btn-sm">\u21bb Refresh</button>
+          <button onClick={load} className="btn-secondary btn-sm">↻ Refresh</button>
         </div>
       </div>
 
@@ -208,12 +208,12 @@ export default function Notifications() {
         </div>
       ) : (
         <>
-          {/* Activity tab \u2014 managers only */}
+          {/* Activity tab — managers only */}
           {activeTab === 'activity' && user.role === 'manager' && (
             <div>
               {localActivity.length === 0 ? (
                 <div className="card p-16 text-center">
-                  <div style={{ fontSize: '48px', marginBottom: '12px' }}>\ud83d\udced</div>
+                  <div style={{ fontSize: '48px', marginBottom: '12px' }}>📭</div>
                   <div className="font-display font-bold text-ink-400 text-lg">No activity yet</div>
                   <div className="text-ink-300 text-sm mt-1">Team actions will appear here</div>
                 </div>
@@ -232,7 +232,7 @@ export default function Notifications() {
             <div>
               {followupTotal === 0 ? (
                 <div className="card p-16 text-center">
-                  <div style={{ fontSize: '48px', marginBottom: '12px' }}>\u2705</div>
+                  <div style={{ fontSize: '48px', marginBottom: '12px' }}>✅</div>
                   <div className="font-display font-bold text-ink-400 text-lg">All caught up!</div>
                   <div className="text-ink-300 text-sm mt-1">No pending follow-ups right now</div>
                 </div>
@@ -244,7 +244,7 @@ export default function Notifications() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                         <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', animation: 'pulse 2s infinite' }} />
                         <span style={{ fontFamily: '"Bricolage Grotesque", sans-serif', fontWeight: 700, fontSize: '12px', color: '#dc2626', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                          Overdue \u2014 {data.followups.overdue.length}
+                          Overdue — {data.followups.overdue.length}
                         </span>
                       </div>
                       <div style={{ borderLeft: '2px solid #fecaca', paddingLeft: '16px' }}>
@@ -259,7 +259,7 @@ export default function Notifications() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                         <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b' }} />
                         <span style={{ fontFamily: '"Bricolage Grotesque", sans-serif', fontWeight: 700, fontSize: '12px', color: '#d97706', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                          Due Today \u2014 {data.followups.today.length}
+                          Due Today — {data.followups.today.length}
                         </span>
                       </div>
                       <div style={{ borderLeft: '2px solid #fde68a', paddingLeft: '16px' }}>
@@ -274,7 +274,7 @@ export default function Notifications() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                         <div style={{ width: 8, height: 8, borderRadius: '50%', background: BRAND }} />
                         <span style={{ fontFamily: '"Bricolage Grotesque", sans-serif', fontWeight: 700, fontSize: '12px', color: '#00b8ad', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                          This Week \u2014 {data.followups.upcoming.length}
+                          This Week — {data.followups.upcoming.length}
                         </span>
                       </div>
                       <div style={{ borderLeft: `2px solid ${BRAND}40`, paddingLeft: '16px' }}>

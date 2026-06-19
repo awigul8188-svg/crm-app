@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+﻿import { useState, useEffect, useRef } from 'react'
 import { api } from '../api'
 import { useAuth } from '../App'
 import { useNav } from '../App'
@@ -6,7 +6,7 @@ import { DispositionBadge, DISPOSITIONS, LEAD_SOURCES, ORDER_SOURCES, formatDate
 import NewInquiryModal from '../components/NewInquiryModal'
 import MultiSelect from '../components/MultiSelect'
 
-const TYPE_ICONS  = { lead: '\u25ce', repeat: '\u21bb', online_order: '\u25c8' }
+const TYPE_ICONS  = { lead: '◎', repeat: '↻', online_order: '◈' }
 const TYPE_LABELS = { lead: 'Lead', repeat: 'Repeat Inquiry', online_order: 'Online Order' }
 
 const HEADERS = {
@@ -15,7 +15,7 @@ const HEADERS = {
   online_order: ['Date','Name','Email','Part Number','Total Qty','Order Amount','Source','Assigned To','Comments','Verification','Status',''],
 }
 
-// Inline disposition dropdown \u2014 appears in place of the badge
+// Inline disposition dropdown — appears in place of the badge
 function InlineDispositionEdit({ inquiry, dispositions, onSave, onCancel }) {
   const ref = useRef()
   const [value, setValue] = useState(inquiry.disposition || '')
@@ -120,7 +120,7 @@ export default function InquiryList({ type, title }) {
     finally { setDeleting(null) }
   }
 
-  // Inline disposition save \u2014 update locally without full reload
+  // Inline disposition save — update locally without full reload
   const handleDispSave = (id, newDisp) => {
     setInquiries(prev => prev.map(i => i.id === id ? { ...i, disposition: newDisp } : i))
     setEditingDisp(null)
@@ -148,7 +148,7 @@ export default function InquiryList({ type, title }) {
         <button onClick={() => setShowNew(true)} className="btn-primary">+ New {TYPE_LABELS[type]}</button>
       </div>
 
-      {/* Filters \u2014 all visible */}
+      {/* Filters — all visible */}
       <div className="flex gap-2.5 mb-4 flex-wrap items-center">
         {/* Search */}
         <div style={{ position: 'relative' }}>
@@ -158,7 +158,7 @@ export default function InquiryList({ type, title }) {
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
-          <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '14px', pointerEvents: 'none' }}>\u2315</span>
+          <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '14px', pointerEvents: 'none' }}>⌕</span>
         </div>
 
         <MultiSelect
@@ -175,7 +175,7 @@ export default function InquiryList({ type, title }) {
           onChange={setFilterSources}
         />
 
-        {/* Assigned To \u2014 all roles see this, AEs see only themselves */}
+        {/* Assigned To — all roles see this, AEs see only themselves */}
         {user.role === 'manager' && (
           <MultiSelect
             placeholder="All Team Members"
@@ -188,7 +188,7 @@ export default function InquiryList({ type, title }) {
         {hasFilters ? (
           <button onClick={clearAll}
             style={{ fontSize: '12px', fontWeight: 600, color: '#ef4444', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '6px 12px', cursor: 'pointer', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
-            \u2715 Clear all
+            ✕ Clear all
           </button>
         ) : null}
       </div>
@@ -207,7 +207,7 @@ export default function InquiryList({ type, title }) {
                 if (tag.type === 'd') setFilterDispositions(f => f.filter(v => v !== tag.k))
                 else if (tag.type === 's') setFilterSources(f => f.filter(v => v !== tag.k))
                 else setFilterUsers(f => f.filter(v => v !== tag.k))
-              }} style={{ marginLeft: '2px', color: '#00b8ad', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px' }}>\u00d7</button>
+              }} style={{ marginLeft: '2px', color: '#00b8ad', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px' }}>×</button>
             </span>
           ))}
         </div>
@@ -215,7 +215,7 @@ export default function InquiryList({ type, title }) {
 
       {/* Tip for inline editing */}
       <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-        <span>\ud83d\udca1</span> Click any <strong>disposition badge</strong> to edit it inline \u2014 no need to open the record
+        <span>💡</span> Click any <strong>disposition badge</strong> to edit it inline — no need to open the record
       </div>
 
       {/* Table */}
@@ -240,12 +240,12 @@ export default function InquiryList({ type, title }) {
               </thead>
               <tbody>
                 {filtered.map(inq => {
-                  const partNums = inq.requirements?.map(r => r.part_number).join(', ') || '\u2014'
-                  const qtys = inq.requirements?.map(r => r.quantity).join(', ') || '\u2014'
+                  const partNums = inq.requirements?.map(r => r.part_number).join(', ') || '—'
+                  const qtys = inq.requirements?.map(r => r.quantity).join(', ') || '—'
                   const totalQty = inq.requirements?.reduce((s, r) => { const n = parseInt(r.quantity); return s + (isNaN(n) ? 0 : n) }, 0)
                   const isEditingDisp = editingDisp === inq.id
 
-                  // Disposition cell \u2014 clickable to edit inline
+                  // Disposition cell — clickable to edit inline
                   const dispCell = (
                     <td className="table-cell" onClick={e => { e.stopPropagation(); setEditingDisp(inq.id) }}>
                       {isEditingDisp ? (
@@ -261,7 +261,7 @@ export default function InquiryList({ type, title }) {
                           style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                         >
                           <DispositionBadge disposition={inq.disposition} />
-                          <span style={{ color: '#cbd5e1', fontSize: '10px' }}>\u270e</span>
+                          <span style={{ color: '#cbd5e1', fontSize: '10px' }}>✎</span>
                         </div>
                       )}
                     </td>
@@ -276,49 +276,49 @@ export default function InquiryList({ type, title }) {
                       <td className="table-cell text-ink-400 font-mono text-xs whitespace-nowrap">{formatDateShort(inq.created_at)}</td>
 
                       {type === 'lead' && <>
-                        <td className="table-cell font-semibold text-ink-700 whitespace-nowrap">{inq.assigned_name||'\u2014'}</td>
+                        <td className="table-cell font-semibold text-ink-700 whitespace-nowrap">{inq.assigned_name||'—'}</td>
                         {dispCell}
-                        <td className="table-cell text-xs text-ink-500 whitespace-nowrap">{inq.lead_source||'\u2014'}</td>
+                        <td className="table-cell text-xs text-ink-500 whitespace-nowrap">{inq.lead_source||'—'}</td>
                         <td className="table-cell font-semibold text-ink-900 whitespace-nowrap">{inq.customer_name}</td>
-                        <td className="table-cell text-xs text-ink-500">{inq.customer_email||'\u2014'}</td>
-                        <td className="table-cell text-xs text-ink-500 whitespace-nowrap">{inq.customer_company||'\u2014'}</td>
-                        <td className="table-cell text-xs text-ink-500">{inq.customer_phone||'\u2014'}</td>
+                        <td className="table-cell text-xs text-ink-500">{inq.customer_email||'—'}</td>
+                        <td className="table-cell text-xs text-ink-500 whitespace-nowrap">{inq.customer_company||'—'}</td>
+                        <td className="table-cell text-xs text-ink-500">{inq.customer_phone||'—'}</td>
                         <td className="table-cell font-mono text-xs text-ink-700 max-w-[140px] truncate">{partNums}</td>
                         <td className="table-cell text-xs text-ink-600">{qtys}</td>
-                        <td className="table-cell text-xs text-ink-400 max-w-[140px] truncate">{inq.notes||'\u2014'}</td>
+                        <td className="table-cell text-xs text-ink-400 max-w-[140px] truncate">{inq.notes||'—'}</td>
                       </>}
 
                       {type === 'repeat' && <>
                         {dispCell}
-                        <td className="table-cell font-semibold text-ink-700 whitespace-nowrap">{inq.assigned_name||'\u2014'}</td>
+                        <td className="table-cell font-semibold text-ink-700 whitespace-nowrap">{inq.assigned_name||'—'}</td>
                         <td className="table-cell font-semibold text-ink-900 whitespace-nowrap">{inq.customer_name}</td>
-                        <td className="table-cell text-xs text-ink-500">{inq.customer_email||'\u2014'}</td>
-                        <td className="table-cell text-xs text-ink-500">{inq.customer_phone||'\u2014'}</td>
-                        <td className="table-cell text-xs text-ink-500 whitespace-nowrap">{inq.customer_company||'\u2014'}</td>
+                        <td className="table-cell text-xs text-ink-500">{inq.customer_email||'—'}</td>
+                        <td className="table-cell text-xs text-ink-500">{inq.customer_phone||'—'}</td>
+                        <td className="table-cell text-xs text-ink-500 whitespace-nowrap">{inq.customer_company||'—'}</td>
                         <td className="table-cell font-mono text-xs text-ink-700 max-w-[130px] truncate">{partNums}</td>
                         <td className="table-cell text-xs text-ink-600">{qtys}</td>
-                        <td className="table-cell text-xs text-ink-400 max-w-[130px] truncate">{inq.notes||'\u2014'}</td>
-                        <td className="table-cell text-xs">{inq.ppc_or_outbound ? <span className="badge bg-violet-50 text-violet-600 border-violet-100">{inq.ppc_or_outbound}</span> : '\u2014'}</td>
+                        <td className="table-cell text-xs text-ink-400 max-w-[130px] truncate">{inq.notes||'—'}</td>
+                        <td className="table-cell text-xs">{inq.ppc_or_outbound ? <span className="badge bg-violet-50 text-violet-600 border-violet-100">{inq.ppc_or_outbound}</span> : '—'}</td>
                       </>}
 
                       {type === 'online_order' && <>
                         <td className="table-cell font-semibold text-ink-900 whitespace-nowrap">{inq.customer_name}</td>
-                        <td className="table-cell text-xs text-ink-500">{inq.customer_email||'\u2014'}</td>
+                        <td className="table-cell text-xs text-ink-500">{inq.customer_email||'—'}</td>
                         <td className="table-cell font-mono text-xs text-ink-700 max-w-[130px] truncate">{partNums}</td>
-                        <td className="table-cell font-semibold text-ink-700">{totalQty||'\u2014'}</td>
-                        <td className="table-cell font-semibold text-green-700">{inq.order_amount ? `$${inq.order_amount}` : '\u2014'}</td>
-                        <td className="table-cell text-xs text-ink-500 whitespace-nowrap">{inq.lead_source||'\u2014'}</td>
-                        <td className="table-cell font-semibold text-ink-700 whitespace-nowrap">{inq.assigned_name||'\u2014'}</td>
-                        <td className="table-cell text-xs text-ink-400 max-w-[130px] truncate">{inq.notes||'\u2014'}</td>
+                        <td className="table-cell font-semibold text-ink-700">{totalQty||'—'}</td>
+                        <td className="table-cell font-semibold text-green-700">{inq.order_amount ? `$${inq.order_amount}` : '—'}</td>
+                        <td className="table-cell text-xs text-ink-500 whitespace-nowrap">{inq.lead_source||'—'}</td>
+                        <td className="table-cell font-semibold text-ink-700 whitespace-nowrap">{inq.assigned_name||'—'}</td>
+                        <td className="table-cell text-xs text-ink-400 max-w-[130px] truncate">{inq.notes||'—'}</td>
                         <td className="table-cell text-xs">
                           {inq.order_ref
                             ? <span className={`badge ${inq.order_ref === 'Verified' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-500 border-red-200'}`}>{inq.order_ref}</span>
-                            : '\u2014'}
+                            : '—'}
                         </td>
                         {dispCell}
                       </>}
 
-                      {/* Delete \u2014 managers only */}
+                      {/* Delete — managers only */}
                       <td className="table-cell" onClick={e => e.stopPropagation()}>
                         {user.role === 'manager' && (
                           <button
@@ -328,7 +328,7 @@ export default function InquiryList({ type, title }) {
                             onMouseEnter={e => { e.currentTarget.style.background = '#fef2f2'; e.currentTarget.style.color = '#ef4444' }}
                             onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#fca5a5' }}
                           >
-                            {deleting === inq.id ? '...' : '\ud83d\uddd1'}
+                            {deleting === inq.id ? '...' : '🗑'}
                           </button>
                         )}
                       </td>

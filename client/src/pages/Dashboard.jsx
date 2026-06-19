@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+﻿import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts'
 import { api } from '../api'
@@ -43,16 +43,16 @@ const Tip = ({ active, payload, label }) => {
   )
 }
 
-// \u2500\u2500 Metric Card \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ── Metric Card ─────────────────────────────────────────────────
 function MetricCard({ label, value, sub, color = BRAND, prefix = '', suffix = '', onClick }) {
   return (
     <div onClick={onClick} style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:'16px 20px', position:'relative', overflow:'hidden', cursor: onClick ? 'pointer' : 'default', transition:'all 0.15s' }}
       onMouseEnter={e => { if (onClick) { e.currentTarget.style.borderColor = color; e.currentTarget.style.boxShadow = `0 4px 16px ${color}20` }}}
       onMouseLeave={e => { e.currentTarget.style.borderColor = '#f1f5f9'; e.currentTarget.style.boxShadow = 'none' }}>
       <div style={{ position:'absolute', top:0, left:0, width:3, height:'100%', background: color, borderRadius:'16px 0 0 16px' }} />
-      {onClick && <div style={{ position:'absolute', top:10, right:12, fontSize:10, color:'#94a3b8' }}>click to view \u2197</div>}
+      {onClick && <div style={{ position:'absolute', top:10, right:12, fontSize:10, color:'#94a3b8' }}>click to view ↗</div>}
       <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:8 }}>{label}</div>
-      <div style={{ fontSize:28, fontWeight:800, color:'#0f172a', fontFamily:'"Bricolage Grotesque", sans-serif' }}>{prefix}{typeof value === 'number' ? value.toLocaleString() : (value ?? '\u2014')}{suffix}</div>
+      <div style={{ fontSize:28, fontWeight:800, color:'#0f172a', fontFamily:'"Bricolage Grotesque", sans-serif' }}>{prefix}{typeof value === 'number' ? value.toLocaleString() : (value ?? '—')}{suffix}</div>
       {sub && <div style={{ fontSize:12, color:'#94a3b8', marginTop:4 }}>{sub}</div>}
     </div>
   )
@@ -62,7 +62,7 @@ function SectionTitle({ children }) {
   return <div style={{ fontFamily:'"Bricolage Grotesque", sans-serif', fontWeight:700, fontSize:14, color:'#0f172a', marginBottom:14 }}>{children}</div>
 }
 
-// \u2500\u2500 Drilldown Modal \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ── Drilldown Modal ─────────────────────────────────────────────
 function DrilldownModal({ title, type, filters, onClose }) {
   const { navigate } = useNav()
   const [rows, setRows] = useState([])
@@ -89,9 +89,9 @@ function DrilldownModal({ title, type, filters, onClose }) {
         <div style={{ padding:'18px 24px', borderBottom:'1px solid #f1f5f9', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
           <div>
             <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:700, fontSize:16, color:'#0f172a' }}>{title}</div>
-            <div style={{ fontSize:12, color:'#94a3b8', marginTop:2 }}>{loading ? 'Loading...' : `${rows.length} records \u2014 click any row to open`}</div>
+            <div style={{ fontSize:12, color:'#94a3b8', marginTop:2 }}>{loading ? 'Loading...' : `${rows.length} records — click any row to open`}</div>
           </div>
-          <button onClick={onClose} style={{ width:32, height:32, borderRadius:10, border:'none', background:'#f1f5f9', cursor:'pointer', fontSize:18, color:'#64748b', display:'flex', alignItems:'center', justifyContent:'center' }}>\u00d7</button>
+          <button onClick={onClose} style={{ width:32, height:32, borderRadius:10, border:'none', background:'#f1f5f9', cursor:'pointer', fontSize:18, color:'#64748b', display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
         </div>
         <div style={{ overflowY:'auto', flex:1 }}>
           {loading ? (
@@ -116,11 +116,11 @@ function DrilldownModal({ title, type, filters, onClose }) {
                     onMouseLeave={e => e.currentTarget.style.background = i%2===0 ? '#fff':'#fafbfc'}>
                     <td style={{ padding:'10px 16px', color:'#64748b', whiteSpace:'nowrap', fontFamily:'monospace', fontSize:12 }}>{formatDateShort(r.created_at)}</td>
                     <td style={{ padding:'10px 16px', fontWeight:600, color:'#0f172a' }}>{r.customer_name}</td>
-                    <td style={{ padding:'10px 16px', color:'#64748b', fontSize:12 }}>{r.customer_company||'\u2014'}</td>
-                    <td style={{ padding:'10px 16px', color:'#475569' }}>{r.assigned_name||'\u2014'}</td>
+                    <td style={{ padding:'10px 16px', color:'#64748b', fontSize:12 }}>{r.customer_company||'—'}</td>
+                    <td style={{ padding:'10px 16px', color:'#475569' }}>{r.assigned_name||'—'}</td>
                     <td style={{ padding:'10px 16px' }}><DispositionBadge disposition={r.disposition} /></td>
                     <td style={{ padding:'10px 16px', fontFamily:'monospace', fontSize:11, color:'#475569', maxWidth:160, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                      {r.requirements?.map(req => req.part_number).join(', ') || '\u2014'}
+                      {r.requirements?.map(req => req.part_number).join(', ') || '—'}
                     </td>
                   </tr>
                 ))}
@@ -134,7 +134,7 @@ function DrilldownModal({ title, type, filters, onClose }) {
   )
 }
 
-// \u2500\u2500 Top List \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ── Top List ────────────────────────────────────────────────────
 function TopList({ data, label, color, showCompany, onDrilldown }) {
   const [period, setPeriod] = useState('month')
   const rows = data?.[period] || []
@@ -159,7 +159,7 @@ function TopList({ data, label, color, showCompany, onDrilldown }) {
               <div style={{ flex:1, minWidth:0 }}>
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:3 }}>
                   <div><span style={{ fontSize:13, fontWeight:600, color:'#0f172a' }}>{row.name||'Unknown'}</span>
-                    {showCompany && row.company && <span style={{ fontSize:11, color:'#94a3b8', marginLeft:6 }}>\u00b7 {row.company}</span>}
+                    {showCompany && row.company && <span style={{ fontSize:11, color:'#94a3b8', marginLeft:6 }}>· {row.company}</span>}
                   </div>
                   <span style={{ fontSize:13, fontWeight:700, color:i===0?color:'#475569', flexShrink:0, marginLeft:8 }}>{row.count}</span>
                 </div>
@@ -175,7 +175,7 @@ function TopList({ data, label, color, showCompany, onDrilldown }) {
   )
 }
 
-// \u2500\u2500 Shared filter bar \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ── Shared filter bar ───────────────────────────────────────────
 function FilterBar({ preset, setPreset, customFrom, setCustomFrom, customTo, setCustomTo, filterDispositions, setFilterDispositions, filterSources, setFilterSources, filterUsers, setFilterUsers, users, activeTab }) {
   const dispositionOpts = activeTab === 'orders' ? ['Processed','Cancelled'] : DISPOSITIONS.filter(d => d !== 'Processed' && d !== 'Cancelled')
   const sourceOpts = activeTab === 'orders' ? ORDER_SOURCES : LEAD_SOURCES
@@ -192,7 +192,7 @@ function FilterBar({ preset, setPreset, customFrom, setCustomFrom, customTo, set
         {preset === 'custom' && (
           <div style={{ display:'flex', alignItems:'center', gap:8, background:'#fff', border:`1px solid ${BRAND}40`, borderRadius:12, padding:'6px 14px' }}>
             <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} style={{ padding:'4px 8px', border:'1px solid #e2e8f0', borderRadius:8, fontSize:13, outline:'none' }} />
-            <span style={{ color:'#94a3b8' }}>\u2192</span>
+            <span style={{ color:'#94a3b8' }}>→</span>
             <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} style={{ padding:'4px 8px', border:'1px solid #e2e8f0', borderRadius:8, fontSize:13, outline:'none' }} />
           </div>
         )}
@@ -202,18 +202,18 @@ function FilterBar({ preset, setPreset, customFrom, setCustomFrom, customTo, set
         <MultiSelect placeholder={activeTab === 'orders' ? 'All Statuses' : 'All Dispositions'} options={dispositionOpts} selected={filterDispositions} onChange={setFilterDispositions} />
         <MultiSelect placeholder="All Sources" options={sourceOpts} selected={filterSources} onChange={setFilterSources} />
         <MultiSelect placeholder="All Team Members" options={users.map(u => ({ value: String(u.id), label: u.name }))} selected={filterUsers} onChange={setFilterUsers} />
-        {hasFilters && <button onClick={() => { setFilterDispositions([]); setFilterSources([]); setFilterUsers([]) }} style={{ fontSize:12, fontWeight:600, color:'#ef4444', background:'#fef2f2', border:'1px solid #fecaca', borderRadius:10, padding:'6px 12px', cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>\u2715 Clear filters</button>}
+        {hasFilters && <button onClick={() => { setFilterDispositions([]); setFilterSources([]); setFilterUsers([]) }} style={{ fontSize:12, fontWeight:600, color:'#ef4444', background:'#fef2f2', border:'1px solid #fecaca', borderRadius:10, padding:'6px 12px', cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>✕ Clear filters</button>}
       </div>
     </div>
   )
 }
 
-// \u2500\u2500 Loader \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ── Loader ──────────────────────────────────────────────────────
 function Loader() {
   return <div style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:'80px 0' }}><div style={{ width:32, height:32, borderRadius:'50%', border:`2px solid ${BRAND}`, borderTopColor:'transparent', animation:'spin 0.8s linear infinite' }} /></div>
 }
 
-// \u2500\u2500 Overview Tab \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ── Overview Tab ────────────────────────────────────────────────
 function OverviewTab({ filters, users, onDrilldown }) {
   const { navigate } = useNav()
   const [data, setData] = useState(null)
@@ -239,9 +239,9 @@ function OverviewTab({ filters, users, onDrilldown }) {
   return (
     <div>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:16, marginBottom:24 }}>
-        <MetricCard label="Total Leads" value={getTotal('lead')} color="#3b82f6" onClick={() => onDrilldown({ title:'All Leads', type:'lead', filters: { from: filters.from, to: filters.to } })} sub={<button onClick={e => { e.stopPropagation(); navigate('leads') }} style={{ color:BRAND, background:'none', border:'none', cursor:'pointer', fontSize:12, padding:0, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>View all \u2192</button>} />
-        <MetricCard label="Repeat Inquiries" value={getTotal('repeat')} color="#6366f1" onClick={() => onDrilldown({ title:'All Repeat Inquiries', type:'repeat', filters: { from: filters.from, to: filters.to } })} sub={<button onClick={e => { e.stopPropagation(); navigate('repeat') }} style={{ color:BRAND, background:'none', border:'none', cursor:'pointer', fontSize:12, padding:0, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>View all \u2192</button>} />
-        <MetricCard label="Online Orders" value={getTotal('online_order')} color="#f59e0b" onClick={() => onDrilldown({ title:'All Online Orders', type:'online_order', filters: { from: filters.from, to: filters.to } })} sub={<button onClick={e => { e.stopPropagation(); navigate('orders') }} style={{ color:BRAND, background:'none', border:'none', cursor:'pointer', fontSize:12, padding:0, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>View all \u2192</button>} />
+        <MetricCard label="Total Leads" value={getTotal('lead')} color="#3b82f6" onClick={() => onDrilldown({ title:'All Leads', type:'lead', filters: { from: filters.from, to: filters.to } })} sub={<button onClick={e => { e.stopPropagation(); navigate('leads') }} style={{ color:BRAND, background:'none', border:'none', cursor:'pointer', fontSize:12, padding:0, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>View all →</button>} />
+        <MetricCard label="Repeat Inquiries" value={getTotal('repeat')} color="#6366f1" onClick={() => onDrilldown({ title:'All Repeat Inquiries', type:'repeat', filters: { from: filters.from, to: filters.to } })} sub={<button onClick={e => { e.stopPropagation(); navigate('repeat') }} style={{ color:BRAND, background:'none', border:'none', cursor:'pointer', fontSize:12, padding:0, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>View all →</button>} />
+        <MetricCard label="Online Orders" value={getTotal('online_order')} color="#f59e0b" onClick={() => onDrilldown({ title:'All Online Orders', type:'online_order', filters: { from: filters.from, to: filters.to } })} sub={<button onClick={e => { e.stopPropagation(); navigate('orders') }} style={{ color:BRAND, background:'none', border:'none', cursor:'pointer', fontSize:12, padding:0, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>View all →</button>} />
         <MetricCard label="Win Rate" value={`${wonRate}%`} color={BRAND} sub={`${data?.wonCount||0} of ${data?.totalCount||0}`} />
       </div>
       <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:20, marginBottom:20 }}>
@@ -260,7 +260,7 @@ function OverviewTab({ filters, users, onDrilldown }) {
       </div>
       {data?.upcomingFollowups?.length > 0 && (
         <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
-          <SectionTitle>\ud83d\udcc5 Upcoming Follow-ups</SectionTitle>
+          <SectionTitle>📅 Upcoming Follow-ups</SectionTitle>
           {data.upcomingFollowups.map(fu => (
             <div key={fu.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid #f8fafc' }}>
               <div><div style={{ fontWeight:600, fontSize:14, color:'#0f172a' }}>{fu.customer_name}</div><div style={{ fontSize:12, color:'#94a3b8' }}>{fu.note}</div></div>
@@ -273,7 +273,7 @@ function OverviewTab({ filters, users, onDrilldown }) {
   )
 }
 
-// \u2500\u2500 Module data fetcher hook \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ── Module data fetcher hook ────────────────────────────────────
 function useModuleData(type, filters) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -294,7 +294,7 @@ function useModuleData(type, filters) {
   return { data, loading }
 }
 
-// \u2500\u2500 Leads Tab \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ── Leads Tab ───────────────────────────────────────────────────
 function LeadsTab({ filters, onDrilldown }) {
   const { data, loading } = useModuleData('lead', filters)
   if (loading) return <Loader />
@@ -316,7 +316,7 @@ function LeadsTab({ filters, onDrilldown }) {
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:24 }}>
         <MetricCard label="Leads Received" value={data.today.total} color="#3b82f6" onClick={() => drill('Leads Today', { from: new Date().toISOString().split('T')[0], to: new Date().toISOString().split('T')[0] })} />
         {(data.today.perAE||[]).slice(0,3).map((ae,i) => (
-          <MetricCard key={ae.name} label={`${ae.name} \u2014 Today`} value={ae.count} color={CHART_COLORS[i+1]} />
+          <MetricCard key={ae.name} label={`${ae.name} — Today`} value={ae.count} color={CHART_COLORS[i+1]} />
         ))}
       </div>
 
@@ -336,7 +336,7 @@ function LeadsTab({ filters, onDrilldown }) {
 
       <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:20, marginBottom:20 }}>
         <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
-          <SectionTitle>Lead Trend \u2014 Won vs Total</SectionTitle>
+          <SectionTitle>Lead Trend — Won vs Total</SectionTitle>
           {trendData.length === 0 ? <div style={{ height:180, display:'flex', alignItems:'center', justifyContent:'center', color:'#94a3b8' }}>No data</div> : (
             <ResponsiveContainer width="100%" height={200}><BarChart data={trendData} barSize={8} barGap={2}><XAxis dataKey="date" tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} /><Tooltip content={<Tip />} /><Bar dataKey="total" name="Total" fill="#3b82f6" radius={[3,3,0,0]} /><Bar dataKey="won" name="Won" fill="#10b981" radius={[3,3,0,0]} /></BarChart></ResponsiveContainer>
           )}
@@ -397,7 +397,7 @@ function LeadsTab({ filters, onDrilldown }) {
             <tbody>
               {(data.aePerformance||[]).filter(ae=>ae.name).map((ae,i) => {
                 const wr = ae.total>0 ? Math.round(ae.won/ae.total*100) : 0
-                const topSrc = (aeSourceMap[ae.name]||[])[0]?.source || '\u2014'
+                const topSrc = (aeSourceMap[ae.name]||[])[0]?.source || '—'
                 return (
                   <tr key={ae.id||ae.name} onClick={() => drill(`${ae.name}'s Leads`, { assigned_to: String(ae.id) })} style={{ background:i%2===0?'#fff':'#fafbfc', borderBottom:'1px solid #f1f5f9', cursor:'pointer', transition:'background 0.1s' }}
                     onMouseEnter={e => e.currentTarget.style.background=`${BRAND}08`}
@@ -433,7 +433,7 @@ function LeadsTab({ filters, onDrilldown }) {
   )
 }
 
-// \u2500\u2500 Repeat Tab \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ── Repeat Tab ──────────────────────────────────────────────────
 function RepeatTab({ filters, onDrilldown }) {
   const { data, loading } = useModuleData('repeat', filters)
   if (loading) return <Loader />
@@ -459,9 +459,9 @@ function RepeatTab({ filters, onDrilldown }) {
 
       {/* Top 3 lists side by side */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:20, marginBottom:20 }}>
-        <TopList data={data.topCustomers} label="\ud83c\udfc6 Top Customers" color="#6366f1" showCompany onDrilldown={onDrilldown} />
-        <TopList data={data.topReps} label="\u2b50 Top Reps" color={BRAND} showCompany={false} onDrilldown={onDrilldown} />
-        <TopList data={data.topCompanies} label="\ud83c\udfe2 Top Companies" color="#f59e0b" showCompany={false} onDrilldown={onDrilldown} />
+        <TopList data={data.topCustomers} label="🏆 Top Customers" color="#6366f1" showCompany onDrilldown={onDrilldown} />
+        <TopList data={data.topReps} label="⭐ Top Reps" color={BRAND} showCompany={false} onDrilldown={onDrilldown} />
+        <TopList data={data.topCompanies} label="🏢 Top Companies" color="#f59e0b" showCompany={false} onDrilldown={onDrilldown} />
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, marginBottom:20 }}>
@@ -495,7 +495,7 @@ function RepeatTab({ filters, onDrilldown }) {
   )
 }
 
-// \u2500\u2500 Orders Tab \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ── Orders Tab ──────────────────────────────────────────────────
 function OrdersTab({ filters, onDrilldown }) {
   const { data, loading } = useModuleData('online_order', filters)
   if (loading) return <Loader />
@@ -567,7 +567,7 @@ function OrdersTab({ filters, onDrilldown }) {
   )
 }
 
-// \u2500\u2500 Main Dashboard \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ── Main Dashboard ──────────────────────────────────────────────
 export default function Dashboard() {
   const { user } = useAuth()
   const [activeTab, setActiveTab] = useState('overview')
@@ -588,10 +588,10 @@ export default function Dashboard() {
   const greeting = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening' }
 
   const tabs = [
-    { key: 'overview', label: '\u25a3 Overview' },
-    { key: 'leads',    label: '\u25ce Leads' },
-    { key: 'repeat',   label: '\u21bb Repeat' },
-    { key: 'orders',   label: '\u25c8 Online Orders' },
+    { key: 'overview', label: '▣ Overview' },
+    { key: 'leads',    label: '◎ Leads' },
+    { key: 'repeat',   label: '↻ Repeat' },
+    { key: 'orders',   label: '◈ Online Orders' },
   ]
 
   return (
@@ -599,11 +599,11 @@ export default function Dashboard() {
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
       <div style={{ marginBottom:20 }}>
-        <h1 className="font-display font-bold text-2xl text-ink-900">{greeting()}, {user.name} \ud83d\udc4b</h1>
-        <p className="text-ink-400 text-sm mt-0.5">Tech Atlantix \u00b7 Sales Analytics</p>
+        <h1 className="font-display font-bold text-2xl text-ink-900">{greeting()}, {user.name} 👋</h1>
+        <p className="text-ink-400 text-sm mt-0.5">Tech Atlantix · Sales Analytics</p>
       </div>
 
-      {/* Shared filter bar \u2014 same for ALL tabs */}
+      {/* Shared filter bar — same for ALL tabs */}
       <FilterBar
         preset={preset} setPreset={setPreset}
         customFrom={customFrom} setCustomFrom={setCustomFrom}
@@ -621,7 +621,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Tab content \u2014 all receive same filters */}
+      {/* Tab content — all receive same filters */}
       {activeTab === 'overview' && <OverviewTab filters={filters} users={users} onDrilldown={setDrilldown} />}
       {activeTab === 'leads'    && <LeadsTab    filters={filters} onDrilldown={setDrilldown} />}
       {activeTab === 'repeat'   && <RepeatTab   filters={filters} onDrilldown={setDrilldown} />}
