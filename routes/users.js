@@ -25,7 +25,11 @@ function generatePassword() {
 
 router.get('/', (req, res) => {
   const db = getDB();
-  res.json(db.prepare('SELECT id, username, name, role, created_at FROM users ORDER BY role DESC, name').all());
+  try {
+    res.json(db.prepare('SELECT id, username, name, role, created_at FROM users ORDER BY role DESC, name').all());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.post('/', requireManager, (req, res) => {
@@ -36,43 +40,62 @@ router.post('/', requireManager, (req, res) => {
   try {
     const result = db.prepare("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, ?)").run(username.toLowerCase().trim(), hash, name.trim(), role || 'ae');
     res.json({ id: result.lastInsertRowid, username: username.toLowerCase(), name, role: role || 'ae' });
-  } catch {
-    res.status(400).json({ error: 'Username already taken' });
+  } catch (err) {
+    if (err.message && err.message.includes('UNIQUE')) {
+      res.status(400).json({ error: 'Username already taken' });
+    } else {
+      res.status(400).json({ error: err.message });
+    }
   }
 });
 
 router.put('/:id', requireManager, (req, res) => {
   const { name, role, password } = req.body;
   const db = getDB();
-  if (password) {
-    db.prepare('UPDATE users SET name=?, role=?, password=? WHERE id=?').run(name, role, bcrypt.hashSync(password, 10), req.params.id);
-  } else {
-    db.prepare('UPDATE users SET name=?, role=? WHERE id=?').run(name, role, req.params.id);
+  try {
+    if (password) {
+      db.prepare('UPDATE users SET name=?, role=?, password=? WHERE id=?').run(name, role, bcrypt.hashSync(password, 10), req.params.id);
+    } else {
+      db.prepare('UPDATE users SET name=?, role=? WHERE id=?').run(name, role, req.params.id);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
-  res.json({ success: true });
 });
 
 router.delete('/:id', requireManager, (req, res) => {
   const db = getDB();
   if (parseInt(req.params.id) === req.user.id) return res.status(400).json({ error: "Can't delete yourself" });
-  db.prepare('DELETE FROM users WHERE id=?').run(req.params.id);
-  res.json({ success: true });
+  try {
+    db.prepare('DELETE FROM users WHERE id=?').run(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// Reset all AE passwords to random \u2014 managers only
+// Reset all AE passwords to random — managers only
 router.post('/reset-ae-passwords', requireManager, (req, res) => {
   const db = getDB();
-  const aes = db.prepare("SELECT id, name, username FROM users WHERE role = 'ae' ORDER BY name").all();
-  if (!aes.length) return res.json({ results: [] });
+  try {
+    const aes = db.prepare("SELECT id, name, username FROM users WHERE role = 'ae' ORDER BY name").all();
+    if (!aes.length) return res.json({ results: [] });
 
-  const results = aes.map(ae => {
-    const newPassword = generatePassword();
-    const hash = bcrypt.hashSync(newPassword, 10);
-    db.prepare('UPDATE users SET password=? WHERE id=?').run(hash, ae.id);
-    return { id: ae.id, name: ae.name, username: ae.username, password: newPassword };
-  });
+    const results = [];
+    db.transaction(() => {
+      aes.forEach(ae => {
+        const newPassword = generatePassword();
+        const hash = bcrypt.hashSync(newPassword, 10);
+        db.prepare('UPDATE users SET password=? WHERE id=?').run(hash, ae.id);
+        results.push({ id: ae.id, name: ae.name, username: ae.username, password: newPassword });
+      });
+    })();
 
-  res.json({ results });
+    res.json({ results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

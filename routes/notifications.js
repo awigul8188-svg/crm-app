@@ -26,59 +26,75 @@ router.get('/', (req, res) => {
     WHERE f.completed = 0 ${userFilter}
   `;
 
-  const overdue  = db.prepare(`${base} AND f.follow_up_date < ? ORDER BY f.follow_up_date ASC LIMIT 50`).all(...params, today);
-  const dueToday = db.prepare(`${base} AND f.follow_up_date = ? ORDER BY f.id ASC LIMIT 50`).all(...params, today);
-  const upcoming = db.prepare(`${base} AND f.follow_up_date > ? AND f.follow_up_date <= ? ORDER BY f.follow_up_date ASC LIMIT 50`).all(...params, today, in7days);
+  try {
+    const overdue  = db.prepare(`${base} AND f.follow_up_date < ? ORDER BY f.follow_up_date ASC LIMIT 50`).all(...params, today);
+    const dueToday = db.prepare(`${base} AND f.follow_up_date = ? ORDER BY f.id ASC LIMIT 50`).all(...params, today);
+    const upcoming = db.prepare(`${base} AND f.follow_up_date > ? AND f.follow_up_date <= ? ORDER BY f.follow_up_date ASC LIMIT 50`).all(...params, today, in7days);
 
-  // Activity notifications \u2014 only for managers
-  let activity = [];
-  let unreadActivity = 0;
-  if (req.user.role === 'manager') {
-    activity = db.prepare(`
-      SELECT n.*, 
-        CASE n.inquiry_type 
-          WHEN 'lead' THEN '\u25ce'
-          WHEN 'repeat' THEN '\u21bb'
-          WHEN 'online_order' THEN '\u25c8'
-          ELSE '\u2022'
-        END as type_icon
-      FROM notifications n
-      WHERE n.user_id = ?
-      ORDER BY n.created_at DESC
-      LIMIT 100
-    `).all(req.user.id);
-    unreadActivity = activity.filter(n => !n.read).length;
+    // Activity notifications — only for managers
+    let activity = [];
+    let unreadActivity = 0;
+    if (req.user.role === 'manager') {
+      activity = db.prepare(`
+        SELECT n.*, 
+          CASE n.inquiry_type 
+            WHEN 'lead' THEN '◎'
+            WHEN 'repeat' THEN '↻'
+            WHEN 'online_order' THEN '❖'
+            ELSE '•'
+          END as type_icon
+        FROM notifications n
+        WHERE n.user_id = ?
+        ORDER BY n.created_at DESC
+        LIMIT 100
+      `).all(req.user.id);
+      unreadActivity = activity.filter(n => !n.read).length;
+    }
+
+    const followupCount = overdue.length + dueToday.length + upcoming.length;
+
+    res.json({
+      followups: { overdue, today: dueToday, upcoming },
+      activity,
+      total: followupCount + unreadActivity,
+      unreadActivity,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  const followupCount = overdue.length + dueToday.length + upcoming.length;
-
-  res.json({
-    followups: { overdue, today: dueToday, upcoming },
-    activity,
-    total: followupCount + unreadActivity,
-    unreadActivity,
-  });
 });
 
 // Mark a single notification as read
 router.patch('/:id/read', (req, res) => {
   const db = getDB();
-  db.prepare('UPDATE notifications SET read = 1 WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
-  res.json({ success: true });
+  try {
+    db.prepare('UPDATE notifications SET read = 1 WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 // Mark all activity notifications as read
 router.post('/read-all', (req, res) => {
   const db = getDB();
-  db.prepare('UPDATE notifications SET read = 1 WHERE user_id = ?').run(req.user.id);
-  res.json({ success: true });
+  try {
+    db.prepare('UPDATE notifications SET read = 1 WHERE user_id = ?').run(req.user.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 // Mark a follow-up complete
 router.patch('/followup/:id/complete', (req, res) => {
   const db = getDB();
-  db.prepare('UPDATE followups SET completed = 1 WHERE id = ?').run(req.params.id);
-  res.json({ success: true });
+  try {
+    db.prepare('UPDATE followups SET completed = 1 WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 module.exports = router;

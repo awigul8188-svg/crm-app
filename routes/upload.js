@@ -38,22 +38,27 @@ const upload = multer({
 });
 
 // POST /api/upload/:type/:userId
-router.post('/:type/:userId', upload.single('file'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+router.post('/:type/:userId', (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-  const db = getDB();
-  const { type, userId } = req.params;
-  const subDir = type === 'avatar' ? 'avatars' : 'ringtones';
-  const ext = path.extname(req.file.filename);
-  const url = `/uploads/${subDir}/${userId}${ext}`;
+    const db = getDB();
+    const { type, userId } = req.params;
+    const subDir = type === 'avatar' ? 'avatars' : 'ringtones';
+    const ext = path.extname(req.file.filename);
+    const url = `/uploads/${subDir}/${userId}${ext}`;
 
-  if (type === 'avatar') {
-    db.prepare('UPDATE users SET avatar = ? WHERE id = ?').run(url, userId);
-  } else if (type === 'ringtone') {
-    db.prepare('UPDATE users SET ringtone = ? WHERE id = ?').run(url, userId);
-  }
+    if (type === 'avatar') {
+      db.prepare('UPDATE users SET avatar = ? WHERE id = ?').run(url, userId);
+    } else if (type === 'ringtone') {
+      db.prepare('UPDATE users SET ringtone = ? WHERE id = ?').run(url, userId);
+    }
 
-  res.json({ success: true, url });
+    res.json({ success: true, url });
+  });
 });
 
 // DELETE /api/upload/:type/:userId

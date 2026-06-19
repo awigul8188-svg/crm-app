@@ -34,31 +34,44 @@ const upload = multer({
   }
 });
 
-router.post('/upload', upload.single('ringtone'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-  
-  const db = getDB();
-  const filePath = `/uploads/ringtones/${req.file.filename}`;
-  
-  db.prepare('UPDATE users SET ringtone = ? WHERE id = ?').run(filePath, req.user.id);
-  
-  res.json({ success: true, path: filePath });
+router.post('/upload', (req, res, next) => {
+  upload.single('ringtone')(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    
+    try {
+      const db = getDB();
+      const filePath = `/uploads/ringtones/${req.file.filename}`;
+      
+      db.prepare('UPDATE users SET ringtone = ? WHERE id = ?').run(filePath, req.user.id);
+      
+      res.json({ success: true, path: filePath });
+    } catch (dbErr) {
+      res.status(500).json({ error: dbErr.message });
+    }
+  });
 });
 
 router.delete('/:userId/ringtone', (req, res) => {
   const db = getDB();
-  const user = db.prepare('SELECT ringtone FROM users WHERE id = ?').get(req.params.userId);
-  
-  if (user && user.ringtone) {
-    const uploadDir = req.app.get('uploadDir');
-    const filePath = path.join(uploadDir, user.ringtone.replace('/uploads/', ''));
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+  try {
+    const user = db.prepare('SELECT ringtone FROM users WHERE id = ?').get(req.params.userId);
+    
+    if (user && user.ringtone) {
+      const uploadDir = req.app.get('uploadDir');
+      const filePath = path.join(uploadDir, user.ringtone.replace('/uploads/', ''));
+      if (fs.existsSync(filePath)) {
+        try { fs.unlinkSync(filePath); } catch {}
+      }
     }
+    
+    db.prepare('UPDATE users SET ringtone = NULL WHERE id = ?').run(req.params.userId);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  
-  db.prepare('UPDATE users SET ringtone = NULL WHERE id = ?').run(req.params.userId);
-  res.json({ success: true });
 });
 
 module.exports = router;

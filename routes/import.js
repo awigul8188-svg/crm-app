@@ -105,7 +105,7 @@ router.post('/', upload.single('file'), (req, res) => {
   `);
   const insertReq = db.prepare("INSERT INTO requirements (inquiry_id, part_number, quantity) VALUES (?, ?, ?)");
 
-  // \u2500\u2500 Online Orders \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // ── Online Orders ────────────────────────────────────────────────────────
   const ordersSheet = findSheet(wb, ['online order', 'orders']);
   if (ordersSheet) {
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[ordersSheet], { defval: '' });
@@ -136,7 +136,7 @@ router.post('/', upload.single('file'), (req, res) => {
     } catch (e) { errors.push(`Online Orders sheet error: ${e.message}`); }
   }
 
-  // \u2500\u2500 New Leads \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // ── New Leads ────────────────────────────────────────────────────────────
   const leadsSheet = findSheet(wb, ['new lead', 'lead']);
   if (leadsSheet) {
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[leadsSheet], { defval: '' });
@@ -165,7 +165,7 @@ router.post('/', upload.single('file'), (req, res) => {
     } catch (e) { errors.push(`Leads sheet error: ${e.message}`); }
   }
 
-  // \u2500\u2500 Repeat Inquiries \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // ── Repeat Inquiries ─────────────────────────────────────────────────────
   const repeatSheet = findSheet(wb, ['repeat']);
   if (repeatSheet) {
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[repeatSheet], { defval: '' });

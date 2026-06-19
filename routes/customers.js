@@ -21,9 +21,14 @@ router.post('/', (req, res) => {
   if (!name) return res.status(400).json({ error: 'Name is required' });
   const db = getDB();
   const assignee = req.user.role === 'ae' ? req.user.id : (assigned_to || req.user.id);
-  const result = db.prepare('INSERT INTO customers (name, email, phone, company, lead_source, assigned_to) VALUES (?, ?, ?, ?, ?, ?)').run(name, email || null, phone || null, company || null, lead_source || null, assignee);
-  db.prepare("INSERT INTO activity_log (entity_type, entity_id, user_id, user_name, action) VALUES ('customer', ?, ?, ?, 'Customer created')").run(result.lastInsertRowid, req.user.id, req.user.name);
-  res.json({ id: result.lastInsertRowid });
+  
+  try {
+    const result = db.prepare('INSERT INTO customers (name, email, phone, company, lead_source, assigned_to) VALUES (?, ?, ?, ?, ?, ?)').run(name, email || null, phone || null, company || null, lead_source || null, assignee);
+    db.prepare("INSERT INTO activity_log (entity_type, entity_id, user_id, user_name, action) VALUES ('customer', ?, ?, ?, 'Customer created')").run(result.lastInsertRowid, req.user.id, req.user.name);
+    res.json({ id: result.lastInsertRowid });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 router.get('/:id', (req, res) => {
@@ -37,17 +42,27 @@ router.get('/:id', (req, res) => {
 
 router.put('/:id', (req, res) => {
   const { name, email, phone, company, lead_source, assigned_to } = req.body;
+  if (!name) return res.status(400).json({ error: 'Name is required' });
   const db = getDB();
-  db.prepare('UPDATE customers SET name=?, email=?, phone=?, company=?, lead_source=?, assigned_to=? WHERE id=?').run(name, email || null, phone || null, company || null, lead_source || null, assigned_to, req.params.id);
-  db.prepare("INSERT INTO activity_log (entity_type, entity_id, user_id, user_name, action) VALUES ('customer', ?, ?, ?, 'Customer updated')").run(req.params.id, req.user.id, req.user.name);
-  res.json({ success: true });
+  
+  try {
+    db.prepare('UPDATE customers SET name=?, email=?, phone=?, company=?, lead_source=?, assigned_to=? WHERE id=?').run(name, email || null, phone || null, company || null, lead_source || null, assigned_to, req.params.id);
+    db.prepare("INSERT INTO activity_log (entity_type, entity_id, user_id, user_name, action) VALUES ('customer', ?, ?, ?, 'Customer updated')").run(req.params.id, req.user.id, req.user.name);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 // Delete - managers only
 router.delete('/:id', requireManager, (req, res) => {
   const db = getDB();
-  db.prepare('DELETE FROM customers WHERE id = ?').run(req.params.id);
-  res.json({ success: true });
+  try {
+    db.prepare('DELETE FROM customers WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

@@ -22,14 +22,14 @@ const BLOCKED_HTML = `<!DOCTYPE html><html><head><title>Access Restricted</title
 const server = http.createServer((req, res) => {
   if (req.url === '/debug-ip') {
     const forwarded = req.headers['x-forwarded-for'];
-    const ip = forwarded ? forwarded.split(',')[0].trim() : req.socket.remoteAddress;
+    const ip = forwarded ? forwarded.split(',')[0].trim() : (req.socket.remoteAddress || '');
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ detected_ip: ip, allowed_ips: ALLOWED_IPS, disabled: DISABLED }));
     return;
   }
   if (!DISABLED) {
     const forwarded = req.headers['x-forwarded-for'];
-    const ip = forwarded ? forwarded.split(',')[0].trim() : req.socket.remoteAddress;
+    const ip = forwarded ? forwarded.split(',')[0].trim() : (req.socket.remoteAddress || '');
     if (!ALLOWED_IPS.includes(ip)) {
       res.writeHead(403, { 'Content-Type': 'text/html' });
       res.end(BLOCKED_HTML);
