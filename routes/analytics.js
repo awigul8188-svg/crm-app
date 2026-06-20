@@ -137,12 +137,83 @@ router.get('/module', (req, res) => {
       const byDisposition = db.prepare(`SELECT i.disposition, COUNT(*) as count ${base} ${where} GROUP BY i.disposition ORDER BY count DESC`).all(...params);
       const bySource = db.prepare(`SELECT c.lead_source as source, COUNT(*) as count ${base} ${where} GROUP BY c.lead_source ORDER BY count DESC`).all(...params);
       const byPerson = db.prepare(`SELECT u.name, COUNT(*) as count ${base} ${where} GROUP BY i.assigned_to, u.name ORDER BY count DESC`).all(...params);
-      const trend = db.prepare(`SELECT date(i.created_at) as date, COUNT(*) as total ${base} ${where} GROUP BY date(i.created_at) ORDER BY date ASC`).all(...params);
+      const trend = db.prepare(`SELECT date(i.created_at) as date, COUNT(*) as total, SUM(CASE WHEN i.disposition='Closed Won' THEN 1 ELSE 0 END) as won ${base} ${where} GROUP BY date(i.created_at) ORDER BY date ASC`).all(...params);
+      const quoted = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'Quoted'`).get(...params).c;
+      const bidding = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'Bidding'`).get(...params).c;
+      const fake = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'Fake Lead'`).get(...params).c;
+      const noResponse = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'No response'`).get(...params).c;
+      const cold = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'Cold'`).get(...params).c;
+      const inProgress = periodTotal - closedWon - closedLost;
 
-      res.json({ type, today: { total: todayTotal }, period: { total: periodTotal, closed_won: closedWon, closed_lost: closedLost, win_rate: periodTotal > 0 ? Math.round(closedWon / periodTotal * 100) : 0 }, byDisposition, bySource, byPerson, trend });
+      res.json({ type, today: { total: todayTotal }, period: { total: periodTotal, closed_won: closedWon, closed_lost: closedLost, quoted, bidding, fake, no_response: noResponse, cold, in_progress: inProgress, win_rate: periodTotal > 0 ? Math.round(closedWon / periodTotal * 100) : 0 }, byDisposition, bySource, byPerson, trend });
     }
   } catch (err) {
     console.error('Module analytics error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// AE overview — personal dashboard summary
+router.get('/ae', (req, res) => {
+  const db = getDB();
+  const uid = req.user.id;
+  const today = new Date().toISOString().split('T')[0];
+  const base = `FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id WHERE i.assigned_to = ?`;
+
+  try {
+    // Today counts
+    const todayLeads   = db.prepare(`SELECT COUNT(*) as c ${base} AND i.type='lead'         AND date(i.created_at)=?`).get(uid, today).c;
+    const todayRepeat  = db.prepare(`SELECT COUNT(*) as c ${base} AND i.type='repeat'        AND date(i.created_at)=?`).get(uid, today).c;
+    const todayOrders  = db.prepare(`SELECT COUNT(*) as c ${base} AND i.type='online_order'  AND date(i.created_at)=?`).get(uid, today).c;
+
+    // Helper: won/total/rate for a date range (all types combined)
+    function stats(from, to) {
+      let sql = `SELECT COUNT(*) as total, SUM(CASE WHEN i.disposition='Closed Won' THEN 1 ELSE 0 END) as won ${base}`;
+      const p = [uid];
+      if (from) { sql += ` AND date(i.created_at) >= ?`; p.push(from); }
+      if (to)   { sql += ` AND date(i.created_at) <= ?`; p.push(to); }
+      const r = db.prepare(sql).get(...p);
+      const total = r.total || 0; const won = r.won || 0;
+      return { total, won, win_rate: total > 0 ? Math.round(won / total * 100) : 0 };
+    }
+
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const yearStart  = `${now.getFullYear()}-01-01`;
+
+    const month = stats(monthStart, today);
+    const year  = stats(yearStart, today);
+    const all   = stats(null, null);
+
+    // Weekly trend — last 8 weeks
+    const weeklyTrend = [];
+    for (let w = 7; w >= 0; w--) {
+      const wEnd = new Date(now); wEnd.setDate(wEnd.getDate() - w * 7);
+      const wStart = new Date(wEnd); wStart.setDate(wStart.getDate() - 6);
+      const r = db.prepare(`SELECT COUNT(*) as total, SUM(CASE WHEN i.disposition='Closed Won' THEN 1 ELSE 0 END) as won ${base} AND date(i.created_at) BETWEEN ? AND ?`).get(uid, wStart.toISOString().split('T')[0], wEnd.toISOString().split('T')[0]);
+      weeklyTrend.push({ total: r.total || 0, won: r.won || 0 });
+    }
+
+    // Active pipeline (open dispositions)
+    const pipeline = db.prepare(`SELECT i.disposition, COUNT(*) as count ${base} AND i.disposition NOT IN ('Closed Won','Closed Lost','Fake Lead','Processed','Cancelled') GROUP BY i.disposition ORDER BY count DESC`).all(uid);
+
+    // Follow-ups
+    const fuBase = `FROM followups f JOIN inquiries i ON f.inquiry_id = i.id JOIN customers c ON i.customer_id = c.id WHERE i.assigned_to = ? AND f.completed = 0`;
+    const overdue   = db.prepare(`SELECT f.id, f.note, f.follow_up_date, f.inquiry_id, c.name as customer_name ${fuBase} AND f.follow_up_date < ? ORDER BY f.follow_up_date ASC LIMIT 10`).all(uid, today);
+    const todayFu   = db.prepare(`SELECT f.id, f.note, f.follow_up_date, f.inquiry_id, c.name as customer_name ${fuBase} AND f.follow_up_date = ? ORDER BY f.follow_up_date ASC LIMIT 10`).all(uid, today);
+    const upcoming  = db.prepare(`SELECT f.id, f.note, f.follow_up_date, f.inquiry_id, c.name as customer_name ${fuBase} AND f.follow_up_date > ? ORDER BY f.follow_up_date ASC LIMIT 10`).all(uid, today);
+
+    // Untouched — no activity comment in 7+ days
+    const sevenDaysAgo = new Date(now); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const untouched = db.prepare(`SELECT i.id, i.type, i.disposition, c.name as customer_name, i.created_at,
+      (SELECT MAX(a.created_at) FROM activity_log a WHERE a.inquiry_id = i.id) as last_activity
+      FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id
+      WHERE i.assigned_to = ? AND i.disposition NOT IN ('Closed Won','Closed Lost','Fake Lead','Processed','Cancelled')
+      AND (last_activity IS NULL OR last_activity < ?) ORDER BY last_activity ASC LIMIT 8`).all(uid, sevenDaysAgo.toISOString());
+
+    res.json({ today: { leads: todayLeads, repeat: todayRepeat, orders: todayOrders }, month, year, all, weeklyTrend, pipeline, followups: { overdue, today: todayFu, upcoming }, untouched });
+  } catch (err) {
+    console.error('AE analytics error:', err);
     res.status(500).json({ error: err.message });
   }
 });

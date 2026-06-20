@@ -563,20 +563,24 @@ function AEOrdersTab({ dateFilters, onDrilldown }) {
   return (
     <div>
       <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:10 }}>Today</div>
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:12, marginBottom:20 }}>
-        <MetricCard label="Orders" value={t.total} color="#f59e0b" onClick={() => drill('My Orders Today', { from: new Date().toISOString().split('T')[0], to: new Date().toISOString().split('T')[0] })} />
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:12 }}>
+        <MetricCard label="Orders Today" value={t.total} color="#f59e0b" onClick={() => drill('My Orders Today', { from: new Date().toISOString().split('T')[0], to: new Date().toISOString().split('T')[0] })} />
         <MetricCard label="Verified" value={t.verified} color="#10b981" />
         <MetricCard label="Not Verified" value={t.not_verified} color="#ef4444" />
-        <MetricCard label="Value" value={t.value.toFixed(0)} color={BRAND} prefix="$" />
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:20 }}>
+        <MetricCard label="Value Today" value={t.value.toFixed(0)} color={BRAND} prefix="$" />
         <MetricCard label="Processed" value={t.processed} color="#10b981" onClick={() => drill('My Processed Orders Today', { from: new Date().toISOString().split('T')[0], to: new Date().toISOString().split('T')[0], disposition:'Processed' })} />
         <MetricCard label="Cancelled" value={t.cancelled} color="#ef4444" />
       </div>
 
       <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:10 }}>Period</div>
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:12, marginBottom:24 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:12 }}>
         <MetricCard label="Total Orders" value={p.total} color="#f59e0b" onClick={() => drill('All My Orders')} />
         <MetricCard label="Verified" value={p.verified} color="#10b981" />
         <MetricCard label="Not Verified" value={p.not_verified} color="#ef4444" />
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:24 }}>
         <MetricCard label="Total Value" value={p.value.toFixed(0)} color={BRAND} prefix="$" />
         <MetricCard label="Processed" value={p.processed} color="#10b981" sub={p.total>0?`${Math.round(p.processed/p.total*100)}%`:''} onClick={() => drill('My Processed Orders', { disposition:'Processed' })} />
         <MetricCard label="Cancelled" value={p.cancelled} color="#ef4444" sub={p.total>0?`${Math.round(p.cancelled/p.total*100)}%`:''} onClick={() => drill('My Cancelled Orders', { disposition:'Cancelled' })} />
@@ -619,7 +623,7 @@ function AEOverviewTab({ data, dateFilters, onDrilldown, onNavigate }) {
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, marginBottom:20 }}>
         <div style={{ background:'#fff', borderRadius:14, border:'1px solid #f1f5f9', padding:18 }}>
-          <STitle>?? My Performance</STitle>
+          <STitle>📈 My Performance</STitle>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:16 }}>
             {[['This Month',data.month.won,data.month.total,data.month.win_rate,'#10b981'],['This Year',data.year.won,data.year.total,data.year.win_rate,BRAND],['All Time',data.all.won,data.all.total,data.all.win_rate,'#6366f1']].map(([lbl,won,total,rate,clr]) => (
               <div key={lbl} style={{ background:'#f8fafc', borderRadius:12, padding:'12px 14px', textAlign:'center' }}>
@@ -645,7 +649,7 @@ function AEOverviewTab({ data, dateFilters, onDrilldown, onNavigate }) {
         </div>
 
         <div style={{ background:'#fff', borderRadius:14, border:'1px solid #f1f5f9', padding:18 }}>
-          <STitle>?? My Active Pipeline</STitle>
+          <STitle>📋 My Active Pipeline</STitle>
           {!data.pipeline?.length ? <div style={{ textAlign:'center', color:'#94a3b8', padding:'32px 0' }}>No active pipeline</div> : (
             <ResponsiveContainer width="100%" height={200}><BarChart data={data.pipeline.slice(0,7)} layout="vertical" barSize={12}><XAxis type="number" tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} /><YAxis type="category" dataKey="disposition" tick={{ fontSize:10, fill:'#475569' }} axisLine={false} tickLine={false} width={100} /><Tooltip content={<Tip />} /><Bar dataKey="count" name="Count" fill={BRAND} radius={[0,4,4,0]} /></BarChart></ResponsiveContainer>
           )}
@@ -654,7 +658,7 @@ function AEOverviewTab({ data, dateFilters, onDrilldown, onNavigate }) {
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
         <div style={{ background:'#fff', borderRadius:14, border:'1px solid #f1f5f9', padding:18 }}>
-          <STitle>?? My Follow-ups <span style={{ fontSize:12, color:'#94a3b8', fontWeight:400 }}>{data.followups?.overdue?.length + data.followups?.today?.length > 0 ? `⚠ ${data.followups.overdue.length + data.followups.today.length} urgent` : ''}</span></STitle>
+          <STitle>📅 My Follow-ups <span style={{ fontSize:12, color:'#94a3b8', fontWeight:400 }}>{data.followups?.overdue?.length + data.followups?.today?.length > 0 ? `⚠ ${data.followups.overdue.length + data.followups.today.length} urgent` : ''}</span></STitle>
           {[...( data.followups?.overdue||[]).map(f=>({...f,urgency:'overdue'})), ...(data.followups?.today||[]).map(f=>({...f,urgency:'today'})), ...(data.followups?.upcoming||[]).map(f=>({...f,urgency:'upcoming'}))].slice(0,6).map(fu => (
             <div key={fu.id} onClick={() => onNavigate('inquiry-detail',{id:fu.inquiry_id})} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:'1px solid #f8fafc', cursor:'pointer' }}>
               <div style={{ width:8, height:8, borderRadius:'50%', flexShrink:0, background: fu.urgency==='overdue'?'#ef4444':fu.urgency==='today'?'#f59e0b':BRAND }} />
@@ -666,7 +670,7 @@ function AEOverviewTab({ data, dateFilters, onDrilldown, onNavigate }) {
         </div>
 
         <div style={{ background:'#fff', borderRadius:14, border:'1px solid #f1f5f9', padding:18 }}>
-          <STitle>?? Needs Attention <span style={{ fontSize:12, color:'#94a3b8', fontWeight:400 }}>No activity 7+ days</span></STitle>
+          <STitle>⚠️ Needs Attention <span style={{ fontSize:12, color:'#94a3b8', fontWeight:400 }}>No activity 7+ days</span></STitle>
           {!data.untouched?.length ? <div style={{ textAlign:'center', color:'#94a3b8', padding:'20px 0', fontSize:13 }}>✅ All up to date!</div> : data.untouched.map(inq => (
             <div key={inq.id} onClick={() => onDrilldown({ title:'Needs Attention', type:inq.type, filters:{ disposition: inq.disposition } })}
               style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:'1px solid #f8fafc', cursor:'pointer' }}>
@@ -722,7 +726,7 @@ export default function AEDashboard() {
       {/* Header */}
       <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:24, flexWrap:'wrap', gap:12 }}>
         <div>
-          <h1 style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:800, fontSize:26, color:'#0f172a', margin:0 }}>{greeting()}, {user.name} ??</h1>
+          <h1 style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:800, fontSize:26, color:'#0f172a', margin:0 }}>{greeting()}, {user.name} <span style={{ fontFamily:'system-ui, Apple Color Emoji, Segoe UI Emoji, sans-serif' }}>👋</span></h1>
           <p style={{ color:'#94a3b8', fontSize:14, marginTop:4 }}>{new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' })}</p>
         </div>
         <div style={{ display:'flex', gap:8 }}>
