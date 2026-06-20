@@ -608,8 +608,9 @@ function AEOrdersTab({ dateFilters, onDrilldown }) {
 }
 
 // ── Overview Tab ────────────────────────────────────────────────
-function AEOverviewTab({ data, dateFilters, onDrilldown, onNavigate }) {
-  if (!data) return <Loader />
+function AEOverviewTab({ data, loading, dateFilters, onDrilldown, onNavigate }) {
+  if (loading) return <Loader />
+  if (!data) return <div style={{ textAlign:'center', padding:'60px 0', color:'#94a3b8', fontSize:14 }}>Could not load overview — please refresh.</div>
   const todayStr = new Date().toISOString().split('T')[0]
 
   return (
@@ -755,7 +756,7 @@ export default function AEDashboard() {
       </div>
 
       {/* Tab content */}
-      {activeTab === 'overview' && <AEOverviewTab data={overviewData} dateFilters={dateFilters} onDrilldown={setDrilldown} onNavigate={navigate} />}
+      {activeTab === 'overview' && <AEOverviewTab data={overviewData} loading={overviewLoading} dateFilters={dateFilters} onDrilldown={setDrilldown} onNavigate={navigate} />}
       {activeTab === 'leads'    && <AELeadsTab    dateFilters={dateFilters} onDrilldown={setDrilldown} />}
       {activeTab === 'repeat'   && <AERepeatTab   dateFilters={dateFilters} onDrilldown={setDrilldown} />}
       {activeTab === 'orders'   && <AEOrdersTab   dateFilters={dateFilters} onDrilldown={setDrilldown} />}
