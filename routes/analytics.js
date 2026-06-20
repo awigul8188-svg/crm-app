@@ -206,7 +206,7 @@ router.get('/ae', (req, res) => {
     // Untouched — no activity comment in 7+ days
     const sevenDaysAgo = new Date(now); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const untouched = db.prepare(`SELECT i.id, i.type, i.disposition, c.name as customer_name, i.created_at,
-      (SELECT MAX(a.created_at) FROM activity_log a WHERE a.inquiry_id = i.id) as last_activity
+      (SELECT MAX(a.created_at) FROM activity_log a WHERE a.entity_id = i.id AND a.entity_type = 'inquiry') as last_activity
       FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id
       WHERE i.assigned_to = ? AND i.disposition NOT IN ('Closed Won','Closed Lost','Fake Lead','Processed','Cancelled')
       AND (last_activity IS NULL OR last_activity < ?) ORDER BY last_activity ASC LIMIT 8`).all(uid, sevenDaysAgo.toISOString());
