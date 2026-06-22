@@ -1,7 +1,11 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../App'
 import { useNav } from '../App'
 import { api } from '../api'
+import {
+  LayoutDashboard, Target, RotateCcw, ShoppingBag, Users,
+  Bell, Upload, UserCog, LogOut,
+} from 'lucide-react'
 
 function TALogo({ size = 36 }) {
   return (
@@ -15,11 +19,16 @@ function TALogo({ size = 36 }) {
 }
 
 const NAV = [
-  { name: 'dashboard', label: 'Dashboard',       icon: '▣' },
-  { name: 'leads',     label: 'Leads',            icon: '◎' },
-  { name: 'repeat',    label: 'Repeat Inquiries', icon: '↻' },
-  { name: 'orders',    label: 'Online Orders',    icon: '◈' },
-  { name: 'customers', label: 'Customers',        icon: '◉' },
+  { name: 'dashboard', label: 'Dashboard',       Icon: LayoutDashboard },
+  { name: 'leads',     label: 'Leads',            Icon: Target },
+  { name: 'repeat',    label: 'Repeat Inquiries', Icon: RotateCcw },
+  { name: 'orders',    label: 'Online Orders',    Icon: ShoppingBag },
+  { name: 'customers', label: 'Customers',        Icon: Users },
+]
+
+const ADMIN_NAV = [
+  { name: 'import', label: 'Import Data', Icon: Upload },
+  { name: 'users',  label: 'Users',       Icon: UserCog },
 ]
 
 export default function Layout({ children }) {
@@ -32,7 +41,6 @@ export default function Layout({ children }) {
 
   useEffect(() => {
     loadNotifs()
-    // Load current user's avatar
     api.getUsers().then(users => {
       const me = users.find(u => u.id === user.id)
       if (me?.avatar_url) setAvatarUrl(me.avatar_url)
@@ -47,34 +55,39 @@ export default function Layout({ children }) {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <aside className="w-[230px] flex-shrink-0 flex flex-col"
-        style={{ background: '#0d0d0d', borderRight: '1px solid rgba(255,255,255,0.06)' }}>
+      <aside className="w-[224px] flex-shrink-0 flex flex-col"
+        style={{ background: '#0a0a0a', borderRight: '1px solid rgba(255,255,255,0.06)' }}>
 
         {/* Logo */}
         <div className="px-5 pt-6 pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
           <div className="flex items-center gap-3 mb-5">
-            <TALogo size={34} />
+            <TALogo size={32} />
             <div>
-              <div className="font-display font-bold text-white leading-none tracking-tight text-base">TECH</div>
-              <div className="font-display font-bold leading-none tracking-tight text-base" style={{ color: '#00D4C8' }}>ATLANTIX</div>
+              <div className="font-display font-bold text-white leading-none tracking-tight text-sm">TECH</div>
+              <div className="font-display font-bold leading-none tracking-tight text-sm" style={{ color: '#00D4C8' }}>ATLANTIX</div>
             </div>
           </div>
 
-          {/* User chip with avatar */}
+          {/* User chip */}
           <div className="flex items-center gap-2.5 rounded-xl px-3 py-2.5"
             style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
             {avatarUrl ? (
-              <img src={avatarUrl} alt={user.name} style={{ width:28, height:28, borderRadius:8, objectFit:'cover', flexShrink:0 }} onError={() => setAvatarUrl(null)} />
+              <img src={avatarUrl} alt={user.name}
+                style={{ width: 26, height: 26, borderRadius: 7, objectFit: 'cover', flexShrink: 0 }}
+                onError={() => setAvatarUrl(null)} />
             ) : (
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center text-dark-900 text-xs font-bold flex-shrink-0"
-                style={{ background: '#00D4C8' }}>
+              <div className="w-[26px] h-[26px] rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
+                style={{ background: '#00D4C8', color: '#0a0a0a' }}>
                 {user.name[0].toUpperCase()}
               </div>
             )}
             <div className="min-w-0">
               <div className="text-white text-xs font-semibold truncate">{user.name}</div>
-              <div className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>
-                {user.role === 'manager' ? 'Manager' : 'Account Executive'}
+              <div className="text-[10px] leading-none mt-0.5 truncate" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                {user.role === 'manager' ? 'Manager'
+                  : user.role === 'purchasing_manager' ? 'Purchasing Mgr'
+                  : user.role === 'purchaser' ? 'Purchaser'
+                  : 'Account Executive'}
               </div>
             </div>
           </div>
@@ -82,45 +95,50 @@ export default function Layout({ children }) {
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-          <div className="px-3 mb-2.5" style={{ color: 'rgba(255,255,255,0.2)', fontSize: '9px', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+          <div className="px-3 mb-2"
+            style={{ color: 'rgba(255,255,255,0.2)', fontSize: '9px', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
             Main Menu
           </div>
-          {NAV.map(item => (
-            <button key={item.name} onClick={() => navigate(item.name)}
-              className={`nav-item ${page.name === item.name ? 'nav-active' : 'nav-inactive'}`}>
-              <span className="text-sm w-5 text-center flex-shrink-0">{item.icon}</span>
-              <span>{item.label}</span>
-              {page.name === item.name && <span className="ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#00D4C8' }} />}
+
+          {NAV.map(({ name, label, Icon }) => (
+            <button key={name} onClick={() => navigate(name)}
+              className={`nav-item ${page.name === name ? 'nav-active' : 'nav-inactive'}`}>
+              <Icon size={15} className="flex-shrink-0" />
+              <span>{label}</span>
+              {page.name === name && (
+                <span className="ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#00D4C8' }} />
+              )}
             </button>
           ))}
 
           {/* Notifications */}
           <button onClick={() => navigate('notifications')}
             className={`nav-item ${page.name === 'notifications' ? 'nav-active' : 'nav-inactive'}`}>
-            <span className="text-sm w-5 text-center flex-shrink-0">🔔</span>
+            <Bell size={15} className="flex-shrink-0" />
             <span>Notifications</span>
             {notifCount > 0 && page.name !== 'notifications' && (
               <span className="ml-auto font-bold leading-none flex-shrink-0"
-                style={{ background: '#00D4C8', color: '#0d0d0d', fontSize: '10px', padding: '2px 7px', borderRadius: '20px', minWidth: '20px', textAlign: 'center' }}>
+                style={{ background: '#00D4C8', color: '#0a0a0a', fontSize: '10px', padding: '2px 7px', borderRadius: '20px', minWidth: '20px', textAlign: 'center' }}>
                 {notifCount > 99 ? '99+' : notifCount}
               </span>
             )}
           </button>
 
+          {/* Admin section — managers only */}
           {user.role === 'manager' && (
             <>
-              <div className="px-3 mt-5 mb-2.5" style={{ color: 'rgba(255,255,255,0.2)', fontSize: '9px', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+              <div className="px-3 mt-5 mb-2"
+                style={{ color: 'rgba(255,255,255,0.2)', fontSize: '9px', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
                 Admin
               </div>
-              {[
-                { name: 'import', label: 'Import Data', icon: '📥' },
-                { name: 'users',  label: 'Users',       icon: '⚙' },
-              ].map(item => (
-                <button key={item.name} onClick={() => navigate(item.name)}
-                  className={`nav-item ${page.name === item.name ? 'nav-active' : 'nav-inactive'}`}>
-                  <span className="text-sm w-5 text-center">{item.icon}</span>
-                  <span>{item.label}</span>
-                  {page.name === item.name && <span className="ml-auto w-1.5 h-1.5 rounded-full" style={{ background: '#00D4C8' }} />}
+              {ADMIN_NAV.map(({ name, label, Icon }) => (
+                <button key={name} onClick={() => navigate(name)}
+                  className={`nav-item ${page.name === name ? 'nav-active' : 'nav-inactive'}`}>
+                  <Icon size={15} className="flex-shrink-0" />
+                  <span>{label}</span>
+                  {page.name === name && (
+                    <span className="ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#00D4C8' }} />
+                  )}
                 </button>
               ))}
             </>
@@ -129,17 +147,17 @@ export default function Layout({ children }) {
 
         {/* Footer */}
         <div className="px-3 pb-5 pt-2" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
-          <button onClick={logout} className="nav-item nav-inactive mt-2">
-            <span className="text-sm w-5 text-center">→</span>
+          <button onClick={logout} className="nav-item nav-inactive">
+            <LogOut size={15} className="flex-shrink-0" />
             <span>Sign out</span>
           </button>
-          <div className="text-center mt-3" style={{ color: 'rgba(255,255,255,0.12)', fontSize: '9px' }}>
+          <div className="text-center mt-3" style={{ color: 'rgba(255,255,255,0.1)', fontSize: '9px' }}>
             Beyond Tech · Above Integration
           </div>
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto bg-surface-50">
+      <main className="flex-1 overflow-y-auto" style={{ background: '#f8fafc' }}>
         {children}
       </main>
     </div>

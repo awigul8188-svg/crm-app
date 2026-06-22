@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
+import { Search, Users } from 'lucide-react'
 import { api } from '../api'
 import { useAuth } from '../App'
 import { useNav } from '../App'
 import { LEAD_SOURCES } from '../components/Badges'
 import Modal from '../components/Modal'
 import MultiSelect from '../components/MultiSelect'
+import PageHeader from '../components/PageHeader'
 
 export default function Customers() {
   const { user } = useAuth()
@@ -46,28 +48,33 @@ export default function Customers() {
   const displayed = customers.filter(c => !filterSources.length || filterSources.includes(c.lead_source))
 
   return (
-    <div className="p-8 fade-in">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="font-display font-bold text-2xl text-ink-900">◉ Customers</h1>
-          <p className="text-ink-400 text-sm mt-0.5">{displayed.length} customers</p>
-        </div>
-        <button onClick={() => setShowNew(true)} className="btn-primary">+ New Customer</button>
-      </div>
+    <div className="page-wrap">
+      <PageHeader
+        icon={<Users size={18} />}
+        title="Customers"
+        subtitle={`${displayed.length} customer${displayed.length !== 1 ? 's' : ''}`}
+        action={<button onClick={() => setShowNew(true)} className="btn-primary">+ New Customer</button>}
+      />
 
-      <div className="flex gap-2.5 mb-5 flex-wrap items-center">
-        <div className="relative">
-          <input className="input pl-8 max-w-xs" placeholder="Search name, email, company..." value={search} onChange={e => handleSearch(e.target.value)} />
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-300 pointer-events-none">⌕</span>
+      <div className="flex gap-2 mb-5 flex-wrap items-center">
+        <div className="search-wrap">
+          <Search size={15} className="search-icon" />
+          <input className="input w-60" placeholder="Search name, email, company…" value={search} onChange={e => handleSearch(e.target.value)} />
         </div>
         <MultiSelect placeholder="All Lead Sources" options={LEAD_SOURCES} selected={filterSources} onChange={setFilterSources} />
-        {filterSources.length > 0 && <button onClick={() => setFilterSources([])} className="btn btn-ghost btn-sm text-red-500 hover:bg-red-50">✕ Clear</button>}
+        {filterSources.length > 0 && (
+          <button onClick={() => setFilterSources([])} className="btn btn-sm text-red-500 bg-red-50 border border-red-100 hover:bg-red-100">✕ Clear</button>
+        )}
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-24"><div className="w-7 h-7 rounded-full border-2 border-brand-400 border-t-transparent spinner" /></div>
       ) : displayed.length === 0 ? (
-        <div className="card p-16 text-center"><div className="text-5xl mb-3 opacity-20">◉</div><div className="font-display font-bold text-ink-400">No customers found</div></div>
+        <div className="card p-16 text-center">
+          <Users size={40} className="mx-auto mb-3 text-ink-200" />
+          <div className="font-display font-bold text-ink-400">No customers found</div>
+          <p className="text-ink-300 text-sm mt-1">Try adjusting your search or filters</p>
+        </div>
       ) : (
         <div className="card overflow-hidden">
           <table className="w-full">

@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
+import { UserCog, KeyRound, Copy, Check } from 'lucide-react'
 import { api } from '../api'
 import { useAuth } from '../App'
 import Modal from '../components/Modal'
+import PageHeader from '../components/PageHeader'
 
 const BRAND = '#00D4C8'
 const inp = { width:'100%', boxSizing:'border-box', background:'#fff', border:'1px solid #e2e8f0', borderRadius:'12px', padding:'10px 14px', fontSize:'13px', color:'#0f172a', fontFamily:'"Plus Jakarta Sans", sans-serif', outline:'none' }
@@ -14,10 +16,10 @@ const ROLE_INFO = {
 }
 
 const SECTIONS = [
-  { role: 'manager',            title: 'Managers',              icon: '⚙' },
-  { role: 'ae',                 title: 'Account Executives',    icon: '◎' },
-  { role: 'purchasing_manager', title: 'Purchasing Managers',   icon: '??' },
-  { role: 'purchaser',          title: 'Purchasers',            icon: '??' },
+  { role: 'manager',            title: 'Managers',              icon: '◆' },
+  { role: 'ae',                 title: 'Account Executives',    icon: '◈' },
+  { role: 'purchasing_manager', title: 'Purchasing Managers',   icon: '◉' },
+  { role: 'purchaser',          title: 'Purchasers',            icon: '◎' },
 ]
 
 function RoleBadge({ role }) {
@@ -117,38 +119,38 @@ export default function Users() {
     users.some(u => u.role === s.role) || (s.role === 'ae' || canManageRole(s.role))
   )
 
+  const headerActions = (
+    <div className="flex items-center gap-2 flex-wrap">
+      {user.role === 'manager' && (
+        <>
+          <button onClick={() => handleResetPasswords('ae')} disabled={resetting}
+            className="btn btn-sm text-red-600 bg-red-50 border border-red-100 hover:bg-red-100">
+            <KeyRound size={13} /> Reset AE Passwords
+          </button>
+          <button onClick={() => handleResetPasswords('purchaser')} disabled={resetting}
+            className="btn btn-sm text-amber-600 bg-amber-50 border border-amber-100 hover:bg-amber-100">
+            <KeyRound size={13} /> Reset Purchaser Passwords
+          </button>
+        </>
+      )}
+      {user.role === 'purchasing_manager' && (
+        <button onClick={() => handleResetPasswords('purchaser')} disabled={resetting}
+          className="btn btn-sm text-amber-600 bg-amber-50 border border-amber-100 hover:bg-amber-100">
+          <KeyRound size={13} /> Reset Purchaser Passwords
+        </button>
+      )}
+      <button onClick={() => { reset(); setShowNew(true) }} className="btn-primary">+ New User</button>
+    </div>
+  )
+
   return (
-    <div className="p-8 fade-in">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="font-display font-bold text-2xl text-ink-900">⚙ Users</h1>
-          <p className="text-ink-400 text-sm mt-0.5">
-            {user.role === 'manager' ? 'Manage all team members' : 'Manage your purchasers'}
-          </p>
-        </div>
-        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-          {user.role === 'manager' && (
-            <>
-              <button onClick={() => handleResetPasswords('ae')} disabled={resetting}
-                style={{ padding:'8px 14px', borderRadius:12, background:'#fff5f5', border:'1px solid #fecaca', color:'#dc2626', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans", sans-serif' }}>
-                ?? Reset AE Passwords
-              </button>
-              <button onClick={() => handleResetPasswords('purchaser')} disabled={resetting}
-                style={{ padding:'8px 14px', borderRadius:12, background:'#fff7ed', border:'1px solid #fed7aa', color:'#d97706', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans", sans-serif' }}>
-                ?? Reset Purchaser Passwords
-              </button>
-            </>
-          )}
-          {user.role === 'purchasing_manager' && (
-            <button onClick={() => handleResetPasswords('purchaser')} disabled={resetting}
-              style={{ padding:'8px 14px', borderRadius:12, background:'#fff7ed', border:'1px solid #fed7aa', color:'#d97706', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans", sans-serif' }}>
-              ?? Reset Purchaser Passwords
-            </button>
-          )}
-          <button onClick={() => { reset(); setShowNew(true) }} className="btn-primary">+ New User</button>
-        </div>
-      </div>
+    <div className="page-wrap">
+      <PageHeader
+        icon={<UserCog size={18} />}
+        title="Users"
+        subtitle={user.role === 'manager' ? 'Manage all team members' : 'Manage your purchasers'}
+        action={headerActions}
+      />
 
       {loading ? (
         <div className="flex items-center justify-center py-24">
@@ -305,7 +307,7 @@ export default function Users() {
 
       {/* Reset passwords results modal */}
       {resetResults && (
-        <Modal title={`?? ${resetType === 'ae' ? 'AE' : 'Purchaser'} Passwords Reset`} onClose={() => setResetResults(null)} wide>
+        <Modal title={`${resetType === 'ae' ? 'AE' : 'Purchaser'} Passwords Reset`} onClose={() => setResetResults(null)} wide>
           <div style={{ background:'#fff7ed', border:'1px solid #fed7aa', borderRadius:12, padding:'10px 14px', marginBottom:14, fontSize:13, color:'#c2410c' }}>
             ⚠ Save these — they won't be shown again
           </div>
@@ -327,7 +329,7 @@ export default function Users() {
                       <span style={{ fontFamily:'monospace', fontWeight:700, background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:6, padding:'3px 8px' }}>{r.password}</span>
                     </td>
                     <td style={{ padding:'10px 14px' }}>
-                      <button onClick={() => navigator.clipboard.writeText(r.password)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:14 }}>??</button>
+                      <button onClick={() => navigator.clipboard.writeText(r.password)} className="btn-icon btn-sm"><Copy size={13} /></button>
                     </td>
                   </tr>
                 ))}
@@ -339,7 +341,7 @@ export default function Users() {
               navigator.clipboard.writeText(resetResults.map(r => `${r.name} (${r.username}): ${r.password}`).join('\n'))
               setCopiedAll(true); setTimeout(() => setCopiedAll(false), 2000)
             }} style={{ flex:1, padding:11, borderRadius:12, border:`1px solid ${BRAND}`, background:copiedAll?BRAND:`${BRAND}15`, color:copiedAll?'#0d0d0d':'#00b8ad', fontWeight:700, fontSize:13, cursor:'pointer', fontFamily:'"Plus Jakarta Sans", sans-serif' }}>
-              {copiedAll ? '✓ Copied!' : '?? Copy All'}
+              {copiedAll ? '✓ Copied!' : 'Copy All'}
             </button>
             <button onClick={() => setResetResults(null)} style={{ flex:1, padding:11, borderRadius:12, border:'1px solid #e2e8f0', background:'#fff', color:'#475569', fontWeight:600, fontSize:13, cursor:'pointer', fontFamily:'"Plus Jakarta Sans", sans-serif' }}>Done</button>
           </div>

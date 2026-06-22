@@ -51,14 +51,15 @@ function Loader() {
 // ── Metric Card ─────────────────────────────────────────────────
 function MetricCard({ label, value, sub, color = BRAND, prefix = '', suffix = '', onClick }) {
   return (
-    <div onClick={onClick} style={{ background:'#fff', borderRadius:14, border:`1px solid ${onClick ? '#f1f5f9' : '#f1f5f9'}`, padding:'14px 18px', position:'relative', overflow:'hidden', cursor:onClick?'pointer':'default', transition:'all 0.15s' }}
-      onMouseEnter={e => { if (onClick) { e.currentTarget.style.borderColor=color; e.currentTarget.style.boxShadow=`0 4px 16px ${color}20`; e.currentTarget.style.transform='translateY(-1px)' }}}
-      onMouseLeave={e => { e.currentTarget.style.borderColor='#f1f5f9'; e.currentTarget.style.boxShadow='none'; e.currentTarget.style.transform='none' }}>
+    <div onClick={onClick}
+      className={`metric-card${onClick ? ' clickable' : ''}`}
+      onMouseEnter={e => { if (onClick) { e.currentTarget.style.borderColor = color; e.currentTarget.style.boxShadow = `0 4px 20px ${color}22` } }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = ''; e.currentTarget.style.boxShadow = '' }}>
       <div style={{ position:'absolute', top:0, left:0, width:3, height:'100%', background:color, borderRadius:'14px 0 0 14px' }} />
-      {onClick && <div style={{ position:'absolute', top:8, right:10, fontSize:9, color:'#cbd5e1', fontWeight:600 }}>VIEW ↗</div>}
-      <div style={{ fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6 }}>{label}</div>
-      <div style={{ fontSize:26, fontWeight:800, color:'#0f172a', fontFamily:'"Bricolage Grotesque",sans-serif', lineHeight:1 }}>{prefix}{typeof value === 'number' ? value.toLocaleString() : (value ?? '—')}{suffix}</div>
-      {sub && <div style={{ fontSize:11, color:'#94a3b8', marginTop:5 }}>{sub}</div>}
+      {onClick && <div className="absolute top-2.5 right-3 text-[9px] font-bold tracking-widest text-ink-300">VIEW ↗</div>}
+      <div className="text-[10px] font-bold text-ink-400 uppercase tracking-[0.08em] mb-2">{label}</div>
+      <div className="font-display font-extrabold text-[26px] text-ink-900 leading-none">{prefix}{typeof value === 'number' ? value.toLocaleString() : (value ?? '—')}{suffix}</div>
+      {sub && <div className="text-[11px] text-ink-400 mt-1.5">{sub}</div>}
     </div>
   )
 }
@@ -75,10 +76,13 @@ function DateBar({ preset, setPreset, customFrom, setCustomFrom, customTo, setCu
   return (
     <div style={{ marginBottom:20 }}>
       <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-        <div style={{ display:'flex', background:'#fff', border:'1px solid #e2e8f0', borderRadius:12, padding:4, gap:2 }}>
+        <div className="flex bg-white border border-slate-200 rounded-xl p-1 gap-0.5">
           {PRESETS.map(r => (
             <button key={r.value} onClick={() => setPreset(r.value)}
-              style={{ padding:'6px 12px', borderRadius:8, border:'none', background:preset===r.value?BRAND:'transparent', color:preset===r.value?'#0d0d0d':'#64748b', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', transition:'all 0.15s', whiteSpace:'nowrap' }}>
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150 whitespace-nowrap border ${
+                preset === r.value ? 'text-dark-900 border-transparent' : 'bg-transparent text-ink-400 border-transparent hover:text-ink-700'
+              }`}
+              style={preset === r.value ? { background: BRAND } : {}}>
               {r.label}
             </button>
           ))}
@@ -721,14 +725,14 @@ export default function AEDashboard() {
   ]
 
   return (
-    <div style={{ padding:32, maxWidth:1200, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>
+    <div className="page-wrap" style={{ maxWidth:1200 }}>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}} @keyframes modalIn{from{opacity:0;transform:scale(0.96) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
 
       {/* Header */}
-      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:24, flexWrap:'wrap', gap:12 }}>
+      <div className="flex items-start justify-between mb-6 flex-wrap gap-3">
         <div>
-          <h1 style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:800, fontSize:26, color:'#0f172a', margin:0 }}>{greeting()}, {user.name} <span style={{ fontFamily:'system-ui, Apple Color Emoji, Segoe UI Emoji, sans-serif' }}>👋</span></h1>
-          <p style={{ color:'#94a3b8', fontSize:14, marginTop:4 }}>{new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' })}</p>
+          <h1 className="font-display font-extrabold text-2xl text-ink-900">{greeting()}, {user.name} 👋</h1>
+          <p className="text-ink-400 text-sm mt-1">{new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' })}</p>
         </div>
         <div style={{ display:'flex', gap:8 }}>
           {[['◎ New Lead','lead','#3b82f6'],['↻ New Repeat','repeat','#6366f1'],['◈ New Order','online_order','#f59e0b']].map(([label,type,color]) => (

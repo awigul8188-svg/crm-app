@@ -1,10 +1,12 @@
 ﻿import { useState, useEffect, useRef } from 'react'
+import { Search } from 'lucide-react'
 import { api } from '../api'
 import { useAuth } from '../App'
 import { useNav } from '../App'
 import { DispositionBadge, DISPOSITIONS, LEAD_SOURCES, ORDER_SOURCES, formatDateShort } from '../components/Badges'
 import NewInquiryModal from '../components/NewInquiryModal'
 import MultiSelect from '../components/MultiSelect'
+import PageHeader from '../components/PageHeader'
 
 const TYPE_ICONS  = { lead: '◎', repeat: '↻', online_order: '◈' }
 const TYPE_LABELS = { lead: 'Lead', repeat: 'Repeat Inquiry', online_order: 'Online Order' }
@@ -136,29 +138,23 @@ export default function InquiryList({ type, title }) {
   const clearAll = () => { setFilterDispositions([]); setFilterSources([]); setFilterUsers([]); setSearch('') }
 
   return (
-    <div className="p-8 fade-in">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <h1 className="font-display font-bold text-2xl text-ink-900 flex items-center gap-2.5">
-            <span className="text-ink-300">{TYPE_ICONS[type]}</span> {title}
-          </h1>
-          <p className="text-ink-400 text-sm mt-0.5">{filtered.length} records</p>
-        </div>
-        <button onClick={() => setShowNew(true)} className="btn-primary">+ New {TYPE_LABELS[type]}</button>
-      </div>
+    <div className="page-wrap">
+      <PageHeader
+        title={title}
+        subtitle={`${filtered.length} record${filtered.length !== 1 ? 's' : ''}`}
+        action={<button onClick={() => setShowNew(true)} className="btn-primary">+ New {TYPE_LABELS[type]}</button>}
+      />
 
-      {/* Filters — all visible */}
-      <div className="flex gap-2.5 mb-4 flex-wrap items-center">
-        {/* Search */}
-        <div style={{ position: 'relative' }}>
+      {/* Filters */}
+      <div className="flex gap-2 mb-3 flex-wrap items-center">
+        <div className="search-wrap">
+          <Search size={15} className="search-icon" />
           <input
-            style={{ padding: '9px 12px 9px 34px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '13px', background: '#fff', outline: 'none', width: '220px', fontFamily: '"Plus Jakarta Sans", sans-serif', color: '#0f172a' }}
-            placeholder="Search name, part, email..."
+            className="input w-52"
+            placeholder="Search name, part, email…"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
-          <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '14px', pointerEvents: 'none' }}>⌕</span>
         </div>
 
         <MultiSelect
@@ -167,15 +163,12 @@ export default function InquiryList({ type, title }) {
           selected={filterDispositions}
           onChange={setFilterDispositions}
         />
-
         <MultiSelect
           placeholder="All Sources"
           options={sourceOptions}
           selected={filterSources}
           onChange={setFilterSources}
         />
-
-        {/* Assigned To — all roles see this, AEs see only themselves */}
         {user.role === 'manager' && (
           <MultiSelect
             placeholder="All Team Members"
@@ -184,13 +177,11 @@ export default function InquiryList({ type, title }) {
             onChange={setFilterUsers}
           />
         )}
-
-        {hasFilters ? (
-          <button onClick={clearAll}
-            style={{ fontSize: '12px', fontWeight: 600, color: '#ef4444', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '6px 12px', cursor: 'pointer', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+        {hasFilters && (
+          <button onClick={clearAll} className="btn btn-sm text-red-500 bg-red-50 border border-red-100 hover:bg-red-100">
             ✕ Clear all
           </button>
-        ) : null}
+        )}
       </div>
 
       {/* Active filter tags */}
@@ -207,16 +198,16 @@ export default function InquiryList({ type, title }) {
                 if (tag.type === 'd') setFilterDispositions(f => f.filter(v => v !== tag.k))
                 else if (tag.type === 's') setFilterSources(f => f.filter(v => v !== tag.k))
                 else setFilterUsers(f => f.filter(v => v !== tag.k))
-              }} style={{ marginLeft: '2px', color: '#00b8ad', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px' }}>×</button>
+              }} className="ml-1 text-brand-600 hover:text-brand-800 bg-transparent border-none cursor-pointer text-sm leading-none">×</button>
             </span>
           ))}
         </div>
       )}
 
-      {/* Tip for inline editing */}
-      <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-        <span>💡</span> Click any <strong>disposition badge</strong> to edit it inline — no need to open the record
-      </div>
+      {/* Inline edit hint */}
+      <p className="text-[11px] text-ink-300 mb-3">
+        Click any <strong className="text-ink-400">disposition badge</strong> to edit it inline
+      </p>
 
       {/* Table */}
       {loading ? (
@@ -319,16 +310,14 @@ export default function InquiryList({ type, title }) {
                       </>}
 
                       {/* Delete — managers only */}
-                      <td className="table-cell" onClick={e => e.stopPropagation()}>
+                      <td className="table-cell w-10" onClick={e => e.stopPropagation()}>
                         {user.role === 'manager' && (
                           <button
                             onClick={e => handleDelete(e, inq.id)}
                             disabled={deleting === inq.id}
-                            style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', color: '#fca5a5', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s' }}
-                            onMouseEnter={e => { e.currentTarget.style.background = '#fef2f2'; e.currentTarget.style.color = '#ef4444' }}
-                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#fca5a5' }}
+                            className="w-8 h-8 rounded-lg flex items-center justify-center text-red-300 hover:text-red-500 hover:bg-red-50 transition-all duration-150 border-none bg-transparent cursor-pointer text-sm"
                           >
-                            {deleting === inq.id ? '...' : '🗑'}
+                            {deleting === inq.id ? <span className="w-3 h-3 rounded-full border-2 border-red-400 border-t-transparent spinner" /> : '✕'}
                           </button>
                         )}
                       </td>

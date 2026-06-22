@@ -1,5 +1,7 @@
 ﻿import { useState, useRef } from 'react'
+import { Upload, Lock } from 'lucide-react'
 import { useAuth } from '../App'
+import PageHeader from '../components/PageHeader'
 
 export default function ImportData() {
   const { user } = useAuth()
@@ -11,9 +13,9 @@ export default function ImportData() {
   const inputRef = useRef()
 
   if (user.role !== 'manager') return (
-    <div className="p-8 text-center text-ink-400">
-      <div className="text-4xl mb-2">🔒</div>
-      <div className="font-semibold">Managers only</div>
+    <div className="page-wrap text-center">
+      <Lock size={36} className="mx-auto mb-3 text-ink-300" />
+      <div className="font-semibold text-ink-500">Managers only</div>
     </div>
   )
 
@@ -56,11 +58,12 @@ export default function ImportData() {
   }
 
   return (
-    <div className="p-8 max-w-2xl fade-in">
-      <div className="mb-6">
-        <h1 className="font-display font-bold text-2xl text-ink-900">📥 Import Data</h1>
-        <p className="text-ink-400 text-sm mt-0.5">Upload your Excel file to import Leads, Repeat Inquiries, and Online Orders</p>
-      </div>
+    <div className="page-wrap max-w-2xl">
+      <PageHeader
+        icon={<Upload size={18} />}
+        title="Import Data"
+        subtitle="Upload your Excel file to import Leads, Repeat Inquiries, and Online Orders"
+      />
 
       {/* Instructions */}
       <div className="card p-4 mb-5 bg-brand-50 border-brand-200">
@@ -117,7 +120,7 @@ export default function ImportData() {
             <span className="w-4 h-4 rounded-full border-2 border-dark-900 border-t-transparent spinner" />
             Importing {file?.name}...
           </span>
-        ) : '📥 Start Import'}
+        ) : <><Upload size={15} /> Start Import</>}
       </button>
 
       {/* Results */}

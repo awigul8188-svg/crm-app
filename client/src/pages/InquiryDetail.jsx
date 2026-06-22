@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect } from 'react'
+import { ChevronLeft } from 'lucide-react'
 import { api } from '../api'
 import { useAuth } from '../App'
 import { useNav } from '../App'
@@ -64,9 +65,9 @@ export default function InquiryDetail({ id }) {
   const pendingFu = inquiry.followups?.filter(f => !f.completed).length || 0
 
   return (
-    <div className="p-8 max-w-5xl fade-in">
-      <button onClick={() => navigate(backPage)} className="flex items-center gap-1.5 text-xs text-ink-400 hover:text-ink-600 font-semibold mb-5 transition-colors">
-        ← {backLabel}
+    <div className="page-wrap max-w-5xl">
+      <button onClick={() => navigate(backPage)} className="flex items-center gap-1 text-xs text-ink-400 hover:text-ink-700 font-semibold mb-5 transition-colors">
+        <ChevronLeft size={14} /> {backLabel}
       </button>
 
       <div className="card p-6 mb-5">

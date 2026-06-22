@@ -46,14 +46,15 @@ const Tip = ({ active, payload, label }) => {
 // ── Metric Card ─────────────────────────────────────────────────
 function MetricCard({ label, value, sub, color = BRAND, prefix = '', suffix = '', onClick }) {
   return (
-    <div onClick={onClick} style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:'16px 20px', position:'relative', overflow:'hidden', cursor: onClick ? 'pointer' : 'default', transition:'all 0.15s' }}
-      onMouseEnter={e => { if (onClick) { e.currentTarget.style.borderColor = color; e.currentTarget.style.boxShadow = `0 4px 16px ${color}20` }}}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = '#f1f5f9'; e.currentTarget.style.boxShadow = 'none' }}>
+    <div onClick={onClick}
+      className={`metric-card${onClick ? ' clickable' : ''}`}
+      onMouseEnter={e => { if (onClick) { e.currentTarget.style.borderColor = color; e.currentTarget.style.boxShadow = `0 4px 20px ${color}22` } }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = ''; e.currentTarget.style.boxShadow = '' }}>
       <div style={{ position:'absolute', top:0, left:0, width:3, height:'100%', background: color, borderRadius:'16px 0 0 16px' }} />
-      {onClick && <div style={{ position:'absolute', top:10, right:12, fontSize:10, color:'#94a3b8' }}>click to view ↗</div>}
-      <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:8 }}>{label}</div>
-      <div style={{ fontSize:28, fontWeight:800, color:'#0f172a', fontFamily:'"Bricolage Grotesque", sans-serif' }}>{prefix}{typeof value === 'number' ? value.toLocaleString() : (value ?? '—')}{suffix}</div>
-      {sub && <div style={{ fontSize:12, color:'#94a3b8', marginTop:4 }}>{sub}</div>}
+      {onClick && <div className="absolute top-2.5 right-3 text-[9px] font-bold tracking-widest text-ink-300">VIEW ↗</div>}
+      <div className="text-[10px] font-bold text-ink-400 uppercase tracking-[0.08em] mb-2">{label}</div>
+      <div className="font-display font-extrabold text-[26px] text-ink-900 leading-none">{prefix}{typeof value === 'number' ? value.toLocaleString() : (value ?? '—')}{suffix}</div>
+      {sub && <div className="text-xs text-ink-400 mt-1.5">{sub}</div>}
     </div>
   )
 }
@@ -184,9 +185,17 @@ function FilterBar({ preset, setPreset, customFrom, setCustomFrom, customTo, set
     <div style={{ marginBottom:20 }}>
       {/* Date presets */}
       <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:12, flexWrap:'wrap' }}>
-        <div style={{ display:'flex', background:'#fff', border:'1px solid #e2e8f0', borderRadius:12, padding:4, gap:2 }}>
+        <div className="flex bg-white border border-slate-200 rounded-xl p-1 gap-0.5">
           {PRESETS.map(r => (
-            <button key={r.value} onClick={() => setPreset(r.value)} style={{ padding:'6px 12px', borderRadius:8, border:'none', background:preset===r.value?BRAND:'transparent', color:preset===r.value?'#0d0d0d':'#64748b', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', transition:'all 0.15s', whiteSpace:'nowrap' }}>{r.label}</button>
+            <button key={r.value} onClick={() => setPreset(r.value)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150 whitespace-nowrap border ${
+                preset === r.value
+                  ? 'text-dark-900 border-transparent'
+                  : 'bg-transparent text-ink-400 border-transparent hover:text-ink-700'
+              }`}
+              style={preset === r.value ? { background: BRAND } : {}}>
+              {r.label}
+            </button>
           ))}
         </div>
         {preset === 'custom' && (
@@ -595,12 +604,12 @@ export default function Dashboard() {
   ]
 
   return (
-    <div className="p-8 fade-in">
+    <div className="page-wrap">
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
       <div style={{ marginBottom:20 }}>
         <h1 className="font-display font-bold text-2xl text-ink-900">{greeting()}, {user.name} 👋</h1>
-        <p className="text-ink-400 text-sm mt-0.5">Tech Atlantix · Sales Analytics</p>
+        <p className="text-ink-400 text-sm mt-1">Tech Atlantix · Sales Analytics</p>
       </div>
 
       {/* Shared filter bar — same for ALL tabs */}
@@ -615,9 +624,16 @@ export default function Dashboard() {
       />
 
       {/* Tabs */}
-      <div style={{ display:'flex', gap:2, background:'#f1f5f9', borderRadius:14, padding:4, marginBottom:24, width:'fit-content' }}>
+      <div className="flex gap-0.5 bg-surface-100 rounded-2xl p-1 mb-6 w-fit border border-slate-200">
         {tabs.map(tab => (
-          <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{ padding:'9px 18px', borderRadius:10, border:'none', background:activeTab===tab.key?'#fff':'transparent', color:activeTab===tab.key?'#0f172a':'#64748b', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', boxShadow:activeTab===tab.key?'0 1px 4px rgba(0,0,0,0.08)':'none', transition:'all 0.15s', whiteSpace:'nowrap' }}>{tab.label}</button>
+          <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+            className={`px-4 py-2 rounded-xl border text-sm font-semibold cursor-pointer transition-all duration-150 whitespace-nowrap ${
+              activeTab === tab.key
+                ? 'bg-white text-ink-900 border-slate-200 shadow-card'
+                : 'bg-transparent text-ink-400 border-transparent hover:text-ink-700'
+            }`}>
+            {tab.label}
+          </button>
         ))}
       </div>
 

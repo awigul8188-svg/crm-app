@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { ChevronLeft } from 'lucide-react'
 import { api } from '../api'
 import { useAuth } from '../App'
 import { useNav } from '../App'
@@ -39,8 +40,10 @@ export default function CustomerDetail({ id }) {
   if (!customer) return <div className="p-8 text-ink-400">Customer not found.</div>
 
   return (
-    <div className="p-8 max-w-5xl fade-in">
-      <button onClick={() => navigate('customers')} className="flex items-center gap-1.5 text-xs text-ink-400 hover:text-ink-600 font-semibold mb-5 transition-colors">← Customers</button>
+    <div className="page-wrap max-w-5xl">
+      <button onClick={() => navigate('customers')} className="flex items-center gap-1 text-xs text-ink-400 hover:text-ink-700 font-semibold mb-5 transition-colors">
+        <ChevronLeft size={14} /> Customers
+      </button>
 
       <div className="card p-6 mb-5">
         <div className="flex items-start justify-between">
