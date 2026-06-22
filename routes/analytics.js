@@ -145,7 +145,35 @@ router.get('/module', (req, res) => {
       const cold = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'Cold'`).get(...params).c;
       const inProgress = periodTotal - closedWon - closedLost;
 
-      res.json({ type, today: { total: todayTotal }, period: { total: periodTotal, closed_won: closedWon, closed_lost: closedLost, quoted, bidding, fake, no_response: noResponse, cold, in_progress: inProgress, win_rate: periodTotal > 0 ? Math.round(closedWon / periodTotal * 100) : 0 }, byDisposition, bySource, byPerson, trend });
+      // Per-AE breakdown for the performance table (manager only)
+      const monthStart = new Date(); monthStart.setDate(1);
+      const ms = monthStart.toISOString().split('T')[0];
+      const aeBase = `FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id JOIN users u ON i.assigned_to = u.id WHERE i.type = 'lead' AND u.role = 'ae'`;
+      const aePerformance = db.prepare(`
+        SELECT u.id, u.name,
+          COUNT(*) as total,
+          SUM(CASE WHEN date(i.created_at) = ? THEN 1 ELSE 0 END) as today,
+          SUM(CASE WHEN date(i.created_at) >= ? THEN 1 ELSE 0 END) as this_month,
+          SUM(CASE WHEN i.disposition='Closed Won' THEN 1 ELSE 0 END) as won,
+          SUM(CASE WHEN i.disposition='Closed Lost' THEN 1 ELSE 0 END) as lost,
+          SUM(CASE WHEN i.disposition='Quoted' THEN 1 ELSE 0 END) as quoted,
+          SUM(CASE WHEN i.disposition='Bidding' THEN 1 ELSE 0 END) as bidding,
+          SUM(CASE WHEN i.disposition='Fake Lead' THEN 1 ELSE 0 END) as fake,
+          SUM(CASE WHEN i.disposition='No response' THEN 1 ELSE 0 END) as no_response,
+          SUM(CASE WHEN i.disposition='Cold' THEN 1 ELSE 0 END) as cold
+        ${aeBase} GROUP BY i.assigned_to, u.id, u.name ORDER BY total DESC`).all(today, ms);
+
+      const aeSourceBreakdown = db.prepare(`
+        SELECT u.name as ae_name, c.lead_source as source, COUNT(*) as count
+        ${aeBase} AND c.lead_source IS NOT NULL
+        GROUP BY i.assigned_to, u.name, c.lead_source ORDER BY count DESC`).all();
+
+      const todayPerAE = db.prepare(`
+        SELECT u.name, COUNT(*) as count
+        ${aeBase} AND date(i.created_at) = ?
+        GROUP BY i.assigned_to, u.name ORDER BY count DESC`).all(today);
+
+      res.json({ type, today: { total: todayTotal, perAE: todayPerAE }, period: { total: periodTotal, closed_won: closedWon, closed_lost: closedLost, quoted, bidding, fake, no_response: noResponse, cold, in_progress: inProgress, win_rate: periodTotal > 0 ? Math.round(closedWon / periodTotal * 100) : 0 }, byDisposition, bySource, byPerson, trend, aePerformance, aeSourceBreakdown });
     }
   } catch (err) {
     console.error('Module analytics error:', err);
