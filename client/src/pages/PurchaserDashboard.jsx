@@ -6,7 +6,7 @@ import { formatDate, formatDateShort, timeAgo } from '../components/Badges'
 
 const BRAND = '#00D4C8'
 const T = { lead:{ icon:'◎', label:'Lead', color:'#3b82f6' }, repeat:{ icon:'↻', label:'Repeat', color:'#6366f1' }, online_order:{ icon:'◈', label:'Order', color:'#f59e0b' } }
-const URGENCY = { critical:{ label:'?? Critical', color:'#ef4444', bg:'#fef2f2', border:'#fecaca' }, high:{ label:'?? High', color:'#f97316', bg:'#fff7ed', border:'#fed7aa' }, normal:{ label:'?? Normal', color:'#64748b', bg:'#f8fafc', border:'#e2e8f0' }, low:{ label:'?? Low', color:'#10b981', bg:'#f0fdf4', border:'#bbf7d0' } }
+const URGENCY = { critical:{ label:'Critical', color:'#ef4444', bg:'#fef2f2', border:'#fecaca' }, high:{ label:'High', color:'#f97316', bg:'#fff7ed', border:'#fed7aa' }, normal:{ label:'Normal', color:'#64748b', bg:'#f8fafc', border:'#e2e8f0' }, low:{ label:'Low', color:'#10b981', bg:'#f0fdf4', border:'#bbf7d0' } }
 const CONDITIONS = ['New','Used','Refurbished','For Parts','Other']
 const inp = { width:'100%', boxSizing:'border-box', background:'#fff', border:'1px solid #e2e8f0', borderRadius:'12px', padding:'10px 14px', fontSize:'13px', color:'#0f172a', fontFamily:'"Plus Jakarta Sans",sans-serif', outline:'none', transition:'border 0.15s' }
 const inpF = { border:`1px solid ${BRAND}`, boxShadow:`0 0 0 3px rgba(0,212,200,0.12)` }

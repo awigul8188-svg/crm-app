@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
+import { LayoutDashboard, Target, RotateCcw, ShoppingBag, AlertCircle, Clock, TrendingUp, Plus } from 'lucide-react'
 import { useNav } from '../App'
 import { useAuth } from '../App'
 import { formatDate, formatDateShort, timeAgo, DispositionBadge, DISPOSITIONS, PPC_OPTIONS, VERIFICATION_OPTIONS, ORDER_SOURCES, LEAD_SOURCES } from '../components/Badges'
@@ -46,6 +47,87 @@ function Tip({ active, payload, label }) {
 
 function Loader() {
   return <div style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:'60px 0' }}><div style={{ width:28, height:28, borderRadius:'50%', border:`2px solid ${BRAND}`, borderTopColor:'transparent', animation:'spin 0.8s linear infinite' }} /></div>
+}
+
+function useSummary() {
+  const [summary, setSummary] = useState(null)
+  useEffect(() => {
+    fetch('/api/analytics/summary', { headers: { Authorization:`Bearer ${localStorage.getItem('crm_token')}` } })
+      .then(r => r.json()).then(setSummary).catch(() => {})
+  }, [])
+  return summary
+}
+
+function BentoTop({ summary }) {
+  if (!summary) return null
+  const f = summary.conversionFunnel || {}
+  const max = f.total || 1
+  const steps = [
+    { label:'All Leads', value:f.total,   color:'#3b82f6' },
+    { label:'Quoted',    value:f.quoted,  color:'#6366f1' },
+    { label:'Bidding',   value:f.bidding, color:'#f59e0b' },
+    { label:'Won',       value:f.won,     color:'#10b981' },
+  ]
+  const overdue   = summary.overdueCount   || 0
+  const untouched = summary.untouchedCount || 0
+
+  return (
+    <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr', gap:14, marginBottom:24 }}>
+      <div style={{ background:'#fff', borderRadius:20, border:'1px solid rgba(0,0,0,0.06)', padding:'20px 22px', boxShadow:'0 2px 8px rgba(0,0,0,0.05)' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:16 }}>
+          <TrendingUp size={14} style={{ color:BRAND }} />
+          <span style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.08em' }}>My Lead Conversion Funnel</span>
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', gap:9 }}>
+          {steps.map(s => {
+            const pct = max > 0 ? Math.round((s.value||0)/max*100) : 0
+            return (
+              <div key={s.label}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:5 }}>
+                  <span style={{ fontSize:12, color:'#64748b', fontWeight:500 }}>{s.label}</span>
+                  <div style={{ display:'flex', alignItems:'baseline', gap:6 }}>
+                    <span style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontSize:18, fontWeight:800, color:'#0f172a', lineHeight:1 }}>{(s.value||0).toLocaleString()}</span>
+                    <span style={{ fontSize:11, color:'#94a3b8' }}>{pct}%</span>
+                  </div>
+                </div>
+                <div style={{ height:6, background:'#f1f5f9', borderRadius:6 }}>
+                  <div style={{ height:'100%', borderRadius:6, background:s.color, width:`${pct}%`, transition:'width 0.4s ease' }} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        {f.won > 0 && f.total > 0 && (
+          <div style={{ marginTop:14, paddingTop:12, borderTop:'1px solid #f1f5f9', display:'flex', gap:20 }}>
+            <div><div style={{ fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.08em' }}>My Win Rate</div><div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontSize:22, fontWeight:800, color:'#10b981' }}>{Math.round(f.won/f.total*100)}%</div></div>
+            <div><div style={{ fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.08em' }}>Active</div><div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontSize:22, fontWeight:800, color:'#0f172a' }}>{(f.total - f.won - (f.lost||0)).toLocaleString()}</div></div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ background:overdue>0?'#fff5f5':'#f0fdf4', borderRadius:20, border:`1px solid ${overdue>0?'#fecaca':'#bbf7d0'}`, padding:'20px 22px', boxShadow:'0 2px 8px rgba(0,0,0,0.04)' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+          <AlertCircle size={14} style={{ color:overdue>0?'#ef4444':'#10b981' }} />
+          <span style={{ fontSize:11, fontWeight:700, color:overdue>0?'#ef4444':'#16a34a', textTransform:'uppercase', letterSpacing:'0.08em' }}>Overdue</span>
+        </div>
+        <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontSize:52, fontWeight:900, lineHeight:1, color:overdue>0?'#dc2626':'#16a34a' }}>{overdue}</div>
+        <div style={{ fontSize:12, color:overdue>0?'#ef4444':'#16a34a', marginTop:8, fontWeight:500 }}>
+          {overdue===0 ? 'All follow-ups on track' : overdue===1 ? '1 follow-up is overdue' : `${overdue} follow-ups are overdue`}
+        </div>
+      </div>
+
+      <div style={{ background:untouched>0?'#fffbeb':'#f0fdf4', borderRadius:20, border:`1px solid ${untouched>0?'#fde68a':'#bbf7d0'}`, padding:'20px 22px', boxShadow:'0 2px 8px rgba(0,0,0,0.04)' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+          <Clock size={14} style={{ color:untouched>0?'#d97706':'#10b981' }} />
+          <span style={{ fontSize:11, fontWeight:700, color:untouched>0?'#d97706':'#16a34a', textTransform:'uppercase', letterSpacing:'0.08em' }}>Needs Attention</span>
+        </div>
+        <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontSize:52, fontWeight:900, lineHeight:1, color:untouched>0?'#d97706':'#16a34a' }}>{untouched}</div>
+        <div style={{ fontSize:12, color:untouched>0?'#d97706':'#16a34a', marginTop:8, fontWeight:500 }}>
+          {untouched===0 ? 'All inquiries touched' : `${untouched} with no activity 7+ days`}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ── Metric Card ─────────────────────────────────────────────────
@@ -613,12 +695,14 @@ function AEOrdersTab({ dateFilters, onDrilldown }) {
 
 // ── Overview Tab ────────────────────────────────────────────────
 function AEOverviewTab({ data, loading, dateFilters, onDrilldown, onNavigate }) {
+  const summary = useSummary()
   if (loading) return <Loader />
   if (!data) return <div style={{ textAlign:'center', padding:'60px 0', color:'#94a3b8', fontSize:14 }}>Could not load overview — please refresh.</div>
   const todayStr = new Date().toISOString().split('T')[0]
 
   return (
     <div>
+      <BentoTop summary={summary} />
       <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:10 }}>Today</div>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:16, marginBottom:24 }}>
         <MetricCard label="Leads Today" value={data.today.leads} color="#3b82f6" onClick={() => onDrilldown({ title:'My Leads Today', type:'lead', filters:{ from:todayStr, to:todayStr } })} sub={<button onClick={e => { e.stopPropagation(); onNavigate('leads') }} style={{ color:BRAND, background:'none', border:'none', cursor:'pointer', fontSize:12, padding:0, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>View all →</button>} />
@@ -718,10 +802,10 @@ export default function AEDashboard() {
   const greeting = () => { const h = new Date().getHours(); return h<12?'Good morning':h<17?'Good afternoon':'Good evening' }
 
   const tabs = [
-    { key:'overview', label:'▣ My Overview' },
-    { key:'leads',    label:'◎ Leads'       },
-    { key:'repeat',   label:'↻ Repeat'      },
-    { key:'orders',   label:'◈ Orders'      },
+    { key:'overview', label:'My Overview', icon:<LayoutDashboard size={13} /> },
+    { key:'leads',    label:'Leads',       icon:<Target size={13} /> },
+    { key:'repeat',   label:'Repeat',      icon:<RotateCcw size={13} /> },
+    { key:'orders',   label:'Orders',      icon:<ShoppingBag size={13} /> },
   ]
 
   return (
@@ -735,12 +819,12 @@ export default function AEDashboard() {
           <p className="text-ink-400 text-sm mt-1">{new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' })}</p>
         </div>
         <div style={{ display:'flex', gap:8 }}>
-          {[['◎ New Lead','lead','#3b82f6'],['↻ New Repeat','repeat','#6366f1'],['◈ New Order','online_order','#f59e0b']].map(([label,type,color]) => (
+          {[['New Lead','lead','#3b82f6'],['New Repeat','repeat','#6366f1'],['New Order','online_order','#f59e0b']].map(([label,type,color]) => (
             <button key={type} onClick={() => setNewModal(type)}
-              style={{ padding:'9px 16px', borderRadius:12, border:`1px solid ${color}30`, background:`${color}10`, color, fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', transition:'all 0.15s', whiteSpace:'nowrap' }}
+              style={{ display:'flex', alignItems:'center', gap:6, padding:'9px 16px', borderRadius:12, border:`1px solid ${color}30`, background:`${color}10`, color, fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', transition:'all 0.15s', whiteSpace:'nowrap' }}
               onMouseEnter={e => { e.currentTarget.style.background=color; e.currentTarget.style.color='#fff' }}
               onMouseLeave={e => { e.currentTarget.style.background=`${color}10`; e.currentTarget.style.color=color }}>
-              {label}
+              <Plus size={12} />{label}
             </button>
           ))}
         </div>
@@ -753,8 +837,8 @@ export default function AEDashboard() {
       <div style={{ display:'flex', gap:2, background:'#f1f5f9', borderRadius:14, padding:4, marginBottom:24, width:'fit-content' }}>
         {tabs.map(tab => (
           <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-            style={{ padding:'9px 18px', borderRadius:10, border:'none', background:activeTab===tab.key?'#fff':'transparent', color:activeTab===tab.key?'#0f172a':'#64748b', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', boxShadow:activeTab===tab.key?'0 1px 4px rgba(0,0,0,0.08)':'none', transition:'all 0.15s', whiteSpace:'nowrap' }}>
-            {tab.label}
+            style={{ display:'flex', alignItems:'center', gap:6, padding:'9px 18px', borderRadius:10, border:'none', background:activeTab===tab.key?'#fff':'transparent', color:activeTab===tab.key?'#0f172a':'#64748b', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', boxShadow:activeTab===tab.key?'0 1px 4px rgba(0,0,0,0.08)':'none', transition:'all 0.15s', whiteSpace:'nowrap' }}>
+            {tab.icon}{tab.label}
           </button>
         ))}
       </div>

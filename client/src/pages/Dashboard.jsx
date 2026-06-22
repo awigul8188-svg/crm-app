@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts'
+import { LayoutDashboard, Target, RotateCcw, ShoppingBag, AlertCircle, Clock, TrendingUp, Users } from 'lucide-react'
 import { api } from '../api'
 import { useAuth } from '../App'
 import { useNav } from '../App'
@@ -61,6 +62,99 @@ function MetricCard({ label, value, sub, color = BRAND, prefix = '', suffix = ''
 
 function SectionTitle({ children }) {
   return <div style={{ fontFamily:'"Bricolage Grotesque", sans-serif', fontWeight:700, fontSize:14, color:'#0f172a', marginBottom:14 }}>{children}</div>
+}
+
+// ── Summary hook ────────────────────────────────────────────────
+function useSummary() {
+  const [summary, setSummary] = useState(null)
+  useEffect(() => {
+    fetch('/api/analytics/summary', { headers: { Authorization: `Bearer ${localStorage.getItem('crm_token')}` } })
+      .then(r => r.json()).then(setSummary).catch(() => {})
+  }, [])
+  return summary
+}
+
+// ── Bento Top ────────────────────────────────────────────────────
+function BentoTop({ summary, isManager }) {
+  if (!summary) return null
+  const f = summary.conversionFunnel || {}
+  const max = f.total || 1
+  const steps = [
+    { label: 'All Leads', value: f.total, color: '#3b82f6' },
+    { label: 'Quoted',    value: f.quoted,  color: '#6366f1' },
+    { label: 'Bidding',   value: f.bidding, color: '#f59e0b' },
+    { label: 'Closed Won',value: f.won,     color: '#10b981' },
+  ]
+  const overdue = summary.overdueCount || 0
+  const untouched = summary.untouchedCount || 0
+
+  return (
+    <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr', gap:14, marginBottom:24 }}>
+      {/* Conversion Funnel */}
+      <div style={{ background:'#fff', borderRadius:20, border:'1px solid rgba(0,0,0,0.06)', padding:'20px 22px', boxShadow:'0 2px 8px rgba(0,0,0,0.05)', display:'flex', flexDirection:'column', gap:0 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:16 }}>
+          <TrendingUp size={14} style={{ color: BRAND }} />
+          <span style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.08em' }}>Lead Conversion Funnel</span>
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', gap:9 }}>
+          {steps.map((s, i) => {
+            const pct = max > 0 ? Math.round((s.value||0) / max * 100) : 0
+            return (
+              <div key={s.label}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:5 }}>
+                  <span style={{ fontSize:12, color:'#64748b', fontWeight:500 }}>{s.label}</span>
+                  <div style={{ display:'flex', alignItems:'baseline', gap:6 }}>
+                    <span style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontSize:18, fontWeight:800, color:'#0f172a', lineHeight:1 }}>{(s.value||0).toLocaleString()}</span>
+                    <span style={{ fontSize:11, color:'#94a3b8' }}>{pct}%</span>
+                  </div>
+                </div>
+                <div style={{ height:6, background:'#f1f5f9', borderRadius:6 }}>
+                  <div style={{ height:'100%', borderRadius:6, background:s.color, width:`${pct}%`, transition:'width 0.4s ease' }} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        {f.won > 0 && f.total > 0 && (
+          <div style={{ marginTop:14, paddingTop:12, borderTop:'1px solid #f1f5f9', display:'flex', gap:16 }}>
+            <div><div style={{ fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.08em' }}>Win Rate</div><div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontSize:20, fontWeight:800, color:'#10b981' }}>{Math.round(f.won/f.total*100)}%</div></div>
+            <div><div style={{ fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.08em' }}>Active</div><div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontSize:20, fontWeight:800, color:'#0f172a' }}>{(f.total - f.won - (f.lost||0)).toLocaleString()}</div></div>
+            {isManager && summary.topAE && <div><div style={{ fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.08em' }}>Top AE (Month)</div><div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontSize:13, fontWeight:800, color:'#0f172a', marginTop:2 }}>{summary.topAE.name} <span style={{ color:'#10b981' }}>{summary.topAE.winRate}%</span></div></div>}
+          </div>
+        )}
+      </div>
+
+      {/* Overdue Follow-ups */}
+      <div style={{ background: overdue > 0 ? '#fff5f5' : '#f0fdf4', borderRadius:20, border:`1px solid ${overdue > 0 ? '#fecaca' : '#bbf7d0'}`, padding:'20px 22px', boxShadow:'0 2px 8px rgba(0,0,0,0.04)', display:'flex', flexDirection:'column', gap:0 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+          <AlertCircle size={14} style={{ color: overdue > 0 ? '#ef4444' : '#10b981' }} />
+          <span style={{ fontSize:11, fontWeight:700, color: overdue > 0 ? '#ef4444' : '#16a34a', textTransform:'uppercase', letterSpacing:'0.08em' }}>Overdue</span>
+        </div>
+        <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontSize:52, fontWeight:900, lineHeight:1, color: overdue > 0 ? '#dc2626' : '#16a34a' }}>{overdue}</div>
+        <div style={{ fontSize:12, color: overdue > 0 ? '#ef4444' : '#16a34a', marginTop:8, fontWeight:500 }}>
+          {overdue === 0 ? 'All follow-ups on track' : overdue === 1 ? '1 follow-up is overdue' : `${overdue} follow-ups are overdue`}
+        </div>
+      </div>
+
+      {/* Untouched */}
+      <div style={{ background: untouched > 0 ? '#fffbeb' : '#f0fdf4', borderRadius:20, border:`1px solid ${untouched > 0 ? '#fde68a' : '#bbf7d0'}`, padding:'20px 22px', boxShadow:'0 2px 8px rgba(0,0,0,0.04)', display:'flex', flexDirection:'column', gap:0 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+          <Clock size={14} style={{ color: untouched > 0 ? '#d97706' : '#10b981' }} />
+          <span style={{ fontSize:11, fontWeight:700, color: untouched > 0 ? '#d97706' : '#16a34a', textTransform:'uppercase', letterSpacing:'0.08em' }}>Needs Attention</span>
+        </div>
+        <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontSize:52, fontWeight:900, lineHeight:1, color: untouched > 0 ? '#d97706' : '#16a34a' }}>{untouched}</div>
+        <div style={{ fontSize:12, color: untouched > 0 ? '#d97706' : '#16a34a', marginTop:8, fontWeight:500 }}>
+          {untouched === 0 ? 'All inquiries touched' : `${untouched} inquiries — no activity in 7+ days`}
+        </div>
+        {isManager && summary.newCustomersToday > 0 && (
+          <div style={{ marginTop:14, paddingTop:12, borderTop:`1px solid ${untouched > 0 ? '#fde68a' : '#bbf7d0'}` }}>
+            <div style={{ fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.08em' }}>New Customers Today</div>
+            <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontSize:22, fontWeight:800, color: BRAND }}>{summary.newCustomersToday}</div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 // ── Drilldown Modal ─────────────────────────────────────────────
@@ -227,6 +321,7 @@ function OverviewTab({ filters, users, onDrilldown }) {
   const { navigate } = useNav()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const summary = useSummary()
 
   useEffect(() => {
     setLoading(true)
@@ -247,6 +342,7 @@ function OverviewTab({ filters, users, onDrilldown }) {
 
   return (
     <div>
+      <BentoTop summary={summary} isManager />
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:16, marginBottom:24 }}>
         <MetricCard label="Total Leads" value={getTotal('lead')} color="#3b82f6" onClick={() => onDrilldown({ title:'All Leads', type:'lead', filters: { from: filters.from, to: filters.to } })} sub={<button onClick={e => { e.stopPropagation(); navigate('leads') }} style={{ color:BRAND, background:'none', border:'none', cursor:'pointer', fontSize:12, padding:0, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>View all →</button>} />
         <MetricCard label="Repeat Inquiries" value={getTotal('repeat')} color="#6366f1" onClick={() => onDrilldown({ title:'All Repeat Inquiries', type:'repeat', filters: { from: filters.from, to: filters.to } })} sub={<button onClick={e => { e.stopPropagation(); navigate('repeat') }} style={{ color:BRAND, background:'none', border:'none', cursor:'pointer', fontSize:12, padding:0, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>View all →</button>} />
@@ -597,10 +693,10 @@ export default function Dashboard() {
   const greeting = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening' }
 
   const tabs = [
-    { key: 'overview', label: '▣ Overview' },
-    { key: 'leads',    label: '◎ Leads' },
-    { key: 'repeat',   label: '↻ Repeat' },
-    { key: 'orders',   label: '◈ Online Orders' },
+    { key: 'overview', label: 'Overview',      icon: <LayoutDashboard size={13} /> },
+    { key: 'leads',    label: 'Leads',         icon: <Target size={13} /> },
+    { key: 'repeat',   label: 'Repeat',        icon: <RotateCcw size={13} /> },
+    { key: 'orders',   label: 'Online Orders', icon: <ShoppingBag size={13} /> },
   ]
 
   return (
@@ -627,12 +723,12 @@ export default function Dashboard() {
       <div className="flex gap-0.5 bg-surface-100 rounded-2xl p-1 mb-6 w-fit border border-slate-200">
         {tabs.map(tab => (
           <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-            className={`px-4 py-2 rounded-xl border text-sm font-semibold cursor-pointer transition-all duration-150 whitespace-nowrap ${
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl border text-sm font-semibold cursor-pointer transition-all duration-150 whitespace-nowrap ${
               activeTab === tab.key
                 ? 'bg-white text-ink-900 border-slate-200 shadow-card'
                 : 'bg-transparent text-ink-400 border-transparent hover:text-ink-700'
             }`}>
-            {tab.label}
+            {tab.icon}{tab.label}
           </button>
         ))}
       </div>

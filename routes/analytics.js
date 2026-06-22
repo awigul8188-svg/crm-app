@@ -218,4 +218,56 @@ router.get('/ae', (req, res) => {
   }
 });
 
+// Always-current summary for dashboard bento grid
+router.get('/summary', (req, res) => {
+  const db = getDB();
+  const isAE = req.user.role === 'ae';
+  const uid = req.user.id;
+  try {
+    const overdueQ = isAE
+      ? `SELECT COUNT(*) as c FROM followups f JOIN inquiries i ON f.inquiry_id = i.id WHERE f.completed=0 AND f.follow_up_date < date('now') AND i.assigned_to=?`
+      : `SELECT COUNT(*) as c FROM followups f WHERE f.completed=0 AND f.follow_up_date < date('now')`;
+    const overdueCount = db.prepare(overdueQ).get(...(isAE ? [uid] : [])).c;
+
+    const untouchedQ = `SELECT COUNT(*) as c FROM inquiries i
+      WHERE i.disposition NOT IN ('Closed Won','Closed Lost','Fake Lead','Processed','Cancelled')
+      ${isAE ? 'AND i.assigned_to=?' : ''}
+      AND NOT EXISTS (
+        SELECT 1 FROM activity_log a WHERE a.entity_id=i.id AND a.entity_type='inquiry'
+        AND a.created_at >= datetime('now','-7 days')
+      )`;
+    const untouchedCount = db.prepare(untouchedQ).get(...(isAE ? [uid] : [])).c;
+
+    const newCustomersToday = isAE ? null : db.prepare(`SELECT COUNT(*) as c FROM customers WHERE date(created_at)=date('now')`).get().c;
+    const totalCustomers    = isAE ? null : db.prepare(`SELECT COUNT(*) as c FROM customers`).get().c;
+
+    const fb = isAE ? `FROM inquiries i WHERE i.type='lead' AND i.assigned_to=?` : `FROM inquiries i WHERE i.type='lead'`;
+    const fp = isAE ? [uid] : [];
+    const funnelTotal   = db.prepare(`SELECT COUNT(*) as c ${fb}`).get(...fp).c;
+    const funnelQuoted  = db.prepare(`SELECT COUNT(*) as c ${fb} AND i.disposition='Quoted'`).get(...fp).c;
+    const funnelBidding = db.prepare(`SELECT COUNT(*) as c ${fb} AND i.disposition='Bidding'`).get(...fp).c;
+    const funnelWon     = db.prepare(`SELECT COUNT(*) as c ${fb} AND i.disposition='Closed Won'`).get(...fp).c;
+    const funnelLost    = db.prepare(`SELECT COUNT(*) as c ${fb} AND i.disposition='Closed Lost'`).get(...fp).c;
+
+    let topAE = null;
+    if (!isAE) {
+      const ms = new Date(); ms.setDate(1);
+      const monthStart = ms.toISOString().split('T')[0];
+      const today = new Date().toISOString().split('T')[0];
+      const ae = db.prepare(`
+        SELECT u.name, COUNT(*) as total, SUM(CASE WHEN i.disposition='Closed Won' THEN 1 ELSE 0 END) as won
+        FROM inquiries i JOIN users u ON i.assigned_to=u.id
+        WHERE u.role='ae' AND date(i.created_at) BETWEEN ? AND ?
+        GROUP BY i.assigned_to, u.name HAVING total>0
+        ORDER BY CAST(won AS REAL)/total DESC LIMIT 1`).get(monthStart, today);
+      if (ae) topAE = { name: ae.name, winRate: ae.total>0 ? Math.round(ae.won/ae.total*100) : 0, won: ae.won, total: ae.total };
+    }
+
+    res.json({ overdueCount, untouchedCount, newCustomersToday, totalCustomers, conversionFunnel: { total: funnelTotal, quoted: funnelQuoted, bidding: funnelBidding, won: funnelWon, lost: funnelLost }, topAE });
+  } catch (err) {
+    console.error('Summary error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
