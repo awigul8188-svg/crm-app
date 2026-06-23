@@ -19,23 +19,25 @@ export default function Modal({ title, onClose, children, wide }) {
         position: 'fixed', inset: 0, zIndex: 99999,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: '16px',
-        background: 'rgba(0,0,0,0.55)',
-        backdropFilter: 'blur(4px)',
-        WebkitBackdropFilter: 'blur(4px)',
+        background: 'rgba(10,10,10,0.22)',
+        backdropFilter: 'blur(16px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(16px) saturate(180%)',
       }}
     >
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          background: '#ffffff',
+          background: 'rgba(255,255,255,0.94)',
+          backdropFilter: 'blur(24px)',
+          WebkitBackdropFilter: 'blur(24px)',
           borderRadius: '20px',
-          boxShadow: '0 24px 80px rgba(0,0,0,0.25), 0 0 0 1px rgba(0,0,0,0.06)',
+          boxShadow: '0 32px 80px rgba(0,0,0,0.18), 0 0 0 1px rgba(255,255,255,0.7) inset, 0 0 0 1px rgba(0,0,0,0.06)',
           width: '100%',
           maxWidth: wide ? '680px' : '480px',
           maxHeight: '90vh',
           overflowY: 'auto',
           position: 'relative',
-          animation: 'modalIn 0.18s ease-out',
+          animation: 'modalIn 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)',
         }}
       >
         {/* Header */}
@@ -43,7 +45,7 @@ export default function Modal({ title, onClose, children, wide }) {
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '20px 24px 16px',
           borderBottom: '1px solid #f1f5f9',
-          position: 'sticky', top: 0, background: '#fff', zIndex: 1,
+          position: 'sticky', top: 0, background: 'rgba(255,255,255,0.88)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', zIndex: 1,
           borderRadius: '20px 20px 0 0',
         }}>
           <div style={{ fontFamily: '"Bricolage Grotesque", sans-serif', fontWeight: 700, fontSize: '16px', color: '#0f172a' }}>{title}</div>
@@ -68,7 +70,7 @@ export default function Modal({ title, onClose, children, wide }) {
 
       <style>{`
         @keyframes modalIn {
-          from { opacity: 0; transform: scale(0.96) translateY(8px); }
+          from { opacity: 0; transform: scale(0.94) translateY(12px); }
           to   { opacity: 1; transform: scale(1) translateY(0); }
         }
       `}</style>
