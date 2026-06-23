@@ -7,7 +7,6 @@ import { DispositionBadge, DISPOSITIONS, LEAD_SOURCES, ORDER_SOURCES, formatDate
 import NewInquiryModal from '../components/NewInquiryModal'
 import MultiSelect from '../components/MultiSelect'
 import PageHeader from '../components/PageHeader'
-import ClosedWonModal from '../components/ClosedWonModal'
 
 const TYPE_ICONS  = { lead: '◎', repeat: '↻', online_order: '◈' }
 const TYPE_LABELS = { lead: 'Lead', repeat: 'Repeat Inquiry', online_order: 'Online Order' }
@@ -19,7 +18,7 @@ const HEADERS = {
 }
 
 // Inline disposition dropdown — appears in place of the badge
-function InlineDispositionEdit({ inquiry, dispositions, onSave, onCancel, onClosedWon }) {
+function InlineDispositionEdit({ inquiry, dispositions, onSave, onCancel }) {
   const ref = useRef()
   const [value, setValue] = useState(inquiry.disposition || '')
   const [saving, setSaving] = useState(false)
@@ -37,11 +36,33 @@ function InlineDispositionEdit({ inquiry, dispositions, onSave, onCancel, onClos
     const newDisp = e.target.value
     setValue(newDisp)
 
-    // Intercept Closed Won — don't save yet, open the modal instead
+    // Closed Won — save disposition then silently queue in Operations
     if (newDisp === 'Closed Won') {
-      onClosedWon(inquiry)
-      onCancel()
-      return
+      try {
+        await api.updateInquiry(inquiry.id, {
+          disposition: 'Closed Won',
+          assigned_to: inquiry.assigned_to,
+          notes: inquiry.notes,
+          requirements: inquiry.requirements,
+          ppc_or_outbound: inquiry.ppc_or_outbound,
+          order_amount: inquiry.order_amount,
+          order_ref: inquiry.order_ref,
+        });
+        // Silently create draft order in Operations
+        import('../api').then(({ operationsApi }) => {
+          operationsApi.createFromCRM({
+            customer_name: inquiry.customer_name,
+            customer_email: inquiry.customer_email,
+            customer_phone: inquiry.customer_phone,
+            lead_source: inquiry.lead_source,
+            rep: inquiry.assigned_name,
+            crm_inquiry_id: inquiry.id,
+            requirements: inquiry.requirements || [],
+          }).catch(() => {});
+        });
+        onSave(inquiry.id, 'Closed Won');
+      } catch(e) { onCancel(); }
+      return;
     }
 
     setSaving(true)
@@ -103,7 +124,6 @@ export default function InquiryList({ type, title }) {
   const [search, setSearch] = useState('')
   const [deleting, setDeleting] = useState(null)
   const [editingDisp, setEditingDisp] = useState(null) // inquiry id being edited
-  const [closedWonInquiry, setClosedWonInquiry] = useState(null) // inquiry object for modal
 
   const load = () => {
     setLoading(true)
@@ -255,7 +275,6 @@ export default function InquiryList({ type, title }) {
                           dispositions={dispositionOptions}
                           onSave={handleDispSave}
                           onCancel={() => setEditingDisp(null)}
-                          onClosedWon={(inq) => { setEditingDisp(null); setClosedWonInquiry(inq) }}
                         />
                       ) : (
                         <div
@@ -349,40 +368,6 @@ export default function InquiryList({ type, title }) {
         />
       )}
 
-      {closedWonInquiry && (
-        <ClosedWonModal
-          inquiry={closedWonInquiry}
-          requirements={closedWonInquiry.requirements || []}
-          onClose={() => {
-            // Save the disposition as Closed Won even if they cancel the order creation
-            api.updateInquiry(closedWonInquiry.id, {
-              disposition: 'Closed Won',
-              assigned_to: closedWonInquiry.assigned_to,
-              notes: closedWonInquiry.notes,
-              requirements: closedWonInquiry.requirements,
-              ppc_or_outbound: closedWonInquiry.ppc_or_outbound,
-              order_amount: closedWonInquiry.order_amount,
-              order_ref: closedWonInquiry.order_ref,
-            }).catch(() => {})
-            setInquiries(prev => prev.map(i => i.id === closedWonInquiry.id ? { ...i, disposition: 'Closed Won' } : i))
-            setClosedWonInquiry(null)
-          }}
-          onCreated={() => {
-            api.updateInquiry(closedWonInquiry.id, {
-              disposition: 'Closed Won',
-              assigned_to: closedWonInquiry.assigned_to,
-              notes: closedWonInquiry.notes,
-              requirements: closedWonInquiry.requirements,
-              ppc_or_outbound: closedWonInquiry.ppc_or_outbound,
-              order_amount: closedWonInquiry.order_amount,
-              order_ref: closedWonInquiry.order_ref,
-            }).catch(() => {})
-            setInquiries(prev => prev.map(i => i.id === closedWonInquiry.id ? { ...i, disposition: 'Closed Won' } : i))
-            setClosedWonInquiry(null)
-            navigate('operations')
-          }}
-        />
-      )}
     </div>
   )
 }

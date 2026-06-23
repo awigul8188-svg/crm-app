@@ -4,7 +4,6 @@ import { api } from '../api'
 import { useAuth } from '../App'
 import { useNav } from '../App'
 import { DispositionBadge, TypeBadge, DISPOSITIONS, PPC_OPTIONS, ORDER_SOURCES, VERIFICATION_OPTIONS, timeAgo, formatDate } from '../components/Badges'
-import ClosedWonModal from '../components/ClosedWonModal'
 
 export default function InquiryDetail({ id }) {
   const { user } = useAuth()
@@ -22,7 +21,6 @@ export default function InquiryDetail({ id }) {
   const [editForm, setEditForm] = useState({})
   const [requirements, setRequirements] = useState([])
   const [activeTab, setActiveTab] = useState('activity')
-  const [showClosedWon, setShowClosedWon] = useState(false)
 
   const load = () => {
     Promise.all([api.getInquiry(id), api.getUsers()]).then(([inq, us]) => {
@@ -224,8 +222,21 @@ export default function InquiryDetail({ id }) {
                 {editMode
                   ? <select className="input" value={editForm.disposition} onChange={e => {
                       const val = e.target.value
-                      if (val === 'Closed Won') { setShowClosedWon(true) }
                       setEF('disposition', val)
+                      if (val === 'Closed Won') {
+                        // Silently queue in Operations when saved
+                        import('../api').then(({ operationsApi }) => {
+                          operationsApi.createFromCRM({
+                            customer_name: inquiry.customer_name,
+                            customer_email: inquiry.customer_email,
+                            customer_phone: inquiry.customer_phone,
+                            lead_source: inquiry.lead_source,
+                            rep: inquiry.assigned_name,
+                            crm_inquiry_id: inquiry.id,
+                            requirements: requirements || [],
+                          }).catch(() => {});
+                        });
+                      }
                     }}>
                       {dispositionsForType.map(d=><option key={d}>{d}</option>)}
                     </select>
@@ -274,17 +285,6 @@ export default function InquiryDetail({ id }) {
         </div>
       </div>
 
-      {showClosedWon && (
-        <ClosedWonModal
-          inquiry={inquiry}
-          requirements={requirements}
-          onClose={() => setShowClosedWon(false)}
-          onCreated={() => {
-            setShowClosedWon(false)
-            navigate('operations')
-          }}
-        />
-      )}
     </div>
   )
 }

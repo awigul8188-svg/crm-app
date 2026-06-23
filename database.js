@@ -267,6 +267,13 @@ function runOperationsMigrations() {
     'order_item_id INTEGER REFERENCES op_order_items(id) ON DELETE SET NULL',
   ];
   rmaV2Cols.forEach(col => { try { db.exec(`ALTER TABLE op_rma ADD COLUMN ${col}`); } catch(e) {} });
+
+  // v3 — add pending flag and CRM source link to op_orders
+  const ordersV3Cols = [
+    'pending INTEGER DEFAULT 0',
+    'crm_inquiry_id INTEGER',
+  ];
+  ordersV3Cols.forEach(col => { try { db.exec(`ALTER TABLE op_orders ADD COLUMN ${col}`); } catch(e) {} });
 }
 
 module.exports = { initializeDB, getDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations };

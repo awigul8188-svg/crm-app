@@ -109,6 +109,10 @@ export const operationsApi = {
   updateRMA:      (id, data) => req('PUT', `/operations/rma/${id}`, data),
   deleteRMA:      (id)     => req('DELETE', `/operations/rma/${id}`),
 
+  // CRM integration
+  createFromCRM: (data) => req('POST', '/operations/from-crm', data),
+  getPendingOrders: () => req('GET', '/operations/pending'),
+
   // All items (global view)
   getAllItems: (params = {}) => {
     const p = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([,v]) => v !== undefined && v !== ''))).toString()

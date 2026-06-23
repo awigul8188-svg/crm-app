@@ -380,6 +380,69 @@ router.get('/items', (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── CRM → Operations: silent draft order creation ────────────────────────────
+
+router.post('/from-crm', authenticate, (req, res) => {
+  try {
+    const db = getDB();
+    const { customer_name, customer_email, customer_phone, lead_source, rep,
+            crm_inquiry_id, requirements = [] } = req.body;
+
+    // Find or create op_customer
+    let customer = db.prepare(`SELECT id FROM op_customers WHERE LOWER(name)=LOWER(?) OR (email=? AND email != '')`).get(customer_name||'', customer_email||'');
+    if (!customer) {
+      const r = db.prepare(`INSERT INTO op_customers (name,email,phone) VALUES (?,?,?)`).run(customer_name||'', customer_email||'', customer_phone||'');
+      customer = { id: r.lastInsertRowid };
+    }
+
+    // Create draft order
+    const orderNum = `PENDING-${Date.now().toString().slice(-6)}`;
+    const result = db.prepare(`
+      INSERT INTO op_orders (order_number, order_date, customer_id, email, lead_source, rep, order_status, pending, crm_inquiry_id)
+      VALUES (?, date('now'), ?, ?, ?, ?, 'Order placed', 1, ?)
+    `).run(orderNum, customer.id, customer_email||'', lead_source||'', rep||'', crm_inquiry_id||null);
+
+    const orderId = result.lastInsertRowid;
+
+    // Create line items from requirements (no pricing)
+    const validReqs = (requirements||[]).filter(r => r.part_number?.trim());
+    for (const req of validReqs) {
+      db.prepare(`INSERT INTO op_order_items (order_id, part_number, quantity, selling, buying) VALUES (?,?,?,0,0)`)
+        .run(orderId, req.part_number, req.quantity||1);
+    }
+
+    res.json({ ok: true, order_id: orderId, order_number: orderNum });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/pending', (req, res) => {
+  try {
+    const db = getDB();
+    const orders = db.prepare(`
+      SELECT o.*, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
+        COUNT(i.id) AS item_count
+      FROM op_orders o
+      LEFT JOIN op_customers c ON o.customer_id = c.id
+      LEFT JOIN op_order_items i ON i.order_id = o.id
+      WHERE o.pending = 1
+      GROUP BY o.id
+      ORDER BY o.created_at DESC
+    `).all();
+
+    // Attach items to each order
+    const withItems = orders.map(order => {
+      const items = db.prepare(`
+        SELECT i.*, s.company AS supplier_name FROM op_order_items i
+        LEFT JOIN op_suppliers s ON s.id = i.supplier_id
+        WHERE i.order_id = ?
+      `).all(order.id);
+      return { ...order, items };
+    });
+
+    res.json(withItems);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Stats (for dashboard summary card) ───────────────────────────────────────
 
 router.get('/stats', (req, res) => {
@@ -393,7 +456,8 @@ router.get('/stats', (req, res) => {
         COALESCE(SUM(i.selling * i.quantity), 0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges), 0) AS total_revenue,
         COALESCE(SUM(i.selling * i.quantity), 0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges), 0)
           - COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid), 0)
-          - COALESCE(SUM(o.rma_amount), 0) AS total_gp
+          - COALESCE(SUM(o.rma_amount), 0) AS total_gp,
+        (SELECT COUNT(*) FROM op_orders WHERE pending=1) AS pending_orders
       FROM op_orders o
       LEFT JOIN op_order_items i ON i.order_id = o.id
     `).get();

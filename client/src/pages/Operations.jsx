@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { operationsApi } from '../api'
 import Modal from '../components/Modal'
-import { Search, Plus, Edit2, Trash2, Package, Users, Truck, RotateCcw, ChevronRight, X, AlertCircle, List } from 'lucide-react'
+import { Search, Plus, Edit2, Trash2, Package, Users, Truck, RotateCcw, ChevronRight, X, AlertCircle, List, ClipboardList } from 'lucide-react'
 
 const BRAND = '#00D4C8'
 
@@ -77,7 +77,7 @@ function EmptyState({ icon: Icon, label, action }) {
 }
 
 // ── Order Form ────────────────────────────────────────────────────────────────
-function OrderForm({ order, customers, onSave, onClose }) {
+function OrderForm({ order, customers, onSave, onClose, isPending }) {
   const blank = { order_number: '', order_date: new Date().toISOString().slice(0,10), customer_id: '', email: '',
     lead_source: '', rep: '', ppc_order_rep: '', buyer: '', payment_status: '', order_status: 'Order placed',
     net: '', due_date: '',
@@ -106,7 +106,7 @@ function OrderForm({ order, customers, onSave, onClose }) {
   )
 
   return (
-    <Modal title={order ? `Edit ${order.order_number}` : 'New Order'} onClose={onClose} wide>
+    <Modal title={isPending ? `Complete Order — ${order?.order_number}` : order ? `Edit ${order.order_number}` : 'New Order'} onClose={onClose} wide>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
         <F label="Order Number"><input className="input" value={form.order_number} onChange={e => set('order_number', e.target.value)} placeholder="TA001234" /></F>
         <F label="Order Date" half><input className="input" type="date" value={form.order_date} onChange={e => set('order_date', e.target.value)} /></F>
@@ -1065,14 +1065,101 @@ function RMATab() {
   )
 }
 
+// ── Pending Orders Panel ──────────────────────────────────────────────────────
+function PendingOrdersPanel({ onClose, onOpenOrder }) {
+  const [orders, setOrders] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [selected, setSelected] = useState(null)  // order being completed
+  const [customers, setCustomers] = useState([])
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const [o, c] = await Promise.all([operationsApi.getPendingOrders(), operationsApi.getCustomers()])
+      setOrders(o); setCustomers(c)
+    } catch(e) { console.error(e) }
+    finally { setLoading(false) }
+  }
+
+  useEffect(() => { load() }, [])
+
+  if (selected) {
+    return (
+      <OrderForm
+        order={selected}
+        customers={customers}
+        onClose={() => setSelected(null)}
+        onSave={async (saved) => {
+          // mark as no longer pending
+          await operationsApi.updateOrder(saved.id, { ...saved, pending: 0 })
+          setSelected(null)
+          load()
+          onOpenOrder && onOpenOrder(saved.id)
+        }}
+        isPending
+      />
+    )
+  }
+
+  return (
+    <Modal title="Pending Orders from CRM" onClose={onClose} wide>
+      {loading ? <Loader /> : orders.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '40px 24px', color: '#94a3b8' }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>No pending orders</div>
+          <div style={{ fontSize: 13 }}>All Closed Won leads have been processed.</div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>
+            {orders.length} order{orders.length !== 1 ? 's' : ''} waiting to be completed by the operator
+          </div>
+          {orders.map(order => (
+            <div key={order.id}
+              onClick={() => setSelected(order)}
+              style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '14px 16px', cursor: 'pointer', transition: 'all 0.15s' }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = BRAND}
+              onMouseLeave={e => e.currentTarget.style.borderColor = '#e2e8f0'}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                <div>
+                  <div style={{ fontWeight: 700, color: '#0f172a', fontSize: 14 }}>{order.customer_name || '—'}</div>
+                  <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                    {order.customer_email || ''}{order.lead_source ? ` · ${order.lead_source}` : ''}{order.rep ? ` · Rep: ${order.rep}` : ''}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <span style={{ background: '#fef9c3', color: '#a16207', borderRadius: 100, fontSize: 11, fontWeight: 700, padding: '3px 10px' }}>Pending</span>
+                  <span style={{ background: '#f1f5f9', color: '#475569', borderRadius: 100, fontSize: 11, fontWeight: 600, padding: '3px 10px' }}>{order.item_count} part{order.item_count !== 1 ? 's' : ''}</span>
+                </div>
+              </div>
+              {order.items?.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6 }}>
+                  {order.items.map((item, i) => (
+                    <span key={i} style={{ background: '#f0fdf4', color: '#065f46', borderRadius: 8, padding: '2px 8px', fontSize: 11, fontWeight: 600 }}>
+                      {item.part_number} × {item.quantity}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div style={{ marginTop: 10, fontSize: 12, color: BRAND, fontWeight: 600 }}>Click to complete this order →</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
+  )
+}
+
 // ── Main Operations Page ──────────────────────────────────────────────────────
 export default function Operations() {
   const [tab, setTab] = useState('orders')
   const [stats, setStats] = useState(null)
   const [jumpOrderId, setJumpOrderId] = useState(null)
+  const [pendingCount, setPendingCount] = useState(0)
+  const [showPending, setShowPending] = useState(false)
 
   useEffect(() => {
-    operationsApi.getStats().then(setStats).catch(() => {})
+    operationsApi.getStats().then(s => { setStats(s); setPendingCount(s.pending_orders || 0) }).catch(() => {})
   }, [])
 
   const handleOpenOrderFromItems = (orderId) => {
@@ -1099,7 +1186,24 @@ export default function Operations() {
           <p style={{ fontSize: 13, color: '#94a3b8', margin: '4px 0 0' }}>Order management · Customers · Suppliers · RMA</p>
         </div>
         {stats && (
-          <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            {pendingCount > 0 && (
+              <button onClick={() => setShowPending(true)} style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 14,
+                padding: '10px 16px', cursor: 'pointer', transition: 'all 0.15s',
+                boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = '#fef3c7'}
+              onMouseLeave={e => e.currentTarget.style.background = '#fffbeb'}
+              >
+                <ClipboardList size={16} color="#d97706" />
+                <div style={{ textAlign: 'left' }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#d97706', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Pending Orders</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: '#d97706', fontFamily: '"Bricolage Grotesque", sans-serif', lineHeight: 1 }}>{pendingCount}</div>
+                </div>
+              </button>
+            )}
             {[
               { label: 'Total Orders', value: stats.total_orders, color: '#0f172a' },
               { label: 'In Process',   value: stats.in_process,   color: '#f59e0b' },
@@ -1168,6 +1272,13 @@ export default function Operations() {
         )}
         {tab === 'rma' && <RMATab />}
       </div>
+
+      {showPending && (
+        <PendingOrdersPanel
+          onClose={() => { setShowPending(false); operationsApi.getStats().then(s => { setStats(s); setPendingCount(s.pending_orders||0) }).catch(()=>{}) }}
+          onOpenOrder={(orderId) => { setShowPending(false); setTab('orders') }}
+        />
+      )}
     </div>
   )
 }
