@@ -17,7 +17,7 @@ export default function ImportModal({ onClose, onDone, onStatsRefresh }) {
 
   const handleFile = (f) => {
     if (!f) return
-    if (!f.name.match(/\.xlsx?$/i)) { setError('Please upload an .xlsx file'); return }
+    if (!f.name.match(/\.(xlsx?|csv)$/i)) { setError('Please upload an .xlsx or .csv file'); return }
     setFile(f); setError('')
   }
 
@@ -159,7 +159,7 @@ export default function ImportModal({ onClose, onDone, onStatsRefresh }) {
               transition: 'all 0.15s'
             }}
           >
-            <input ref={inputRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={e => handleFile(e.target.files[0])} />
+            <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={e => handleFile(e.target.files[0])} />
             {file ? (
               <div>
                 <div style={{ fontSize: 24, marginBottom: 6 }}>📊</div>
@@ -172,7 +172,7 @@ export default function ImportModal({ onClose, onDone, onStatsRefresh }) {
                 <div style={{ fontWeight: 600, color: cleared ? '#334155' : '#94a3b8', fontSize: 13 }}>
                   {cleared ? 'Drop your .xlsx file here' : 'Clear data first (Step 1)'}
                 </div>
-                <div style={{ color: '#94a3b8', fontSize: 11, marginTop: 3 }}>TA Quotes &amp; Orders sheet.xlsx</div>
+                <div style={{ color: '#94a3b8', fontSize: 11, marginTop: 3 }}>TA Quotes &amp; Orders sheet (.xlsx or .csv)</div>
               </div>
             )}
           </div>

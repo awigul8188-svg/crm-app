@@ -223,30 +223,26 @@ function parentOrderNum(orderNum) {
   return String(orderNum).replace(/\s*[-–]\s*(replacement|adjust\w*|shipping\s*adj\w*).*/i, '').trim();
 }
 
-function parseDate(raw, state, trackYear = true) {
+function parseDate(raw) {
   if (!raw) return null;
-  const rawStr = String(raw).trim();
-  const m = rawStr.match(/^([A-Za-z]{3})-(\d{1,2})$/);
-  if (!m) return null;
-  const monthNum = MONTHS[m[1].toLowerCase()];
-  if (!monthNum) return null;
-  const day = parseInt(m[2]);
+  const s = String(raw).trim();
 
-  if (trackYear) {
-    // Roll year only when January appears after mid-year (>= Jun).
-    // This catches Dec-2024→Jan-2025 and Dec-2025→Jan-2026 crossings.
-    // trackYear=false for adjustment rows so they don't trigger spurious rollovers.
-    if (monthNum === 1 && state.maxMonthSeen >= 6) {
-      state.year++;
-      state.maxMonthSeen = 1;
-    } else if (monthNum > 1) {
-      state.maxMonthSeen = Math.max(state.maxMonthSeen || 0, monthNum);
-    }
-    // January rows that don't cross a year boundary don't update maxMonthSeen
-    // to avoid suppressing the NEXT genuine January crossing
+  // M/D/YYYY — year is explicit, used directly (no tracking needed)
+  const us = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (us) {
+    return `${us[3]}-${String(parseInt(us[1])).padStart(2,'0')}-${String(parseInt(us[2])).padStart(2,'0')}`;
   }
 
-  return `${state.year}-${String(monthNum).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+  // Legacy Mon-DD format (kept for any old uploads)
+  const legacy = s.match(/^([A-Za-z]{3})-(\d{1,2})$/);
+  if (legacy) {
+    const monthNum = MONTHS[legacy[1].toLowerCase()];
+    if (!monthNum) return null;
+    // Without a year we default to 2024; caller should migrate to M/D/YYYY
+    return `2024-${String(monthNum).padStart(2,'0')}-${String(parseInt(legacy[2])).padStart(2,'0')}`;
+  }
+
+  return null;
 }
 
 function mapPaymentOps(raw) {
@@ -304,7 +300,8 @@ router.post('/operations', upload.single('file'), (req, res) => {
 
   try {
     const db = getDB();
-    const wb = XLSX.read(req.file.buffer, { type: 'buffer', cellText: true, cellDates: false });
+    const isCsv = (req.file.originalname || '').toLowerCase().endsWith('.csv');
+    const wb = XLSX.read(req.file.buffer, { type: 'buffer', cellText: true, cellDates: false, raw: false, ...(isCsv ? { type: 'buffer' } : {}) });
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
 
@@ -321,7 +318,7 @@ router.post('/operations', upload.single('file'), (req, res) => {
     let currentOrderDate = null;
     let currentCustomerId = null;
     let rmaIndex = 0;
-    const dateState = { year: 2024, maxMonthSeen: 0 };
+    // dateState no longer needed — M/D/YYYY has explicit year
 
     const importOrder = db.transaction(() => {
       for (let i = 1; i < rows.length; i++) {
@@ -331,10 +328,12 @@ router.post('/operations', upload.single('file'), (req, res) => {
         const rawDate = col(1);
         const rawOrder = col(3);
 
-        if (/^(January|February|March|April|May|June|July|August|September|October|November|December)$/i.test(rawDate)) continue;
+        // Skip month headers, quarter totals, and fully empty rows
+        if (/^(January|February|March|April|May|June|July|August|September|October|November|December|Q[1-4]\s*Total)$/i.test(rawDate)) continue;
         if (!rawDate && !rawOrder && !col(10) && !col(4)) continue;
 
-        const isNewOrder = rawDate !== '' && /^[A-Za-z]{3}-\d+$/.test(rawDate);
+        // A row starts a new order when col 1 has a parseable date (M/D/YYYY or Mon-DD)
+        const isNewOrder = rawDate !== '' && (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(rawDate) || /^[A-Za-z]{3}-\d+$/.test(rawDate));
         const status = col(8);
         const isRefunded = status.toLowerCase() === 'refunded';
 
@@ -364,9 +363,7 @@ router.post('/operations', upload.single('file'), (req, res) => {
 
           const orderNum = rawOrder;
           const isAdj = isAdjustmentOrder(orderNum);
-
-          // Parse date — adjustment rows don't advance year tracking
-          const orderDate = parseDate(rawDate, dateState, !isAdj);
+          const orderDate = parseDate(rawDate);
 
           if (isAdj) {
             // Route adjustment rows to their parent order instead of creating a new one
