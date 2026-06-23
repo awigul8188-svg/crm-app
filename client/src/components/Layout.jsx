@@ -4,7 +4,7 @@ import { useNav } from '../App'
 import { api } from '../api'
 import {
   LayoutDashboard, Target, RotateCcw, ShoppingBag, Users,
-  Bell, Upload, UserCog, LogOut,
+  Bell, Upload, UserCog, LogOut, Settings2,
 } from 'lucide-react'
 
 function TALogo({ size = 36 }) {
@@ -27,8 +27,9 @@ const NAV = [
 ]
 
 const ADMIN_NAV = [
-  { name: 'import', label: 'Import Data', Icon: Upload },
-  { name: 'users',  label: 'Users',       Icon: UserCog },
+  { name: 'operations', label: 'Operations', Icon: Settings2 },
+  { name: 'import',     label: 'Import Data', Icon: Upload },
+  { name: 'users',      label: 'Users',       Icon: UserCog },
 ]
 
 export default function Layout({ children }) {
