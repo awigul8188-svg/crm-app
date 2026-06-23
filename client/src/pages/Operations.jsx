@@ -751,7 +751,7 @@ function OrdersTab({ jumpOrderId, onJumpHandled }) {
       )}
       {showForm && (
         <OrderForm customers={customers} onClose={() => setShowForm(false)}
-          onSave={() => { setShowForm(false); load() }} />
+          onSave={(saved) => { setShowForm(false); load(); if (saved?.id) setSelected(saved.id) }} />
       )}
     </div>
   )
