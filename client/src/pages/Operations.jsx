@@ -79,10 +79,11 @@ function EmptyState({ icon: Icon, label, action }) {
 // ── Order Form ────────────────────────────────────────────────────────────────
 function OrderForm({ order, customers, onSave, onClose }) {
   const blank = { order_number: '', order_date: new Date().toISOString().slice(0,10), customer_id: '', email: '',
-    lead_source: '', rep: '', ppc_order_rep: '', buyer: '', payment_status: '', order_status: 'Order placed', due_date: '',
+    lead_source: '', rep: '', ppc_order_rep: '', buyer: '', payment_status: '', order_status: 'Order placed',
+    net: '', due_date: '',
     tax_charged: '', shipping_charged: '', cc_charges: '', customer_paid: '', rma_amount: '', shipped_via: '',
     tracking_to_customer: '', notes: '' }
-  const [form, setForm] = useState(order ? { ...blank, ...order, customer_id: order.customer_id || '', due_date: order.due_date?.slice(0,10)||'', order_date: order.order_date?.slice(0,10)||'', rma_amount: order.rma_amount||'' } : blank)
+  const [form, setForm] = useState(order ? { ...blank, ...order, customer_id: order.customer_id || '', due_date: order.due_date?.slice(0,10)||'', order_date: order.order_date?.slice(0,10)||'', rma_amount: order.rma_amount||'', net: order.net||'' } : blank)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
@@ -156,6 +157,7 @@ function OrderForm({ order, customers, onSave, onClose }) {
             {PAYMENT_STATUSES.map(s => <option key={s}>{s}</option>)}
           </select>
         </F>
+        <F label="Net (terms)" half><input className="input" value={form.net} onChange={e => set('net', e.target.value)} placeholder="e.g. Net 30, Net 15" /></F>
 
         <div style={{ flex: '1 1 100%', borderTop: '1px solid #f1f5f9', paddingTop: 12 }} />
 
@@ -511,6 +513,7 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
             ['PPC Order Rep', order.ppc_order_rep || '—'],
             ['Buyer',         order.buyer || '—'],
             ['Lead Source',   order.lead_source || '—'],
+            ['Net',           order.net || '—'],
             ['Shipped Via',   order.shipped_via || '—'],
             ['Tracking→Customer', order.tracking_to_customer || '—'],
             ['Tax Charged',   fmt(order.tax_charged)],
