@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { operationsApi } from '../api'
+import { operationsApi, api } from '../api'
 import Modal from '../components/Modal'
 import { Search, Plus, Edit2, Trash2, Package, Users, Truck, RotateCcw, ChevronRight, X, AlertCircle, List, ClipboardList } from 'lucide-react'
 
@@ -77,7 +77,7 @@ function EmptyState({ icon: Icon, label, action }) {
 }
 
 // ── Order Form ────────────────────────────────────────────────────────────────
-function OrderForm({ order, customers, onSave, onClose, isPending }) {
+function OrderForm({ order, customers: customersProp, onSave, onClose, isPending }) {
   const blank = { order_number: '', order_date: new Date().toISOString().slice(0,10), customer_id: '', email: '',
     lead_source: '', rep: '', ppc_order_rep: '', buyer: '', payment_status: '', order_status: 'Order placed',
     net: '', due_date: '',
@@ -86,6 +86,51 @@ function OrderForm({ order, customers, onSave, onClose, isPending }) {
   const [form, setForm] = useState(order ? { ...blank, ...order, customer_id: order.customer_id || '', due_date: order.due_date?.slice(0,10)||'', order_date: order.order_date?.slice(0,10)||'', rma_amount: order.rma_amount||'', net: order.net||'' } : blank)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
+
+  // Customer lists
+  const [opsCustomers, setOpsCustomers] = useState(customersProp || [])
+  const [crmCustomers, setCrmCustomers] = useState([])
+  useEffect(() => {
+    operationsApi.getCustomers().then(setOpsCustomers).catch(() => {})
+    api.getCustomers().then(list => setCrmCustomers(list || [])).catch(() => {})
+  }, [])
+
+  // Inline new customer form
+  const [addingCustomer, setAddingCustomer] = useState(false)
+  const [newCust, setNewCust] = useState({ name: '', email: '', phone: '' })
+  const [custSaving, setCustSaving] = useState(false)
+
+  const handleAddCustomer = async () => {
+    if (!newCust.name.trim()) return
+    setCustSaving(true)
+    try {
+      const created = await operationsApi.createCustomer(newCust)
+      setOpsCustomers(prev => [...prev, created])
+      set('customer_id', created.id)
+      if (created.email) set('email', created.email)
+      setAddingCustomer(false)
+      setNewCust({ name: '', email: '', phone: '' })
+    } catch(e) {} finally { setCustSaving(false) }
+  }
+
+  const handleCustomerSelect = async (val) => {
+    if (val.startsWith('crm_')) {
+      // CRM customer — find it and create as op_customer
+      const crmId = parseInt(val.replace('crm_', ''))
+      const c = crmCustomers.find(x => x.id === crmId)
+      if (!c) return
+      try {
+        const created = await operationsApi.createCustomer({ name: c.name, email: c.email||'', phone: c.phone||'' })
+        setOpsCustomers(prev => [...prev, created])
+        set('customer_id', created.id)
+        if (created.email) set('email', created.email)
+      } catch(e) {}
+    } else {
+      set('customer_id', val)
+      const c = opsCustomers.find(x => String(x.id) === String(val))
+      if (c?.email) set('email', c.email)
+    }
+  }
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -113,10 +158,36 @@ function OrderForm({ order, customers, onSave, onClose, isPending }) {
         <F label="Due Date" half><input className="input" type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} /></F>
 
         <F label="Customer">
-          <select className="input" value={form.customer_id} onChange={e => set('customer_id', e.target.value)}>
-            <option value="">— select customer —</option>
-            {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          {addingCustomer ? (
+            <div style={{ border: '1px solid #00D4C8', borderRadius: 10, padding: '10px 12px', background: '#f0fffe', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: BRAND, textTransform: 'uppercase', letterSpacing: '0.08em' }}>New Customer</div>
+              <input className="input" placeholder="Name *" value={newCust.name} onChange={e => setNewCust(p => ({...p, name: e.target.value}))} autoFocus />
+              <input className="input" placeholder="Email" value={newCust.email} onChange={e => setNewCust(p => ({...p, email: e.target.value}))} />
+              <input className="input" placeholder="Phone" value={newCust.phone} onChange={e => setNewCust(p => ({...p, phone: e.target.value}))} />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn-primary" style={{ flex: 1, padding: '6px 0', fontSize: 12 }} onClick={handleAddCustomer} disabled={custSaving || !newCust.name.trim()}>{custSaving ? 'Saving…' : 'Add Customer'}</button>
+                <button className="btn-secondary" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => setAddingCustomer(false)}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <select className="input" style={{ flex: 1 }} value={form.customer_id} onChange={e => handleCustomerSelect(e.target.value)}>
+                <option value="">— select customer —</option>
+                {opsCustomers.length > 0 && <optgroup label="Operations Customers">
+                  {opsCustomers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </optgroup>}
+                {crmCustomers.filter(c => !opsCustomers.some(o => o.email && o.email === c.email)).length > 0 && (
+                  <optgroup label="CRM Customers (click to import)">
+                    {crmCustomers.filter(c => !opsCustomers.some(o => o.email && o.email === c.email)).map(c => (
+                      <option key={`crm_${c.id}`} value={`crm_${c.id}`}>{c.name}{c.email ? ` — ${c.email}` : ''}</option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+              <button type="button" title="Add new customer" onClick={() => setAddingCustomer(true)}
+                style={{ padding: '0 10px', background: BRAND, border: 'none', borderRadius: 8, cursor: 'pointer', color: '#fff', fontWeight: 700, fontSize: 18, flexShrink: 0 }}>+</button>
+            </div>
+          )}
         </F>
         <F label="Email"><input className="input" type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="customer@email.com" /></F>
 
@@ -191,7 +262,7 @@ function OrderForm({ order, customers, onSave, onClose, isPending }) {
 }
 
 // ── Order Item Form ───────────────────────────────────────────────────────────
-function ItemForm({ item, orderId, suppliers, onSave, onClose }) {
+function ItemForm({ item, orderId, suppliers: suppliersProp, onSave, onClose }) {
   const blank = { part_number: '', description: '', product: '', supplier_id: '', quantity: 1,
     product_condition: '', selling: '', buying: '', cc_paid: '', tax_paid: '', shipping_paid: '',
     duty_paid: '', paid_to_supplier: '', payment_method: '', payment_due: '',
@@ -199,6 +270,26 @@ function ItemForm({ item, orderId, suppliers, onSave, onClose }) {
   const [form, setForm] = useState(item ? { ...blank, ...item, supplier_id: item.supplier_id||'', payment_due: item.payment_due?.slice(0,10)||'' } : blank)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
+
+  // Suppliers — fetch fresh, allow inline add
+  const [localSuppliers, setLocalSuppliers] = useState(suppliersProp || [])
+  useEffect(() => { operationsApi.getSuppliers().then(setLocalSuppliers).catch(() => {}) }, [])
+
+  const [addingSupplier, setAddingSupplier] = useState(false)
+  const [newSup, setNewSup] = useState({ company: '', email: '', phone: '' })
+  const [supSaving, setSupSaving] = useState(false)
+
+  const handleAddSupplier = async () => {
+    if (!newSup.company.trim()) return
+    setSupSaving(true)
+    try {
+      const created = await operationsApi.createSupplier(newSup)
+      setLocalSuppliers(prev => [...prev, created])
+      set('supplier_id', created.id)
+      setAddingSupplier(false)
+      setNewSup({ company: '', email: '', phone: '' })
+    } catch(e) {} finally { setSupSaving(false) }
+  }
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -229,10 +320,27 @@ function ItemForm({ item, orderId, suppliers, onSave, onClose }) {
         <F label="Description"><input className="input" value={form.description} onChange={e => set('description', e.target.value)} placeholder="Product description" /></F>
 
         <F label="Supplier" half>
-          <select className="input" value={form.supplier_id} onChange={e => set('supplier_id', e.target.value)}>
-            <option value="">— select supplier —</option>
-            {suppliers.map(s => <option key={s.id} value={s.id}>{s.company}</option>)}
-          </select>
+          {addingSupplier ? (
+            <div style={{ border: '1px solid #00D4C8', borderRadius: 10, padding: '10px 12px', background: '#f0fffe', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: BRAND, textTransform: 'uppercase', letterSpacing: '0.08em' }}>New Supplier</div>
+              <input className="input" placeholder="Company *" value={newSup.company} onChange={e => setNewSup(p => ({...p, company: e.target.value}))} autoFocus />
+              <input className="input" placeholder="Email" value={newSup.email} onChange={e => setNewSup(p => ({...p, email: e.target.value}))} />
+              <input className="input" placeholder="Phone" value={newSup.phone} onChange={e => setNewSup(p => ({...p, phone: e.target.value}))} />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn-primary" style={{ flex: 1, padding: '6px 0', fontSize: 12 }} onClick={handleAddSupplier} disabled={supSaving || !newSup.company.trim()}>{supSaving ? 'Saving…' : 'Add Supplier'}</button>
+                <button className="btn-secondary" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => setAddingSupplier(false)}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <select className="input" style={{ flex: 1 }} value={form.supplier_id} onChange={e => set('supplier_id', e.target.value)}>
+                <option value="">— select supplier —</option>
+                {localSuppliers.map(s => <option key={s.id} value={s.id}>{s.company}</option>)}
+              </select>
+              <button type="button" title="Add new supplier" onClick={() => setAddingSupplier(true)}
+                style={{ padding: '0 10px', background: BRAND, border: 'none', borderRadius: 8, cursor: 'pointer', color: '#fff', fontWeight: 700, fontSize: 18, flexShrink: 0 }}>+</button>
+            </div>
+          )}
         </F>
         <F label="Condition" half>
           <select className="input" value={form.product_condition} onChange={e => set('product_condition', e.target.value)}>
