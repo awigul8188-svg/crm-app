@@ -749,7 +749,7 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
 }
 
 // ── Orders Tab ────────────────────────────────────────────────────────────────
-function OrdersTab({ jumpOrderId, onJumpHandled, initialStatus, initialLeadSource, initialPaymentStatus, onInitialFiltersHandled }) {
+function OrdersTab({ jumpOrderId, onJumpHandled, initialStatus, initialLeadSource, initialPaymentStatus, onInitialFiltersHandled, resetToken }) {
   const [orders, setOrders]       = useState([])
   const [customers, setCustomers] = useState([])
   const [suppliers, setSuppliers] = useState([])
@@ -761,6 +761,13 @@ function OrdersTab({ jumpOrderId, onJumpHandled, initialStatus, initialLeadSourc
   const [filterLeadSource, setFilterLeadSource] = useState(initialLeadSource || '')
   const [filterDateFrom, setFilterDateFrom] = useState('')
   const [filterDateTo, setFilterDateTo]     = useState('')
+
+  // Reset all filters when parent signals (e.g. after reimport)
+  useEffect(() => {
+    if (!resetToken) return
+    setSearch(''); setFilterStatus(''); setFilterRep(''); setFilterPayment('')
+    setFilterLeadSource(''); setFilterDateFrom(''); setFilterDateTo('')
+  }, [resetToken])
   const [selected, setSelected]   = useState(null)
   const [showForm, setShowForm]   = useState(false)
 
@@ -1520,6 +1527,7 @@ export default function Operations() {
   const [pendingCount, setPendingCount] = useState(0)
   const [showPending, setShowPending] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [ordersResetToken, setOrdersResetToken] = useState(0)
   const [dashNavStatus, setDashNavStatus] = useState(undefined)
   const [dashNavLeadSource, setDashNavLeadSource] = useState(undefined)
   const [dashNavPayment, setDashNavPayment] = useState(undefined)
@@ -1629,6 +1637,7 @@ export default function Operations() {
           jumpOrderId={jumpOrderId} onJumpHandled={() => setJumpOrderId(null)}
           initialStatus={dashNavStatus} initialLeadSource={dashNavLeadSource} initialPaymentStatus={dashNavPayment}
           onInitialFiltersHandled={() => { setDashNavStatus(undefined); setDashNavLeadSource(undefined); setDashNavPayment(undefined) }}
+          resetToken={ordersResetToken}
         />}
         {tab === 'order-items' && <OrderItemsTab onOpenOrder={handleOpenOrderFromItems} />}
         {tab === 'dashboard' && <DashboardTab onNavigateOrders={handleNavigateOrders}
@@ -1679,6 +1688,7 @@ export default function Operations() {
           onClose={() => setShowImport(false)}
           onStatsRefresh={() => operationsApi.getStats().then(s => { setStats(s); setPendingCount(s.pending_orders||0) }).catch(()=>{})}
           onDone={() => {
+            setOrdersResetToken(t => t + 1)
             setTab('orders')
             operationsApi.getStats().then(s => { setStats(s); setPendingCount(s.pending_orders||0) }).catch(()=>{})
           }}
