@@ -214,8 +214,13 @@ function parseDollar(s) {
 }
 
 function isAdjustmentOrder(orderNum) {
-  // Backdated adjustment/replacement/settlement rows should NOT drive year tracking
-  return /replacement|adjustment|shipping adj/i.test(String(orderNum));
+  return /replacement|adjust|shipping adj/i.test(String(orderNum));
+}
+
+// "TA001475-replacement" → "TA001475"
+// "TA001388 - Shipping adjustment" → "TA001388"
+function parentOrderNum(orderNum) {
+  return String(orderNum).replace(/\s*[-–]\s*(replacement|adjust\w*|shipping\s*adj\w*).*/i, '').trim();
 }
 
 function parseDate(raw, state, trackYear = true) {
@@ -358,7 +363,26 @@ router.post('/operations', upload.single('file'), (req, res) => {
           }
 
           const orderNum = rawOrder;
-          const orderDate = parseDate(rawDate, dateState, !isAdjustmentOrder(orderNum));
+          const isAdj = isAdjustmentOrder(orderNum);
+
+          // Parse date — adjustment rows don't advance year tracking
+          const orderDate = parseDate(rawDate, dateState, !isAdj);
+
+          if (isAdj) {
+            // Route adjustment rows to their parent order instead of creating a new one
+            const parent = parentOrderNum(orderNum);
+            const parentRow = db.prepare(`SELECT id, customer_id FROM op_orders WHERE order_number=? LIMIT 1`).get(parent);
+            if (parentRow) {
+              currentOrderId = parentRow.id;
+              currentOrder = parent;
+              currentCustomerId = parentRow.customer_id;
+              currentOrderDate = orderDate;
+              rmaIndex = 0;
+            } else {
+              stats.errors.push(`Adjustment row ${i}: parent order "${parent}" not found, items kept on current order`);
+            }
+            // Fall through — item data on this same row is processed below
+          }
 
           if (existingOrders.has(orderNum)) { stats.skipped++; currentOrderId = null; currentOrder = null; continue; }
           existingOrders.add(orderNum);
