@@ -76,6 +76,17 @@ function EmptyState({ icon: Icon, label, action }) {
   )
 }
 
+// ── Shared field wrapper (must live outside form components to avoid remount on every keystroke)
+function FF({ label, children, half, third, full }) {
+  const flex = third ? '0 0 calc(33.33% - 8px)' : half ? '0 0 calc(50% - 6px)' : '1 1 100%'
+  return (
+    <div style={{ flex, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</label>
+      {children}
+    </div>
+  )
+}
+
 // ── Order Form ────────────────────────────────────────────────────────────────
 function OrderForm({ order, customers: customersProp, onSave, onClose, isPending }) {
   const blank = { order_number: '', order_date: new Date().toISOString().slice(0,10), customer_id: '', email: '',
@@ -143,21 +154,15 @@ function OrderForm({ order, customers: customersProp, onSave, onClose, isPending
     } catch(e) { setErr(e.message) } finally { setSaving(false) }
   }
 
-  const F = ({ label, children, half }) => (
-    <div style={{ flex: half ? '0 0 calc(50% - 6px)' : '1 1 100%', display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</label>
-      {children}
-    </div>
-  )
-
   return (
     <Modal title={isPending ? `Complete Order — ${order?.order_number}` : order ? `Edit ${order.order_number}` : 'New Order'} onClose={onClose} wide>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-        <F label="Order Number"><input className="input" value={form.order_number} onChange={e => set('order_number', e.target.value)} placeholder="TA001234" /></F>
-        <F label="Order Date" half><input className="input" type="date" value={form.order_date} onChange={e => set('order_date', e.target.value)} /></F>
-        <F label="Due Date" half><input className="input" type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} /></F>
+        <FF label="Order Number" half><input className="input" value={form.order_number} onChange={e => set('order_number', e.target.value)} placeholder="TA001234" /></FF>
+        <FF label="Order Date" half><input className="input" type="date" value={form.order_date} onChange={e => set('order_date', e.target.value)} /></FF>
+        <FF label="Due Date" half><input className="input" type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} /></FF>
+        <FF label="Email" half><input className="input" type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="customer@email.com" /></FF>
 
-        <F label="Customer">
+        <FF label="Customer">
           {addingCustomer ? (
             <div style={{ border: '1px solid #00D4C8', borderRadius: 10, padding: '10px 12px', background: '#f0fffe', display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: BRAND, textTransform: 'uppercase', letterSpacing: '0.08em' }}>New Customer</div>
@@ -188,67 +193,64 @@ function OrderForm({ order, customers: customersProp, onSave, onClose, isPending
                 style={{ padding: '0 10px', background: BRAND, border: 'none', borderRadius: 8, cursor: 'pointer', color: '#fff', fontWeight: 700, fontSize: 18, flexShrink: 0 }}>+</button>
             </div>
           )}
-        </F>
-        <F label="Email"><input className="input" type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="customer@email.com" /></F>
+        </FF>
 
-        <F label="Lead Source" half>
+        <FF label="Lead Source" half>
           <select className="input" value={form.lead_source} onChange={e => set('lead_source', e.target.value)}>
             <option value="">—</option>
             {LEAD_SOURCES.map(s => <option key={s}>{s}</option>)}
           </select>
-        </F>
-        <F label="Rep" half>
+        </FF>
+        <FF label="Rep" half>
           <select className="input" value={form.rep} onChange={e => set('rep', e.target.value)}>
             <option value="">—</option>
             {REPS.map(r => <option key={r}>{r}</option>)}
           </select>
-        </F>
-
-        <F label="PPC Order Rep" half>
+        </FF>
+        <FF label="PPC Order Rep" half>
           <select className="input" value={form.ppc_order_rep} onChange={e => set('ppc_order_rep', e.target.value)}>
             <option value="">—</option>
             {REPS.filter(r => r !== 'Online').map(r => <option key={r}>{r}</option>)}
           </select>
-        </F>
-        <F label="Buyer" half>
+        </FF>
+        <FF label="Buyer" half>
           <select className="input" value={form.buyer} onChange={e => set('buyer', e.target.value)}>
             <option value="">—</option>
             {BUYERS.map(b => <option key={b}>{b}</option>)}
           </select>
-        </F>
-
-        <F label="Order Status" half>
+        </FF>
+        <FF label="Order Status" half>
           <select className="input" value={form.order_status} onChange={e => set('order_status', e.target.value)}>
             {ORDER_STATUSES.map(s => <option key={s}>{s}</option>)}
           </select>
-        </F>
-        <F label="Payment Status" half>
+        </FF>
+        <FF label="Payment Status" half>
           <select className="input" value={form.payment_status} onChange={e => set('payment_status', e.target.value)}>
             <option value="">—</option>
             {PAYMENT_STATUSES.map(s => <option key={s}>{s}</option>)}
           </select>
-        </F>
-        <F label="Net (terms)" half><input className="input" value={form.net} onChange={e => set('net', e.target.value)} placeholder="e.g. Net 30, Net 15" /></F>
+        </FF>
+        <FF label="Net (terms)" half><input className="input" value={form.net} onChange={e => set('net', e.target.value)} placeholder="e.g. Net 30, Net 15" /></FF>
 
         <div style={{ flex: '1 1 100%', borderTop: '1px solid #f1f5f9', paddingTop: 12 }} />
 
-        <F label="Tax Charged ($)" half><input className="input" type="number" value={form.tax_charged} onChange={e => set('tax_charged', e.target.value)} placeholder="0.00" /></F>
-        <F label="Shipping Charged ($)" half><input className="input" type="number" value={form.shipping_charged} onChange={e => set('shipping_charged', e.target.value)} placeholder="0.00" /></F>
-        <F label="CC Charges ($)" half><input className="input" type="number" value={form.cc_charges} onChange={e => set('cc_charges', e.target.value)} placeholder="0.00" /></F>
-        <F label="Customer Paid ($)" half><input className="input" type="number" value={form.customer_paid} onChange={e => set('customer_paid', e.target.value)} placeholder="0.00" /></F>
-        <F label="RMA Amount ($)" half><input className="input" type="number" value={form.rma_amount} onChange={e => set('rma_amount', e.target.value)} placeholder="0.00" /></F>
+        <FF label="Tax Charged ($)" third><input className="input" type="number" value={form.tax_charged} onChange={e => set('tax_charged', e.target.value)} placeholder="0.00" /></FF>
+        <FF label="Shipping Charged ($)" third><input className="input" type="number" value={form.shipping_charged} onChange={e => set('shipping_charged', e.target.value)} placeholder="0.00" /></FF>
+        <FF label="CC Charges ($)" third><input className="input" type="number" value={form.cc_charges} onChange={e => set('cc_charges', e.target.value)} placeholder="0.00" /></FF>
+        <FF label="Customer Paid ($)" half><input className="input" type="number" value={form.customer_paid} onChange={e => set('customer_paid', e.target.value)} placeholder="0.00" /></FF>
+        <FF label="RMA Amount ($)" half><input className="input" type="number" value={form.rma_amount} onChange={e => set('rma_amount', e.target.value)} placeholder="0.00" /></FF>
 
         <div style={{ flex: '1 1 100%', borderTop: '1px solid #f1f5f9', paddingTop: 12 }} />
 
-        <F label="Shipped Via" half>
+        <FF label="Shipped Via" half>
           <select className="input" value={form.shipped_via} onChange={e => set('shipped_via', e.target.value)}>
             <option value="">—</option>
             {SHIPPED_VIA.map(s => <option key={s}>{s}</option>)}
           </select>
-        </F>
-        <F label="Tracking to Customer" half><input className="input" value={form.tracking_to_customer} onChange={e => set('tracking_to_customer', e.target.value)} placeholder="1Z999..." /></F>
+        </FF>
+        <FF label="Tracking to Customer" half><input className="input" value={form.tracking_to_customer} onChange={e => set('tracking_to_customer', e.target.value)} placeholder="1Z999..." /></FF>
 
-        <F label="Notes"><textarea className="input" value={form.notes} onChange={e => set('notes', e.target.value)} rows={3} placeholder="Internal notes..." style={{ resize: 'vertical' }} /></F>
+        <FF label="Notes"><textarea className="input" value={form.notes} onChange={e => set('notes', e.target.value)} rows={3} placeholder="Internal notes..." style={{ resize: 'vertical' }} /></FF>
       </div>
 
       {err && <div style={{ background: '#fee2e2', color: '#dc2626', borderRadius: 10, padding: '10px 14px', fontSize: 13, marginTop: 12 }}>{err}</div>}
@@ -301,13 +303,6 @@ function ItemForm({ item, orderId, suppliers: suppliersProp, onSave, onClose }) 
     } catch(e) { setErr(e.message) } finally { setSaving(false) }
   }
 
-  const F = ({ label, children, half, third }) => (
-    <div style={{ flex: third ? '0 0 calc(33.33% - 8px)' : half ? '0 0 calc(50% - 6px)' : '1 1 100%', display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</label>
-      {children}
-    </div>
-  )
-
   const totalSelling = (Number(form.selling)||0) * (Number(form.quantity)||0)
   const totalBuying  = (Number(form.buying)||0) * (Number(form.quantity)||0)
     + (Number(form.cc_paid)||0) + (Number(form.tax_paid)||0) + (Number(form.shipping_paid)||0) + (Number(form.duty_paid)||0)
@@ -315,11 +310,11 @@ function ItemForm({ item, orderId, suppliers: suppliersProp, onSave, onClose }) 
   return (
     <Modal title={item ? 'Edit Line Item' : 'Add Line Item'} onClose={onClose} wide>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-        <F label="Part Number" half><input className="input" value={form.part_number} onChange={e => set('part_number', e.target.value)} placeholder="ABC-123" /></F>
-        <F label="Quantity" half><input className="input" type="number" value={form.quantity} onChange={e => set('quantity', e.target.value)} min="1" /></F>
-        <F label="Description"><input className="input" value={form.description} onChange={e => set('description', e.target.value)} placeholder="Product description" /></F>
+        <FF label="Part Number" half><input className="input" value={form.part_number} onChange={e => set('part_number', e.target.value)} placeholder="ABC-123" /></FF>
+        <FF label="Quantity" half><input className="input" type="number" value={form.quantity} onChange={e => set('quantity', e.target.value)} min="1" /></FF>
+        <FF label="Description"><input className="input" value={form.description} onChange={e => set('description', e.target.value)} placeholder="Product description" /></FF>
 
-        <F label="Supplier" half>
+        <FF label="Supplier" half>
           {addingSupplier ? (
             <div style={{ border: '1px solid #00D4C8', borderRadius: 10, padding: '10px 12px', background: '#f0fffe', display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: BRAND, textTransform: 'uppercase', letterSpacing: '0.08em' }}>New Supplier</div>
@@ -341,37 +336,37 @@ function ItemForm({ item, orderId, suppliers: suppliersProp, onSave, onClose }) 
                 style={{ padding: '0 10px', background: BRAND, border: 'none', borderRadius: 8, cursor: 'pointer', color: '#fff', fontWeight: 700, fontSize: 18, flexShrink: 0 }}>+</button>
             </div>
           )}
-        </F>
-        <F label="Condition" half>
+        </FF>
+        <FF label="Condition" half>
           <select className="input" value={form.product_condition} onChange={e => set('product_condition', e.target.value)}>
             <option value="">—</option>
             {CONDITIONS.map(c => <option key={c}>{c}</option>)}
           </select>
-        </F>
+        </FF>
 
         <div style={{ flex: '1 1 100%', borderTop: '1px solid #f1f5f9', paddingTop: 12 }} />
 
-        <F label="Selling ($/unit)" third><input className="input" type="number" value={form.selling} onChange={e => set('selling', e.target.value)} placeholder="0.00" /></F>
-        <F label="Buying ($/unit)" third><input className="input" type="number" value={form.buying} onChange={e => set('buying', e.target.value)} placeholder="0.00" /></F>
-        <F label="Paid to Supplier ($)" third><input className="input" type="number" value={form.paid_to_supplier} onChange={e => set('paid_to_supplier', e.target.value)} placeholder="0.00" /></F>
+        <FF label="Selling ($/unit)" third><input className="input" type="number" value={form.selling} onChange={e => set('selling', e.target.value)} placeholder="0.00" /></FF>
+        <FF label="Buying ($/unit)" third><input className="input" type="number" value={form.buying} onChange={e => set('buying', e.target.value)} placeholder="0.00" /></FF>
+        <FF label="Paid to Supplier ($)" third><input className="input" type="number" value={form.paid_to_supplier} onChange={e => set('paid_to_supplier', e.target.value)} placeholder="0.00" /></FF>
 
-        <F label="CC Paid ($)" third><input className="input" type="number" value={form.cc_paid} onChange={e => set('cc_paid', e.target.value)} placeholder="0.00" /></F>
-        <F label="Tax Paid ($)" third><input className="input" type="number" value={form.tax_paid} onChange={e => set('tax_paid', e.target.value)} placeholder="0.00" /></F>
-        <F label="Shipping Paid ($)" third><input className="input" type="number" value={form.shipping_paid} onChange={e => set('shipping_paid', e.target.value)} placeholder="0.00" /></F>
-        <F label="Duty Paid ($)" third><input className="input" type="number" value={form.duty_paid} onChange={e => set('duty_paid', e.target.value)} placeholder="0.00" /></F>
-        <F label="Payment Method" third>
+        <FF label="CC Paid ($)" third><input className="input" type="number" value={form.cc_paid} onChange={e => set('cc_paid', e.target.value)} placeholder="0.00" /></FF>
+        <FF label="Tax Paid ($)" third><input className="input" type="number" value={form.tax_paid} onChange={e => set('tax_paid', e.target.value)} placeholder="0.00" /></FF>
+        <FF label="Shipping Paid ($)" third><input className="input" type="number" value={form.shipping_paid} onChange={e => set('shipping_paid', e.target.value)} placeholder="0.00" /></FF>
+        <FF label="Duty Paid ($)" third><input className="input" type="number" value={form.duty_paid} onChange={e => set('duty_paid', e.target.value)} placeholder="0.00" /></FF>
+        <FF label="Payment Method" third>
           <select className="input" value={form.payment_method} onChange={e => set('payment_method', e.target.value)}>
             <option value="">—</option>
             {PAYMENT_METHODS.map(m => <option key={m}>{m}</option>)}
           </select>
-        </F>
-        <F label="Payment Due" third><input className="input" type="date" value={form.payment_due} onChange={e => set('payment_due', e.target.value)} /></F>
+        </FF>
+        <FF label="Payment Due" third><input className="input" type="date" value={form.payment_due} onChange={e => set('payment_due', e.target.value)} /></FF>
 
         <div style={{ flex: '1 1 100%', borderTop: '1px solid #f1f5f9', paddingTop: 12 }} />
 
-        <F label="TA PO #" half><input className="input" value={form.ta_po_number} onChange={e => set('ta_po_number', e.target.value)} placeholder="PO-000" /></F>
-        <F label="Tracking to Warehouse" half><input className="input" value={form.tracking_to_warehouse} onChange={e => set('tracking_to_warehouse', e.target.value)} placeholder="1Z999..." /></F>
-        <F label="Serial Numbers"><textarea className="input" value={form.serials} onChange={e => set('serials', e.target.value)} rows={2} placeholder="One per line..." style={{ resize: 'vertical' }} /></F>
+        <FF label="TA PO #" half><input className="input" value={form.ta_po_number} onChange={e => set('ta_po_number', e.target.value)} placeholder="PO-000" /></FF>
+        <FF label="Tracking to Warehouse" half><input className="input" value={form.tracking_to_warehouse} onChange={e => set('tracking_to_warehouse', e.target.value)} placeholder="1Z999..." /></FF>
+        <FF label="Serial Numbers"><textarea className="input" value={form.serials} onChange={e => set('serials', e.target.value)} rows={2} placeholder="One per line..." style={{ resize: 'vertical' }} /></FF>
       </div>
 
       {(totalSelling > 0 || totalBuying > 0) && (
@@ -435,37 +430,28 @@ function RMAForm({ rma, presetOrder, orderItems, customers, orders, onSave, onCl
     } catch(e) { setErr(e.message) } finally { setSaving(false) }
   }
 
-  const F = ({ label, children, half }) => (
-    <div style={{ flex: half ? '0 0 calc(50% - 6px)' : '1 1 100%', display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</label>
-      {children}
-    </div>
-  )
-
   return (
     <Modal title={rma ? `Edit ${rma.rma_number}` : 'New RMA'} onClose={onClose} wide>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-        <F label="RMA Number" half><input className="input" value={form.rma_number} onChange={e => set('rma_number', e.target.value)} placeholder="RMA-001" /></F>
-        <F label="RMA Status" half>
+        <FF label="RMA Number" half><input className="input" value={form.rma_number} onChange={e => set('rma_number', e.target.value)} placeholder="RMA-001" /></FF>
+        <FF label="RMA Status" half>
           <select className="input" value={form.rma_status} onChange={e => set('rma_status', e.target.value)}>
             {RMA_STATUSES.map(s => <option key={s}>{s}</option>)}
           </select>
-        </F>
+        </FF>
 
-        {/* Order link */}
         {presetOrder ? (
-          <F label="Order"><input className="input" value={presetOrder.order_number} readOnly style={{ background: '#f8fafc', color: '#64748b' }} /></F>
+          <FF label="Order"><input className="input" value={presetOrder.order_number} readOnly style={{ background: '#f8fafc', color: '#64748b' }} /></FF>
         ) : (
-          <F label="Order">
+          <FF label="Order">
             <select className="input" value={form.order_id} onChange={e => { set('order_id', e.target.value); set('order_item_id', '') }}>
               <option value="">— select order —</option>
               {(orders||[]).map(o => <option key={o.id} value={o.id}>{o.order_number} {o.customer_name ? `· ${o.customer_name}` : ''}</option>)}
             </select>
-          </F>
+          </FF>
         )}
 
-        {/* Return Item — links to a specific order item */}
-        <F label="Return Item (links to Order Item)">
+        <FF label="Return Item (links to Order Item)">
           <select className="input" value={form.order_item_id} onChange={e => set('order_item_id', e.target.value)}
             disabled={!form.order_id && !presetOrder}>
             <option value="">— select item —</option>
@@ -475,22 +461,21 @@ function RMAForm({ rma, presetOrder, orderItems, customers, orders, onSave, onCl
               </option>
             ))}
           </select>
-        </F>
+        </FF>
 
-        <F label="Customer" half>
+        <FF label="Customer" half>
           <select className="input" value={form.customer_id} onChange={e => set('customer_id', e.target.value)}>
             <option value="">— select customer —</option>
             {(customers||[]).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-        </F>
-        <F label="Email" half><input className="input" type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="customer@email.com" /></F>
+        </FF>
+        <FF label="Email" half><input className="input" type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="customer@email.com" /></FF>
 
         <div style={{ flex: '1 1 100%', borderTop: '1px solid #f1f5f9', paddingTop: 12 }} />
 
-        <F label="Return Quantity" half><input className="input" type="number" min="1" value={form.return_quantity} onChange={e => set('return_quantity', e.target.value)} /></F>
-        <F label="Return Reason" half><input className="input" value={form.return_reason} onChange={e => set('return_reason', e.target.value)} placeholder="Defective, wrong item…" /></F>
+        <FF label="Return Quantity" half><input className="input" type="number" min="1" value={form.return_quantity} onChange={e => set('return_quantity', e.target.value)} /></FF>
+        <FF label="Return Reason" half><input className="input" value={form.return_reason} onChange={e => set('return_reason', e.target.value)} placeholder="Defective, wrong item…" /></FF>
 
-        {/* Auto-calculated Return Amount */}
         {selectedItem && (
           <div style={{ flex: '1 1 100%', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: '10px 14px', display: 'flex', gap: 20, alignItems: 'center' }}>
             <div><span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Unit Selling Price</span><div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{fmt(selectedItem.selling)}</div></div>
@@ -503,14 +488,14 @@ function RMAForm({ rma, presetOrder, orderItems, customers, orders, onSave, onCl
 
         <div style={{ flex: '1 1 100%', borderTop: '1px solid #f1f5f9', paddingTop: 12 }} />
 
-        <F label="Issue Date" half><input className="input" type="date" value={form.rma_issue_date} onChange={e => set('rma_issue_date', e.target.value)} /></F>
-        <F label="Completed Date" half><input className="input" type="date" value={form.rma_completed_date} onChange={e => set('rma_completed_date', e.target.value)} /></F>
-        <F label="Refund Issued ($)" half><input className="input" type="number" value={form.refund_issued} onChange={e => set('refund_issued', e.target.value)} placeholder="0.00" /></F>
-        <F label="Restocking Fee ($)" half><input className="input" type="number" value={form.restocking_fee} onChange={e => set('restocking_fee', e.target.value)} placeholder="0.00" /></F>
-        <F label="Return Tracking #" half><input className="input" value={form.return_tracking_number} onChange={e => set('return_tracking_number', e.target.value)} /></F>
-        <F label="Return Shipping Paid ($)" half><input className="input" type="number" value={form.return_shipping_paid} onChange={e => set('return_shipping_paid', e.target.value)} placeholder="0.00" /></F>
-        <F label="QB Credit Memo #" half><input className="input" value={form.qb_credit_memo} onChange={e => set('qb_credit_memo', e.target.value)} /></F>
-        <F label="Notes"><textarea className="input" value={form.notes} onChange={e => set('notes', e.target.value)} rows={3} style={{ resize: 'vertical' }} /></F>
+        <FF label="Issue Date" half><input className="input" type="date" value={form.rma_issue_date} onChange={e => set('rma_issue_date', e.target.value)} /></FF>
+        <FF label="Completed Date" half><input className="input" type="date" value={form.rma_completed_date} onChange={e => set('rma_completed_date', e.target.value)} /></FF>
+        <FF label="Refund Issued ($)" half><input className="input" type="number" value={form.refund_issued} onChange={e => set('refund_issued', e.target.value)} placeholder="0.00" /></FF>
+        <FF label="Restocking Fee ($)" half><input className="input" type="number" value={form.restocking_fee} onChange={e => set('restocking_fee', e.target.value)} placeholder="0.00" /></FF>
+        <FF label="Return Tracking #" half><input className="input" value={form.return_tracking_number} onChange={e => set('return_tracking_number', e.target.value)} /></FF>
+        <FF label="Return Shipping Paid ($)" half><input className="input" type="number" value={form.return_shipping_paid} onChange={e => set('return_shipping_paid', e.target.value)} placeholder="0.00" /></FF>
+        <FF label="QB Credit Memo #" half><input className="input" value={form.qb_credit_memo} onChange={e => set('qb_credit_memo', e.target.value)} /></FF>
+        <FF label="Notes"><textarea className="input" value={form.notes} onChange={e => set('notes', e.target.value)} rows={3} style={{ resize: 'vertical' }} /></FF>
       </div>
 
       {err && <div style={{ background: '#fee2e2', color: '#dc2626', borderRadius: 10, padding: '10px 14px', fontSize: 13, marginTop: 12 }}>{err}</div>}

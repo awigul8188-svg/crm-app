@@ -33,7 +33,7 @@ export default function Modal({ title, onClose, children, wide }) {
           borderRadius: '20px',
           boxShadow: '0 32px 80px rgba(0,0,0,0.18), 0 0 0 1px rgba(255,255,255,0.7) inset, 0 0 0 1px rgba(0,0,0,0.06)',
           width: '100%',
-          maxWidth: wide ? '680px' : '480px',
+          maxWidth: wide ? '920px' : '480px',
           maxHeight: '90vh',
           overflowY: 'auto',
           position: 'relative',
