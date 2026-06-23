@@ -44,18 +44,48 @@ const Tip = ({ active, payload, label }) => {
   )
 }
 
+// ── Count-up hook ────────────────────────────────────────────────
+function useCountUp(target, duration = 900) {
+  const [val, setVal] = useState(typeof target === 'number' ? 0 : target)
+  useEffect(() => {
+    if (typeof target !== 'number') { setVal(target); return }
+    if (target === 0) { setVal(0); return }
+    const start = performance.now()
+    const tick = now => {
+      const t = Math.min((now - start) / duration, 1)
+      const ease = 1 - Math.pow(1 - t, 3)
+      setVal(Math.round(target * ease))
+      if (t < 1) requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  }, [target])
+  return val
+}
+
 // ── Metric Card ─────────────────────────────────────────────────
 function MetricCard({ label, value, sub, color = BRAND, prefix = '', suffix = '', onClick }) {
+  const animated = useCountUp(value)
+  const display = typeof value === 'number' ? animated.toLocaleString() : (value ?? '—')
   return (
     <div onClick={onClick}
       className={`metric-card${onClick ? ' clickable' : ''}`}
-      onMouseEnter={e => { if (onClick) { e.currentTarget.style.borderColor = color; e.currentTarget.style.boxShadow = `0 4px 20px ${color}22` } }}
+      onMouseEnter={e => { if (onClick) { e.currentTarget.style.borderColor = color; e.currentTarget.style.boxShadow = `0 8px 24px ${color}30` } }}
       onMouseLeave={e => { e.currentTarget.style.borderColor = ''; e.currentTarget.style.boxShadow = '' }}>
       <div style={{ position:'absolute', top:0, left:0, width:3, height:'100%', background: color, borderRadius:'16px 0 0 16px' }} />
       {onClick && <div className="absolute top-2.5 right-3 text-[9px] font-bold tracking-widest text-ink-300">VIEW ↗</div>}
       <div className="text-[10px] font-bold text-ink-400 uppercase tracking-[0.08em] mb-2">{label}</div>
-      <div className="font-display font-extrabold text-[26px] text-ink-900 leading-none">{prefix}{typeof value === 'number' ? value.toLocaleString() : (value ?? '—')}{suffix}</div>
+      <div className="font-display font-extrabold text-[26px] text-ink-900 leading-none" style={{ fontVariantNumeric:'tabular-nums' }}>{prefix}{display}{suffix}</div>
       {sub && <div className="text-xs text-ink-400 mt-1.5">{sub}</div>}
+    </div>
+  )
+}
+
+// ── Section Label ────────────────────────────────────────────────
+function SectionLabel({ children }) {
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
+      <div style={{ width:3, height:14, borderRadius:2, background: BRAND, flexShrink:0 }} />
+      <span style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.1em' }}>{children}</span>
     </div>
   )
 }
@@ -115,13 +145,39 @@ function BentoTop({ summary, isManager }) {
             )
           })}
         </div>
-        {f.won > 0 && f.total > 0 && (
-          <div style={{ marginTop:14, paddingTop:12, borderTop:'1px solid #f1f5f9', display:'flex', gap:16 }}>
-            <div><div style={{ fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.08em' }}>Win Rate</div><div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontSize:20, fontWeight:800, color:'#10b981' }}>{Math.round(f.won/f.total*100)}%</div></div>
-            <div><div style={{ fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.08em' }}>Active</div><div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontSize:20, fontWeight:800, color:'#0f172a' }}>{(f.total - f.won - (f.lost||0)).toLocaleString()}</div></div>
-            {isManager && summary.topAE && <div><div style={{ fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.08em' }}>Top AE (Month)</div><div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontSize:13, fontWeight:800, color:'#0f172a', marginTop:2 }}>{summary.topAE.name} <span style={{ color:'#10b981' }}>{summary.topAE.winRate}%</span></div></div>}
-          </div>
-        )}
+        {f.won > 0 && f.total > 0 && (() => {
+          const winPct = Math.round(f.won / f.total * 100)
+          const r = 22; const circ = 2 * Math.PI * r
+          return (
+            <div style={{ marginTop:14, paddingTop:12, borderTop:'1px solid #f1f5f9', display:'flex', alignItems:'center', gap:18 }}>
+              <div style={{ position:'relative', flexShrink:0 }}>
+                <svg width="54" height="54" viewBox="0 0 54 54" style={{ display:'block' }}>
+                  <circle cx="27" cy="27" r={r} fill="none" stroke="#f1f5f9" strokeWidth="5" />
+                  <circle cx="27" cy="27" r={r} fill="none" stroke="#10b981" strokeWidth="5"
+                    strokeLinecap="round"
+                    strokeDasharray={`${circ * winPct / 100} ${circ * (1 - winPct / 100)}`}
+                    transform="rotate(-90 27 27)"
+                    style={{ transition:'stroke-dasharray 1.2s cubic-bezier(0.34,1.56,0.64,1)' }}
+                  />
+                  <text x="27" y="31" textAnchor="middle" fontSize="11" fontWeight="700" fill="#10b981">{winPct}%</text>
+                </svg>
+                <div style={{ fontSize:9, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.08em', textAlign:'center', marginTop:3 }}>Win Rate</div>
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:8, flex:1 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <span style={{ fontSize:11, color:'#64748b' }}>Active</span>
+                  <span style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontSize:16, fontWeight:800, color:'#0f172a' }}>{(f.total - f.won - (f.lost||0)).toLocaleString()}</span>
+                </div>
+                {isManager && summary.topAE && (
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', background:'#f8fafc', borderRadius:10, padding:'6px 10px' }}>
+                    <span style={{ fontSize:11, color:'#64748b' }}>🏆 Top AE</span>
+                    <span style={{ fontSize:12, fontWeight:700, color:'#0f172a' }}>{summary.topAE.name} <span style={{ color:'#10b981' }}>{summary.topAE.winRate}%</span></span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })()}
       </div>
 
       {/* Overdue Follow-ups */}
@@ -129,10 +185,11 @@ function BentoTop({ summary, isManager }) {
         <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
           <AlertCircle size={14} style={{ color: overdue > 0 ? '#ef4444' : '#10b981' }} />
           <span style={{ fontSize:11, fontWeight:700, color: overdue > 0 ? '#ef4444' : '#16a34a', textTransform:'uppercase', letterSpacing:'0.08em' }}>Overdue</span>
+          {overdue > 0 && <span style={{ width:7, height:7, borderRadius:'50%', background:'#ef4444', display:'inline-block', animation:'pulse 2s infinite', marginLeft:'auto' }} />}
         </div>
-        <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontSize:52, fontWeight:900, lineHeight:1, color: overdue > 0 ? '#dc2626' : '#16a34a' }}>{overdue}</div>
+        <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontSize:52, fontWeight:900, lineHeight:1, color: overdue > 0 ? '#dc2626' : '#16a34a', fontVariantNumeric:'tabular-nums' }}>{overdue}</div>
         <div style={{ fontSize:12, color: overdue > 0 ? '#ef4444' : '#16a34a', marginTop:8, fontWeight:500 }}>
-          {overdue === 0 ? 'All follow-ups on track' : overdue === 1 ? '1 follow-up is overdue' : `${overdue} follow-ups are overdue`}
+          {overdue === 0 ? 'All follow-ups on track ✓' : overdue === 1 ? '1 follow-up is overdue' : `${overdue} follow-ups are overdue`}
         </div>
       </div>
 
@@ -141,10 +198,11 @@ function BentoTop({ summary, isManager }) {
         <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
           <Clock size={14} style={{ color: untouched > 0 ? '#d97706' : '#10b981' }} />
           <span style={{ fontSize:11, fontWeight:700, color: untouched > 0 ? '#d97706' : '#16a34a', textTransform:'uppercase', letterSpacing:'0.08em' }}>Needs Attention</span>
+          {untouched > 0 && <span style={{ width:7, height:7, borderRadius:'50%', background:'#f59e0b', display:'inline-block', animation:'pulse 2s infinite 0.4s', marginLeft:'auto' }} />}
         </div>
-        <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontSize:52, fontWeight:900, lineHeight:1, color: untouched > 0 ? '#d97706' : '#16a34a' }}>{untouched}</div>
+        <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontSize:52, fontWeight:900, lineHeight:1, color: untouched > 0 ? '#d97706' : '#16a34a', fontVariantNumeric:'tabular-nums' }}>{untouched}</div>
         <div style={{ fontSize:12, color: untouched > 0 ? '#d97706' : '#16a34a', marginTop:8, fontWeight:500 }}>
-          {untouched === 0 ? 'All inquiries touched' : `${untouched} inquiries — no activity in 7+ days`}
+          {untouched === 0 ? 'All inquiries touched ✓' : `${untouched} with no activity 7+ days`}
         </div>
         {isManager && summary.newCustomersToday > 0 && (
           <div style={{ marginTop:14, paddingTop:12, borderTop:`1px solid ${untouched > 0 ? '#fde68a' : '#bbf7d0'}` }}>
@@ -248,9 +306,13 @@ function TopList({ data, label, color, showCompany, onDrilldown }) {
         <div style={{ textAlign:'center', color:'#94a3b8', fontSize:13, padding:'24px 0' }}>No data for this period</div>
       ) : (
         <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-          {rows.map((row, i) => (
+          {rows.map((row, i) => {
+            const medals = ['🥇','🥈','🥉']
+            const rankBg = ['#FEF9C3','#F1F5F9','#FFEDD5']
+            const rankClr = ['#A16207','#475569','#9A3412']
+            return (
             <div key={row.name+i} style={{ display:'flex', alignItems:'center', gap:10 }}>
-              <div style={{ width:22, height:22, borderRadius:6, background:i===0?color:'#f1f5f9', color:i===0?'#fff':'#94a3b8', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, flexShrink:0 }}>{i+1}</div>
+              <div style={{ width:24, height:24, borderRadius:8, background: i < 3 ? rankBg[i] : '#f8fafc', color: i < 3 ? rankClr[i] : '#94a3b8', display:'flex', alignItems:'center', justifyContent:'center', fontSize: i < 3 ? 13 : 11, fontWeight:700, flexShrink:0 }}>{i < 3 ? medals[i] : i+1}</div>
               <div style={{ flex:1, minWidth:0 }}>
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:3 }}>
                   <div><span style={{ fontSize:13, fontWeight:600, color:'#0f172a' }}>{row.name||'Unknown'}</span>
@@ -263,7 +325,8 @@ function TopList({ data, label, color, showCompany, onDrilldown }) {
                 </div>
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
@@ -417,7 +480,7 @@ function LeadsTab({ filters, onDrilldown }) {
 
   return (
     <div>
-      <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:12 }}>Today</div>
+      <SectionLabel>Today</SectionLabel>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:24 }}>
         <MetricCard label="Leads Received" value={data.today.total} color="#3b82f6" onClick={() => drill('Leads Today', { from: new Date().toISOString().split('T')[0], to: new Date().toISOString().split('T')[0] })} />
         {(data.today.perAE||[]).slice(0,3).map((ae,i) => (
@@ -425,7 +488,7 @@ function LeadsTab({ filters, onDrilldown }) {
         ))}
       </div>
 
-      <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:12 }}>Period Summary</div>
+      <SectionLabel>Period Summary</SectionLabel>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:20 }}>
         <MetricCard label="Total Leads" value={p.total} color="#3b82f6" onClick={() => drill('All Leads')} />
         <MetricCard label="Closed Won" value={p.closed_won} color="#10b981" sub={`${p.win_rate}% win rate`} onClick={() => drill('Closed Won Leads', { disposition:'Closed Won' })} />
@@ -548,13 +611,13 @@ function RepeatTab({ filters, onDrilldown }) {
 
   return (
     <div>
-      <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:12 }}>Today</div>
+      <SectionLabel>Today</SectionLabel>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:24 }}>
         <MetricCard label="Inquiries Received" value={data.today.total} color="#6366f1" onClick={() => drill('Repeat Inquiries Today', { from: new Date().toISOString().split('T')[0], to: new Date().toISOString().split('T')[0] })} />
         <MetricCard label="PPC (Period)" value={p.ppc} color="#3b82f6" onClick={() => drill('PPC Inquiries')} />
         <MetricCard label="Outbound Repeat (Period)" value={p.outbound} color="#8b5cf6" onClick={() => drill('Outbound Repeat Inquiries')} />
       </div>
-      <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:12 }}>Period Summary</div>
+      <SectionLabel>Period Summary</SectionLabel>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:24 }}>
         <MetricCard label="Total Inquiries" value={p.total} color="#6366f1" onClick={() => drill('All Repeat Inquiries')} />
         <MetricCard label="Closed Won" value={p.closed_won} color="#10b981" onClick={() => drill('Closed Won', { disposition:'Closed Won' })} />
@@ -610,7 +673,7 @@ function OrdersTab({ filters, onDrilldown }) {
 
   return (
     <div>
-      <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:12 }}>Today</div>
+      <SectionLabel>Today</SectionLabel>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:12, marginBottom:24 }}>
         <MetricCard label="Orders Received" value={t.total} color="#f59e0b" onClick={() => drill('Orders Today', { from: new Date().toISOString().split('T')[0], to: new Date().toISOString().split('T')[0] })} />
         <MetricCard label="Verified" value={t.verified} color="#10b981" />
@@ -619,7 +682,7 @@ function OrdersTab({ filters, onDrilldown }) {
         <MetricCard label="Processed" value={t.processed} color="#10b981" />
         <MetricCard label="Cancelled" value={t.cancelled} color="#ef4444" />
       </div>
-      <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:12 }}>Period</div>
+      <SectionLabel>Period</SectionLabel>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:12, marginBottom:24 }}>
         <MetricCard label="Total Orders" value={p.total} color="#f59e0b" onClick={() => drill('All Orders')} />
         <MetricCard label="Verified" value={p.verified} color="#10b981" />
@@ -701,7 +764,14 @@ export default function Dashboard() {
 
   return (
     <div className="page-wrap">
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes pulse {
+          0%   { box-shadow: 0 0 0 0 rgba(239,68,68,0.5); }
+          70%  { box-shadow: 0 0 0 7px rgba(239,68,68,0); }
+          100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+        }
+      `}</style>
 
       <div style={{ marginBottom:20 }}>
         <h1 className="font-display font-bold text-2xl text-ink-900">{greeting()}, {user.name} 👋</h1>
