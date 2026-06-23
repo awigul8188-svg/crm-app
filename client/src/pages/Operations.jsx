@@ -748,13 +748,18 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
 }
 
 // ── Orders Tab ────────────────────────────────────────────────────────────────
-function OrdersTab({ jumpOrderId, onJumpHandled }) {
+function OrdersTab({ jumpOrderId, onJumpHandled, initialStatus, initialLeadSource, initialPaymentStatus, onInitialFiltersHandled }) {
   const [orders, setOrders]       = useState([])
   const [customers, setCustomers] = useState([])
   const [suppliers, setSuppliers] = useState([])
   const [loading, setLoading]     = useState(true)
   const [search, setSearch]       = useState('')
-  const [statusFilter, setStatus] = useState('')
+  const [filterStatus, setFilterStatus] = useState(initialStatus || '')
+  const [filterRep, setFilterRep]       = useState('')
+  const [filterPayment, setFilterPayment] = useState(initialPaymentStatus || '')
+  const [filterLeadSource, setFilterLeadSource] = useState(initialLeadSource || '')
+  const [filterDateFrom, setFilterDateFrom] = useState('')
+  const [filterDateTo, setFilterDateTo]     = useState('')
   const [selected, setSelected]   = useState(null)
   const [showForm, setShowForm]   = useState(false)
 
@@ -762,18 +767,30 @@ function OrdersTab({ jumpOrderId, onJumpHandled }) {
     if (jumpOrderId) { setSelected(jumpOrderId); onJumpHandled && onJumpHandled() }
   }, [jumpOrderId])
 
+  useEffect(() => {
+    if (initialStatus !== undefined) { setFilterStatus(initialStatus || ''); onInitialFiltersHandled && onInitialFiltersHandled() }
+  }, [initialStatus])
+
+  useEffect(() => {
+    if (initialLeadSource !== undefined) { setFilterLeadSource(initialLeadSource || ''); onInitialFiltersHandled && onInitialFiltersHandled() }
+  }, [initialLeadSource])
+
+  useEffect(() => {
+    if (initialPaymentStatus !== undefined) { setFilterPayment(initialPaymentStatus || ''); onInitialFiltersHandled && onInitialFiltersHandled() }
+  }, [initialPaymentStatus])
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const [o, c, s] = await Promise.all([
-        operationsApi.getOrders({ search, status: statusFilter }),
+        operationsApi.getOrders({ search, status: filterStatus, rep: filterRep, lead_source: filterLeadSource, payment_status: filterPayment, date_from: filterDateFrom, date_to: filterDateTo }),
         operationsApi.getCustomers(),
         operationsApi.getSuppliers(),
       ])
       setOrders(o); setCustomers(c); setSuppliers(s)
     } catch(e) { console.error(e) }
     finally { setLoading(false) }
-  }, [search, statusFilter])
+  }, [search, filterStatus, filterRep, filterLeadSource, filterPayment, filterDateFrom, filterDateTo])
 
   useEffect(() => { load() }, [load])
 
@@ -785,16 +802,38 @@ function OrdersTab({ jumpOrderId, onJumpHandled }) {
   return (
     <div>
       {/* Toolbar */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div className="search-wrap" style={{ flex: 1, minWidth: 200 }}>
-          <Search size={14} className="search-icon" />
-          <input className="input" placeholder="Search order #, customer, email…" value={search} onChange={e => setSearch(e.target.value)} />
-        </div>
-        <select className="input" style={{ width: 180 }} value={statusFilter} onChange={e => setStatus(e.target.value)}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setShowForm(true)}><Plus size={15} /> New Order</button>
+      </div>
+      {/* Filter bar */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+        <input className="input" style={{ flex: '1 1 200px', minWidth: 180 }}
+          placeholder="Search order #, customer, email…"
+          value={search} onChange={e => setSearch(e.target.value)} />
+        <select className="input" style={{ flex: '0 0 150px' }} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
           <option value="">All Statuses</option>
           {ORDER_STATUSES.map(s => <option key={s}>{s}</option>)}
         </select>
-        <button className="btn btn-primary" onClick={() => setShowForm(true)}><Plus size={15} /> New Order</button>
+        <select className="input" style={{ flex: '0 0 130px' }} value={filterRep} onChange={e => setFilterRep(e.target.value)}>
+          <option value="">All Reps</option>
+          {REPS.map(r => <option key={r}>{r}</option>)}
+        </select>
+        <select className="input" style={{ flex: '0 0 150px' }} value={filterPayment} onChange={e => setFilterPayment(e.target.value)}>
+          <option value="">All Payment</option>
+          {PAYMENT_STATUSES.map(s => <option key={s}>{s}</option>)}
+        </select>
+        <select className="input" style={{ flex: '0 0 150px' }} value={filterLeadSource} onChange={e => setFilterLeadSource(e.target.value)}>
+          <option value="">All Lead Sources</option>
+          {LEAD_SOURCES.map(s => <option key={s}>{s}</option>)}
+        </select>
+        <input className="input" type="date" style={{ flex: '0 0 140px' }} value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} title="From date" />
+        <input className="input" type="date" style={{ flex: '0 0 140px' }} value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} title="To date" />
+        {(search || filterStatus || filterRep || filterPayment || filterLeadSource || filterDateFrom || filterDateTo) && (
+          <button className="btn-secondary" style={{ padding: '0 14px', fontSize: 12 }}
+            onClick={() => { setSearch(''); setFilterStatus(''); setFilterRep(''); setFilterPayment(''); setFilterLeadSource(''); setFilterDateFrom(''); setFilterDateTo('') }}>
+            Clear filters
+          </button>
+        )}
       </div>
 
       {loading ? <Loader /> : orders.length === 0 ? (
@@ -1158,6 +1197,188 @@ function RMATab() {
   )
 }
 
+// ── Operations Dashboard ─────────────────────────────────────────────────────
+function BarChart({ data, valueKey, labelKey, color, fmt: fmtFn, height = 140 }) {
+  if (!data?.length) return <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 24 }}>No data</div>
+  const max = Math.max(...data.map(d => d[valueKey] || 0))
+  if (max === 0) return <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 24 }}>No data</div>
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height, overflowX: 'auto', paddingBottom: 8 }}>
+      {data.map((d, i) => {
+        const pct = max > 0 ? ((d[valueKey] || 0) / max) * 100 : 0
+        return (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, minWidth: 36 }}>
+            <div style={{ fontSize: 9, color: '#64748b', marginBottom: 2, textAlign: 'center' }}>{fmtFn ? fmtFn(d[valueKey]) : d[valueKey]}</div>
+            <div style={{ width: '100%', background: color || BRAND, borderRadius: '4px 4px 0 0', height: `${Math.max(pct, 2)}%`, minHeight: 4, transition: 'height 0.3s', opacity: 0.85 }} />
+            <div style={{ fontSize: 9, color: '#64748b', marginTop: 4, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{d[labelKey]}</div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function DashboardCard({ label, value, sub, color, onClick, icon }) {
+  return (
+    <div onClick={onClick} style={{
+      background: '#fff', border: '1px solid #f1f5f9', borderRadius: 16,
+      padding: '18px 20px', cursor: onClick ? 'pointer' : 'default',
+      transition: 'all 0.15s', boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+      display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 140
+    }}
+    onMouseEnter={e => onClick && (e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,212,200,0.15)', e.currentTarget.style.borderColor = BRAND)}
+    onMouseLeave={e => onClick && (e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.04)', e.currentTarget.style.borderColor = '#f1f5f9')}
+    >
+      <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</div>
+      <div style={{ fontSize: 24, fontWeight: 800, color: color || '#0f172a', fontFamily: '"Bricolage Grotesque", sans-serif', lineHeight: 1.1 }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: '#94a3b8' }}>{sub}</div>}
+    </div>
+  )
+}
+
+function DashSection({ title, children }) {
+  return (
+    <div style={{ background: '#fff', border: '1px solid #f1f5f9', borderRadius: 16, padding: '20px 20px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 16 }}>{title}</div>
+      {children}
+    </div>
+  )
+}
+
+function DashboardTab({ onNavigateOrders }) {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    operationsApi.getDashboard().then(setData).catch(() => {}).finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return <Loader />
+  if (!data) return <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Failed to load dashboard</div>
+
+  const { kpis, byMonth, byRep, byStatus, byLeadSource, topCustomers, byPayment } = data
+  const gpMargin = kpis.gp_margin_pct ? `${kpis.gp_margin_pct.toFixed(1)}%` : '—'
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* KPI Row 1 */}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <DashboardCard label="Total Revenue" value={fmt(kpis.total_revenue)} color="#0f172a" onClick={() => onNavigateOrders && onNavigateOrders()} />
+        <DashboardCard label="Total Cost" value={fmt(kpis.total_cost)} color="#64748b" />
+        <DashboardCard label="Gross Profit" value={fmt(kpis.total_gp)} color="#10b981" sub={`${gpMargin} margin`} onClick={() => onNavigateOrders && onNavigateOrders()} />
+        <DashboardCard label="Total RMA" value={fmt(kpis.total_rma)} color="#ef4444" sub={`${kpis.open_rmas} open`} />
+        <DashboardCard label="Total Orders" value={kpis.total_orders} color="#0f172a" onClick={() => onNavigateOrders && onNavigateOrders()} />
+      </div>
+
+      {/* KPI Row 2 */}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <DashboardCard label="Collected" value={fmt(kpis.total_collected)} color="#10b981" />
+        <DashboardCard label="Outstanding" value={fmt(kpis.total_outstanding)} color={kpis.total_outstanding > 0 ? '#f59e0b' : '#10b981'} />
+        <DashboardCard label="Pending Orders" value={kpis.pending_orders} color="#d97706" sub="from CRM" onClick={() => onNavigateOrders && onNavigateOrders('pending')} />
+      </div>
+
+      {/* Charts row */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <DashSection title="Monthly Revenue (last 12 months)">
+          <BarChart data={byMonth} valueKey="revenue" labelKey="month" color="#00D4C8" fmtFn={v => `$${(v/1000).toFixed(0)}k`} height={150} />
+        </DashSection>
+        <DashSection title="Monthly Gross Profit">
+          <BarChart data={byMonth} valueKey="gp" labelKey="month" color="#10b981" fmtFn={v => `$${(v/1000).toFixed(0)}k`} height={150} />
+        </DashSection>
+      </div>
+
+      {/* Rep performance + order count by month */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <DashSection title="GP by Rep">
+          <BarChart data={byRep} valueKey="gp" labelKey="rep" color="#6366f1" fmtFn={v => `$${(v/1000).toFixed(0)}k`} height={140} />
+          <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {byRep.slice(0, 6).map((r, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0', borderBottom: '1px solid #f8fafc' }}>
+                <span style={{ fontWeight: 600, color: '#334155' }}>{r.rep}</span>
+                <span style={{ display: 'flex', gap: 16 }}>
+                  <span style={{ color: '#64748b' }}>{r.order_count} orders</span>
+                  <span style={{ color: '#10b981', fontWeight: 700 }}>{fmt(r.gp)}</span>
+                  <span style={{ color: '#0f172a', fontWeight: 600 }}>{fmt(r.revenue)}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </DashSection>
+        <DashSection title="Orders by Month">
+          <BarChart data={byMonth} valueKey="order_count" labelKey="month" color="#f59e0b" height={140} />
+          <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {byStatus.map((s, i) => {
+              const st = STATUS_STYLE[s.status] || { bg: '#f1f5f9', color: '#64748b' }
+              return (
+                <div key={i} onClick={() => onNavigateOrders && onNavigateOrders(s.status)}
+                  style={{ background: st.bg, color: st.color, borderRadius: 100, fontSize: 11, fontWeight: 700, padding: '4px 12px', cursor: 'pointer', display: 'flex', gap: 6, alignItems: 'center' }}>
+                  {s.status} <span style={{ background: 'rgba(0,0,0,0.08)', borderRadius: 100, padding: '0 6px' }}>{s.count}</span>
+                </div>
+              )
+            })}
+          </div>
+        </DashSection>
+      </div>
+
+      {/* Bottom tables */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <DashSection title="Top Customers by Revenue">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            <div style={{ display: 'flex', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', padding: '0 0 6px', borderBottom: '1px solid #f1f5f9', gap: 8 }}>
+              <span style={{ flex: 2 }}>Customer</span><span style={{ flex: 1, textAlign: 'right' }}>Orders</span><span style={{ flex: 1, textAlign: 'right' }}>Revenue</span><span style={{ flex: 1, textAlign: 'right' }}>GP</span>
+            </div>
+            {topCustomers.map((c, i) => (
+              <div key={i} style={{ display: 'flex', fontSize: 12, padding: '7px 0', borderBottom: '1px solid #f8fafc', gap: 8, alignItems: 'center' }}>
+                <span style={{ flex: 2, fontWeight: 600, color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name || '—'}</span>
+                <span style={{ flex: 1, textAlign: 'right', color: '#64748b' }}>{c.order_count}</span>
+                <span style={{ flex: 1, textAlign: 'right', color: '#0f172a', fontWeight: 600 }}>{fmt(c.revenue)}</span>
+                <span style={{ flex: 1, textAlign: 'right', color: '#10b981', fontWeight: 700 }}>{fmt(c.gp)}</span>
+              </div>
+            ))}
+          </div>
+        </DashSection>
+        <DashSection title="Lead Source Breakdown">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            <div style={{ display: 'flex', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', padding: '0 0 6px', borderBottom: '1px solid #f1f5f9', gap: 8 }}>
+              <span style={{ flex: 2 }}>Source</span><span style={{ flex: 1, textAlign: 'right' }}>Orders</span><span style={{ flex: 1, textAlign: 'right' }}>% of total</span>
+            </div>
+            {byLeadSource.map((s, i) => {
+              const totalOrders = byLeadSource.reduce((a, x) => a + x.count, 0)
+              const pct = totalOrders > 0 ? ((s.count / totalOrders) * 100).toFixed(1) : 0
+              return (
+                <div key={i} onClick={() => onNavigateOrders && onNavigateOrders(null, s.lead_source)}
+                  style={{ display: 'flex', fontSize: 12, padding: '7px 0', borderBottom: '1px solid #f8fafc', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
+                  <span style={{ flex: 2, fontWeight: 600, color: '#334155' }}>{s.lead_source}</span>
+                  <span style={{ flex: 1, textAlign: 'right', color: '#64748b' }}>{s.count}</span>
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
+                    <div style={{ height: 6, width: `${pct}%`, maxWidth: 50, background: BRAND, borderRadius: 3, opacity: 0.7 }} />
+                    <span style={{ color: '#64748b', minWidth: 34, textAlign: 'right' }}>{pct}%</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </DashSection>
+      </div>
+
+      {/* Payment breakdown */}
+      <DashSection title="Payment Status Breakdown">
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {byPayment.map((p, i) => (
+            <div key={i} onClick={() => onNavigateOrders && onNavigateOrders(null, null, p.payment_status)}
+              style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '10px 16px', cursor: 'pointer', flex: 1, minWidth: 120, textAlign: 'center' }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = BRAND}
+              onMouseLeave={e => e.currentTarget.style.borderColor = '#e2e8f0'}>
+              <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>{p.payment_status}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', fontFamily: '"Bricolage Grotesque", sans-serif' }}>{p.count}</div>
+            </div>
+          ))}
+        </div>
+      </DashSection>
+    </div>
+  )
+}
+
 // ── Pending Orders Panel ──────────────────────────────────────────────────────
 function PendingOrdersPanel({ onClose, onOpenOrder }) {
   const [orders, setOrders] = useState([])
@@ -1250,6 +1471,9 @@ export default function Operations() {
   const [jumpOrderId, setJumpOrderId] = useState(null)
   const [pendingCount, setPendingCount] = useState(0)
   const [showPending, setShowPending] = useState(false)
+  const [dashNavStatus, setDashNavStatus] = useState(undefined)
+  const [dashNavLeadSource, setDashNavLeadSource] = useState(undefined)
+  const [dashNavPayment, setDashNavPayment] = useState(undefined)
 
   useEffect(() => {
     operationsApi.getStats().then(s => { setStats(s); setPendingCount(s.pending_orders || 0) }).catch(() => {})
@@ -1260,12 +1484,20 @@ export default function Operations() {
     setTab('orders')
   }
 
+  const handleNavigateOrders = (status, leadSource, paymentStatus) => {
+    setDashNavStatus(status || '')
+    setDashNavLeadSource(leadSource || '')
+    setDashNavPayment(paymentStatus || '')
+    setTab('orders')
+  }
+
   const tabs = [
     { key: 'orders',      label: 'Orders',      icon: Package },
     { key: 'order-items', label: 'Order Items',  icon: List },
     { key: 'customers',   label: 'Customers',   icon: Users },
     { key: 'suppliers',   label: 'Suppliers',   icon: Truck },
     { key: 'rma',         label: 'RMA',         icon: RotateCcw },
+    { key: 'dashboard',   label: 'Dashboard',   icon: ClipboardList },
   ]
 
   return (
@@ -1329,8 +1561,13 @@ export default function Operations() {
 
       {/* Tab content */}
       <div style={{ background: '#fff', borderRadius: 20, border: '1px solid #f1f5f9', padding: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-        {tab === 'orders' && <OrdersTab jumpOrderId={jumpOrderId} onJumpHandled={() => setJumpOrderId(null)} />}
+        {tab === 'orders' && <OrdersTab
+          jumpOrderId={jumpOrderId} onJumpHandled={() => setJumpOrderId(null)}
+          initialStatus={dashNavStatus} initialLeadSource={dashNavLeadSource} initialPaymentStatus={dashNavPayment}
+          onInitialFiltersHandled={() => { setDashNavStatus(undefined); setDashNavLeadSource(undefined); setDashNavPayment(undefined) }}
+        />}
         {tab === 'order-items' && <OrderItemsTab onOpenOrder={handleOpenOrderFromItems} />}
+        {tab === 'dashboard' && <DashboardTab onNavigateOrders={handleNavigateOrders} />}
         {tab === 'customers' && (
           <EntityTab
             icon={Users} label="Customers"

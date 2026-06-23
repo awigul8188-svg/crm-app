@@ -121,6 +121,9 @@ export const operationsApi = {
 
   // Stats
   getStats: () => req('GET', '/operations/stats'),
+
+  // Dashboard
+  getDashboard: () => req('GET', '/operations/dashboard'),
 };
 
 // Purchasing-related convenience wrapper

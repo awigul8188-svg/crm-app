@@ -33,7 +33,7 @@ const ORDER_TOTALS_SQL = `
 router.get('/orders', (req, res) => {
   try {
     const db = getDB();
-    const { search, status, rep } = req.query;
+    const { search, status, rep, customer_id, lead_source, payment_status, date_from, date_to } = req.query;
     let where = [];
     let params = [];
 
@@ -42,8 +42,13 @@ router.get('/orders', (req, res) => {
       const s = `%${search}%`;
       params.push(s, s, s);
     }
-    if (status) { where.push(`o.order_status = ?`); params.push(status); }
-    if (rep)    { where.push(`o.rep LIKE ?`);        params.push(`%${rep}%`); }
+    if (status)         { where.push(`o.order_status = ?`);     params.push(status); }
+    if (payment_status) { where.push(`o.payment_status = ?`);   params.push(payment_status); }
+    if (rep)            { where.push(`o.rep = ?`);               params.push(rep); }
+    if (customer_id)    { where.push(`o.customer_id = ?`);       params.push(customer_id); }
+    if (lead_source)    { where.push(`o.lead_source = ?`);       params.push(lead_source); }
+    if (date_from)      { where.push(`o.order_date >= ?`);       params.push(date_from); }
+    if (date_to)        { where.push(`o.order_date <= ?`);       params.push(date_to); }
 
     const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const orders = db.prepare(`${ORDER_TOTALS_SQL} ${whereClause} GROUP BY o.id ORDER BY o.order_date DESC, o.id DESC`).all(...params);
@@ -297,6 +302,18 @@ router.get('/rma', (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+function syncOrderRmaAmount(db, orderId) {
+  if (!orderId) return;
+  const result = db.prepare(`
+    SELECT COALESCE(SUM(COALESCE(r.return_quantity,1) * COALESCE(i.selling,0)), 0) AS total_rma
+    FROM op_rma r
+    LEFT JOIN op_order_items i ON r.order_item_id = i.id
+    WHERE r.order_id = ?
+  `).get(orderId);
+  db.prepare(`UPDATE op_orders SET rma_amount=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`)
+    .run(result.total_rma, orderId);
+}
+
 router.post('/rma', requireManager, (req, res) => {
   try {
     const db = getDB();
@@ -313,6 +330,7 @@ router.post('/rma', requireManager, (req, res) => {
            rma_issue_date||null, rma_completed_date||null,
            refund_issued||0, restocking_fee||0, return_tracking_number||null,
            return_shipping_paid||0, notes||null, qb_credit_memo||null);
+    if (order_id) syncOrderRmaAmount(db, order_id);
     res.json(db.prepare(`${RMA_SELECT} WHERE r.id=?`).get(result.lastInsertRowid));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -332,6 +350,7 @@ router.put('/rma/:id', requireManager, (req, res) => {
     const { rma_number, order_id, order_item_id, customer_id, email, return_quantity, return_reason,
             rma_status, rma_issue_date, rma_completed_date, refund_issued, restocking_fee,
             return_tracking_number, return_shipping_paid, notes, qb_credit_memo } = req.body;
+    const prevRma = db.prepare(`SELECT order_id FROM op_rma WHERE id=?`).get(req.params.id);
     db.prepare(`
       UPDATE op_rma SET rma_number=?,order_id=?,order_item_id=?,customer_id=?,email=?,return_quantity=?,
         return_reason=?,rma_status=?,rma_issue_date=?,rma_completed_date=?,refund_issued=?,
@@ -342,13 +361,18 @@ router.put('/rma/:id', requireManager, (req, res) => {
            rma_issue_date||null, rma_completed_date||null,
            refund_issued||0, restocking_fee||0, return_tracking_number||null,
            return_shipping_paid||0, notes||null, qb_credit_memo||null, req.params.id);
+    if (order_id) syncOrderRmaAmount(db, order_id);
+    if (prevRma?.order_id && prevRma.order_id !== (order_id||null)) syncOrderRmaAmount(db, prevRma.order_id);
     res.json(db.prepare(`${RMA_SELECT} WHERE r.id=?`).get(req.params.id));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 router.delete('/rma/:id', requireManager, (req, res) => {
   try {
-    getDB().prepare(`DELETE FROM op_rma WHERE id = ?`).run(req.params.id);
+    const db = getDB();
+    const toDelete = db.prepare(`SELECT order_id FROM op_rma WHERE id=?`).get(req.params.id);
+    db.prepare(`DELETE FROM op_rma WHERE id = ?`).run(req.params.id);
+    if (toDelete?.order_id) syncOrderRmaAmount(db, toDelete.order_id);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -463,6 +487,103 @@ router.get('/stats', (req, res) => {
     `).get();
     const rma_count = db.prepare(`SELECT COUNT(*) AS cnt FROM op_rma WHERE rma_status = 'Open'`).get().cnt;
     res.json({ ...stats, open_rma: rma_count });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/dashboard', (req, res) => {
+  try {
+    const db = getDB();
+
+    // Revenue & GP by month (last 12 months)
+    const byMonth = db.prepare(`
+      SELECT
+        strftime('%Y-%m', o.order_date) AS month,
+        COUNT(DISTINCT o.id) AS order_count,
+        COALESCE(SUM(i.selling * i.quantity),0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges),0) AS revenue,
+        COALESCE(SUM(i.selling * i.quantity),0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges),0)
+          - COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0)
+          - COALESCE(SUM(o.rma_amount),0) AS gp
+      FROM op_orders o
+      LEFT JOIN op_order_items i ON i.order_id = o.id
+      WHERE o.order_date >= date('now', '-12 months') AND (o.pending IS NULL OR o.pending = 0)
+      GROUP BY month ORDER BY month ASC
+    `).all();
+
+    // GP & revenue by rep
+    const byRep = db.prepare(`
+      SELECT
+        COALESCE(o.rep,'Unknown') AS rep,
+        COUNT(DISTINCT o.id) AS order_count,
+        COALESCE(SUM(i.selling * i.quantity),0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges),0) AS revenue,
+        COALESCE(SUM(i.selling * i.quantity),0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges),0)
+          - COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0)
+          - COALESCE(SUM(o.rma_amount),0) AS gp
+      FROM op_orders o
+      LEFT JOIN op_order_items i ON i.order_id = o.id
+      WHERE (o.pending IS NULL OR o.pending = 0)
+      GROUP BY o.rep ORDER BY gp DESC
+    `).all();
+
+    // Orders by status
+    const byStatus = db.prepare(`
+      SELECT order_status AS status, COUNT(*) AS count
+      FROM op_orders WHERE (pending IS NULL OR pending = 0)
+      GROUP BY order_status ORDER BY count DESC
+    `).all();
+
+    // Orders by lead source
+    const byLeadSource = db.prepare(`
+      SELECT COALESCE(lead_source,'Unknown') AS lead_source, COUNT(*) AS count,
+        COALESCE(SUM(rma_amount),0) AS rma_total
+      FROM op_orders WHERE (pending IS NULL OR pending = 0)
+      GROUP BY lead_source ORDER BY count DESC
+    `).all();
+
+    // Top 10 customers by revenue
+    const topCustomers = db.prepare(`
+      SELECT c.name, COUNT(DISTINCT o.id) AS order_count,
+        COALESCE(SUM(i.selling * i.quantity),0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges),0) AS revenue,
+        COALESCE(SUM(i.selling * i.quantity),0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges),0)
+          - COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0)
+          - COALESCE(SUM(o.rma_amount),0) AS gp
+      FROM op_orders o
+      LEFT JOIN op_customers c ON o.customer_id = c.id
+      LEFT JOIN op_order_items i ON i.order_id = o.id
+      WHERE (o.pending IS NULL OR o.pending = 0)
+      GROUP BY o.customer_id ORDER BY revenue DESC LIMIT 10
+    `).all();
+
+    // Payment status breakdown
+    const byPayment = db.prepare(`
+      SELECT COALESCE(payment_status,'Unpaid') AS payment_status, COUNT(*) AS count
+      FROM op_orders WHERE (pending IS NULL OR pending = 0)
+      GROUP BY payment_status ORDER BY count DESC
+    `).all();
+
+    // Overall KPIs
+    const kpis = db.prepare(`
+      SELECT
+        COUNT(DISTINCT o.id) AS total_orders,
+        COALESCE(SUM(i.selling * i.quantity),0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges),0) AS total_revenue,
+        COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0) AS total_cost,
+        COALESCE(SUM(i.selling * i.quantity),0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges),0)
+          - COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0)
+          - COALESCE(SUM(o.rma_amount),0) AS total_gp,
+        COALESCE(SUM(o.rma_amount),0) AS total_rma,
+        COALESCE(SUM(o.customer_paid),0) AS total_collected,
+        (COALESCE(SUM(i.selling * i.quantity),0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges),0) - COALESCE(SUM(o.customer_paid),0)) AS total_outstanding,
+        (COALESCE(SUM(i.selling * i.quantity),0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges),0)
+          - COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0)
+          - COALESCE(SUM(o.rma_amount),0))
+        * 100.0 / NULLIF(COALESCE(SUM(i.selling * i.quantity),0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges),0), 0) AS gp_margin_pct,
+        (SELECT COUNT(*) FROM op_rma WHERE rma_status NOT IN ('Completed','Denied')) AS open_rmas,
+        (SELECT COUNT(*) FROM op_orders WHERE pending=1) AS pending_orders
+      FROM op_orders o
+      LEFT JOIN op_order_items i ON i.order_id = o.id
+      WHERE (o.pending IS NULL OR o.pending = 0)
+    `).get();
+
+    res.json({ kpis, byMonth, byRep, byStatus, byLeadSource, topCustomers, byPayment });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
