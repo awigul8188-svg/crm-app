@@ -213,7 +213,12 @@ function parseDollar(s) {
   return isNaN(n) ? 0 : n;
 }
 
-function parseDate(raw, state) {
+function isAdjustmentOrder(orderNum) {
+  // Backdated adjustment/replacement/settlement rows should NOT drive year tracking
+  return /replacement|adjustment|shipping adj/i.test(String(orderNum));
+}
+
+function parseDate(raw, state, trackYear = true) {
   if (!raw) return null;
   const rawStr = String(raw).trim();
   const m = rawStr.match(/^([A-Za-z]{3})-(\d{1,2})$/);
@@ -221,15 +226,21 @@ function parseDate(raw, state) {
   const monthNum = MONTHS[m[1].toLowerCase()];
   if (!monthNum) return null;
   const day = parseInt(m[2]);
-  // Only roll the year when January appears after we've already seen mid-year months.
-  // This ignores out-of-order "adjustment/replacement" rows (e.g. Apr appearing in June section)
-  // while still catching the genuine Dec-2024 → Jan-2025 crossing.
-  if (monthNum === 1 && state.maxMonthSeen >= 6) {
-    state.year++;
-    state.maxMonthSeen = 1;
-  } else {
-    state.maxMonthSeen = Math.max(state.maxMonthSeen || 0, monthNum);
+
+  if (trackYear) {
+    // Roll year only when January appears after mid-year (>= Jun).
+    // This catches Dec-2024→Jan-2025 and Dec-2025→Jan-2026 crossings.
+    // trackYear=false for adjustment rows so they don't trigger spurious rollovers.
+    if (monthNum === 1 && state.maxMonthSeen >= 6) {
+      state.year++;
+      state.maxMonthSeen = 1;
+    } else if (monthNum > 1) {
+      state.maxMonthSeen = Math.max(state.maxMonthSeen || 0, monthNum);
+    }
+    // January rows that don't cross a year boundary don't update maxMonthSeen
+    // to avoid suppressing the NEXT genuine January crossing
   }
+
   return `${state.year}-${String(monthNum).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
 }
 
@@ -346,8 +357,8 @@ router.post('/operations', upload.single('file'), (req, res) => {
             rmaBuffer = [];
           }
 
-          const orderDate = parseDate(rawDate, dateState);
           const orderNum = rawOrder;
+          const orderDate = parseDate(rawDate, dateState, !isAdjustmentOrder(orderNum));
 
           if (existingOrders.has(orderNum)) { stats.skipped++; currentOrderId = null; currentOrder = null; continue; }
           existingOrders.add(orderNum);
