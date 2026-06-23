@@ -15,6 +15,7 @@ export default function Sidebar({ isOpen, onToggle }) {
       { label: 'Online Orders', icon: '🛒', page: 'orders' },
       { label: 'Repeat Inquiries', icon: '🔄', page: 'repeat' },
       { label: 'Customers', icon: '👥', page: 'customers' },
+      { label: 'Operations', icon: '⚙️', page: 'operations' },
       { label: 'Purchasing', icon: '📦', page: 'purchasing' },
       { label: 'Users', icon: '👨‍💼', page: 'users' },
       { label: 'Notifications', icon: '🔔', page: 'notifications' },

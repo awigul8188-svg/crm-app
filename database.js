@@ -155,4 +155,112 @@ function runPurchasingV2Migrations() {
   cols.forEach(col => { try { db.exec('ALTER TABLE purchase_assignments ADD COLUMN ' + col); } catch(e) {} });
 }
 
-module.exports = { initializeDB, getDB, runPurchasingMigrations, runPurchasingV2Migrations };
+function runOperationsMigrations() {
+  const db = getDB();
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS op_customers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT,
+        phone TEXT,
+        address TEXT,
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS op_suppliers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        company TEXT NOT NULL,
+        email TEXT,
+        phone TEXT,
+        rep_name TEXT,
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS op_orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_number TEXT NOT NULL,
+        order_date DATE,
+        customer_id INTEGER REFERENCES op_customers(id) ON DELETE SET NULL,
+        email TEXT,
+        lead_source TEXT,
+        rep TEXT,
+        ppc_order_rep TEXT,
+        buyer TEXT,
+        payment_status TEXT,
+        order_status TEXT DEFAULT 'Order placed',
+        net REAL DEFAULT 0,
+        due_date DATE,
+        tax_charged REAL DEFAULT 0,
+        shipping_charged REAL DEFAULT 0,
+        cc_charges REAL DEFAULT 0,
+        customer_paid REAL DEFAULT 0,
+        rma_amount REAL DEFAULT 0,
+        shipped_via TEXT,
+        tracking_to_customer TEXT,
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS op_order_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_id INTEGER NOT NULL REFERENCES op_orders(id) ON DELETE CASCADE,
+        part_number TEXT,
+        description TEXT,
+        product TEXT,
+        supplier_id INTEGER REFERENCES op_suppliers(id) ON DELETE SET NULL,
+        quantity REAL DEFAULT 1,
+        product_condition TEXT,
+        selling REAL DEFAULT 0,
+        buying REAL DEFAULT 0,
+        cc_paid REAL DEFAULT 0,
+        tax_paid REAL DEFAULT 0,
+        shipping_paid REAL DEFAULT 0,
+        duty_paid REAL DEFAULT 0,
+        paid_to_supplier REAL DEFAULT 0,
+        payment_method TEXT,
+        payment_due DATE,
+        tracking_to_warehouse TEXT,
+        ta_po_number TEXT,
+        serials TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS op_rma (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        rma_number TEXT NOT NULL,
+        order_id INTEGER REFERENCES op_orders(id) ON DELETE SET NULL,
+        customer_id INTEGER REFERENCES op_customers(id) ON DELETE SET NULL,
+        email TEXT,
+        return_quantity INTEGER DEFAULT 1,
+        return_reason TEXT,
+        rma_status TEXT DEFAULT 'Open',
+        rma_issue_date DATE,
+        rma_completed_date DATE,
+        refund_issued REAL DEFAULT 0,
+        restocking_fee REAL DEFAULT 0,
+        return_tracking_number TEXT,
+        return_shipping_paid REAL DEFAULT 0,
+        notes TEXT,
+        qb_credit_memo TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS op_rma_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        rma_id INTEGER NOT NULL REFERENCES op_rma(id) ON DELETE CASCADE,
+        order_item_id INTEGER REFERENCES op_order_items(id) ON DELETE SET NULL,
+        quantity INTEGER DEFAULT 1
+      );
+    `);
+  } catch(e) { console.log('Operations migration note:', e.message); }
+}
+
+module.exports = { initializeDB, getDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations };

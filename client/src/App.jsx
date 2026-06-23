@@ -13,6 +13,7 @@ import Notifications from './pages/Notifications'
 import AEDashboard from './pages/AEDashboard'
 import PurchasingManagerView from './pages/PurchasingManagerView'
 import PurchaserDashboard from './pages/PurchaserDashboard'
+import Operations from './pages/Operations'
 
 export const AuthContext = createContext(null)
 export const useAuth = () => useContext(AuthContext)
@@ -118,6 +119,7 @@ export default function App() {
       case 'users':           return user.role === 'manager' ? <Users /> : <Dashboard />
       case 'import':          return user.role === 'manager' ? <ImportData /> : <Dashboard />
       case 'notifications':   return <Notifications />
+      case 'operations':      return user.role === 'manager' ? <Operations /> : <Dashboard />
       case 'purchasing':      return <PurchasingManagerView />
       default:                return <Dashboard />
     }

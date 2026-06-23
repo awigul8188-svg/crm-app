@@ -68,6 +68,51 @@ export const api = {
   completeFollowup: (id) => req('PATCH', `/notifications/followup/${id}/complete`),
 };
 
+// Operations (order management) API
+export const operationsApi = {
+  // Orders
+  getOrders: (params = {}) => {
+    const p = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => { if (v) p.set(k, v); });
+    return req('GET', `/operations/orders?${p}`);
+  },
+  createOrder:    (data) => req('POST', '/operations/orders', data),
+  getOrder:       (id)   => req('GET',  `/operations/orders/${id}`),
+  updateOrder:    (id, data) => req('PUT', `/operations/orders/${id}`, data),
+  deleteOrder:    (id)   => req('DELETE', `/operations/orders/${id}`),
+
+  // Order items
+  addItem:        (orderId, data) => req('POST', `/operations/orders/${orderId}/items`, data),
+  updateItem:     (id, data) => req('PUT',  `/operations/order-items/${id}`, data),
+  deleteItem:     (id)       => req('DELETE', `/operations/order-items/${id}`),
+
+  // Customers
+  getCustomers:   (search) => req('GET', `/operations/customers${search ? `?search=${encodeURIComponent(search)}` : ''}`),
+  createCustomer: (data)   => req('POST', '/operations/customers', data),
+  updateCustomer: (id, data) => req('PUT', `/operations/customers/${id}`, data),
+  deleteCustomer: (id)     => req('DELETE', `/operations/customers/${id}`),
+
+  // Suppliers
+  getSuppliers:   (search) => req('GET', `/operations/suppliers${search ? `?search=${encodeURIComponent(search)}` : ''}`),
+  createSupplier: (data)   => req('POST', '/operations/suppliers', data),
+  updateSupplier: (id, data) => req('PUT', `/operations/suppliers/${id}`, data),
+  deleteSupplier: (id)     => req('DELETE', `/operations/suppliers/${id}`),
+
+  // RMA
+  getRMA:         (params = {}) => {
+    const p = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => { if (v) p.set(k, v); });
+    return req('GET', `/operations/rma?${p}`);
+  },
+  createRMA:      (data)   => req('POST', '/operations/rma', data),
+  getRMAById:     (id)     => req('GET',  `/operations/rma/${id}`),
+  updateRMA:      (id, data) => req('PUT', `/operations/rma/${id}`, data),
+  deleteRMA:      (id)     => req('DELETE', `/operations/rma/${id}`),
+
+  // Stats
+  getStats: () => req('GET', '/operations/stats'),
+};
+
 // Purchasing-related convenience wrapper
 export const purchasingApi = {
   getStats: () => req('GET', '/purchasing/stats'),

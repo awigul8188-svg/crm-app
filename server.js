@@ -3,7 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
-const { initializeDB, runPurchasingMigrations, runPurchasingV2Migrations } = require('./database');
+const { initializeDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations } = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -64,6 +64,7 @@ app.use('/api/ringtone', require('./routes/ringtone'));
 app.use('/api/upload', require('./routes/upload'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/purchasing', require('./routes/purchasing'));
+app.use('/api/operations', require('./routes/operations'));
 
 const clientDist = path.join(__dirname, 'client', 'dist');
 app.use(express.static(clientDist));
@@ -72,4 +73,5 @@ app.get('*', (req, res) => res.sendFile(path.join(clientDist, 'index.html')));
 initializeDB();
 runPurchasingMigrations();
 runPurchasingV2Migrations();
+runOperationsMigrations();
 server.listen(PORT, () => console.log(`CRM running on port ${PORT}`));
