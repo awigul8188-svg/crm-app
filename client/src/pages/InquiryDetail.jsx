@@ -279,7 +279,7 @@ export default function InquiryDetail({ id }) {
           inquiry={inquiry}
           requirements={requirements}
           onClose={() => setShowClosedWon(false)}
-          onCreated={(orderId) => {
+          onCreated={() => {
             setShowClosedWon(false)
             navigate('operations')
           }}
