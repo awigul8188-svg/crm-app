@@ -276,6 +276,8 @@ router.delete('/operations/clear', (req, res) => {
       db.exec(`DELETE FROM op_rma`);
       db.exec(`DELETE FROM op_order_items`);
       db.exec(`DELETE FROM op_orders WHERE pending IS NULL OR pending = 0`);
+      db.exec(`DELETE FROM op_customers`);
+      db.exec(`DELETE FROM op_suppliers`);
     })();
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
