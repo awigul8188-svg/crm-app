@@ -120,13 +120,24 @@ export const operationsApi = {
   },
 
   // Stats
-  getStats: () => req('GET', '/operations/stats'),
+  getStats: (params = {}) => {
+    const q = new URLSearchParams(params).toString()
+    return req('GET', `/operations/stats${q ? '?' + q : ''}`)
+  },
 
   // Dashboard
-  getDashboard: () => req('GET', '/operations/dashboard'),
+  getDashboard: (params = {}) => {
+    const q = new URLSearchParams(params).toString()
+    return req('GET', `/operations/dashboard${q ? '?' + q : ''}`)
+  },
 };
 
 export const importApi = {
+  clearOperations: () => fetch('/api/import/operations/clear', {
+    method: 'DELETE',
+    headers: { ...(localStorage.getItem('crm_token') ? { Authorization: `Bearer ${localStorage.getItem('crm_token')}` } : {}) },
+  }).then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Clear failed'); return d; }),
+
   importOperations: (file) => {
     const form = new FormData();
     form.append('file', file);

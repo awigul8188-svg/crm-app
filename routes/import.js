@@ -221,8 +221,15 @@ function parseDate(raw, state) {
   const monthNum = MONTHS[m[1].toLowerCase()];
   if (!monthNum) return null;
   const day = parseInt(m[2]);
-  if (state.prevMonth !== null && monthNum < state.prevMonth) state.year++;
-  state.prevMonth = monthNum;
+  // Only roll the year when January appears after we've already seen mid-year months.
+  // This ignores out-of-order "adjustment/replacement" rows (e.g. Apr appearing in June section)
+  // while still catching the genuine Dec-2024 → Jan-2025 crossing.
+  if (monthNum === 1 && state.maxMonthSeen >= 6) {
+    state.year++;
+    state.maxMonthSeen = 1;
+  } else {
+    state.maxMonthSeen = Math.max(state.maxMonthSeen || 0, monthNum);
+  }
   return `${state.year}-${String(monthNum).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
 }
 
@@ -262,6 +269,18 @@ function syncRmaAmount(db, orderId) {
   db.prepare(`UPDATE op_orders SET rma_amount=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(res.total, orderId);
 }
 
+router.delete('/operations/clear', (req, res) => {
+  try {
+    const db = getDB();
+    db.transaction(() => {
+      db.exec(`DELETE FROM op_rma`);
+      db.exec(`DELETE FROM op_order_items`);
+      db.exec(`DELETE FROM op_orders WHERE pending IS NULL OR pending = 0`);
+    })();
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 router.post('/operations', upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
@@ -284,7 +303,7 @@ router.post('/operations', upload.single('file'), (req, res) => {
     let currentOrderDate = null;
     let currentCustomerId = null;
     let rmaIndex = 0;
-    const dateState = { year: 2024, prevMonth: null };
+    const dateState = { year: 2024, maxMonthSeen: 0 };
 
     const importOrder = db.transaction(() => {
       for (let i = 1; i < rows.length; i++) {

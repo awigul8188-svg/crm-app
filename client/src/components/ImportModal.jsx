@@ -6,6 +6,7 @@ const BRAND = '#00D4C8'
 
 export default function ImportModal({ onClose, onDone }) {
   const [file, setFile] = useState(null)
+  const [clearFirst, setClearFirst] = useState(false)
   const [importing, setImporting] = useState(false)
   const [result, setResult] = useState(null)
   const [error, setError] = useState('')
@@ -22,6 +23,7 @@ export default function ImportModal({ onClose, onDone }) {
     if (!file) return
     setImporting(true); setError('')
     try {
+      if (clearFirst) await importApi.clearOperations()
       const res = await importApi.importOperations(file)
       setResult(res.stats)
     } catch(e) { setError(e.message) } finally { setImporting(false) }
@@ -37,7 +39,7 @@ export default function ImportModal({ onClose, onDone }) {
               <li>Create customers and suppliers if they don't exist</li>
               <li>Import all orders and line items</li>
               <li>Convert "Refunded" rows to RMA records</li>
-              <li>Skip orders that are already in the system (by order number)</li>
+              <li>Skip orders already in the system (by order number)</li>
             </ul>
           </div>
 
@@ -70,17 +72,27 @@ export default function ImportModal({ onClose, onDone }) {
             )}
           </div>
 
+          {/* Clear first option */}
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', padding: '12px 14px', background: clearFirst ? '#fff7ed' : '#f8fafc', border: `1.5px solid ${clearFirst ? '#fed7aa' : '#e2e8f0'}`, borderRadius: 12, transition: 'all 0.15s' }}>
+            <input type="checkbox" checked={clearFirst} onChange={e => setClearFirst(e.target.checked)} style={{ marginTop: 2, accentColor: '#ef4444', width: 15, height: 15, flexShrink: 0 }} />
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: clearFirst ? '#9a3412' : '#334155' }}>Clear all existing orders before import</div>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Use this to fix previously imported data with wrong dates. Pending CRM orders are preserved.</div>
+            </div>
+          </label>
+
           {error && <div style={{ background: '#fee2e2', color: '#dc2626', borderRadius: 10, padding: '10px 14px', fontSize: 13 }}>{error}</div>}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
             <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-            <button className="btn btn-primary" onClick={handleImport} disabled={!file || importing}>
+            <button className="btn btn-primary" onClick={handleImport} disabled={!file || importing}
+              style={clearFirst ? { background: '#ef4444' } : {}}>
               {importing ? (
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.7s linear infinite', display: 'inline-block' }} />
-                  Importing…
+                  {clearFirst ? 'Clearing & importing…' : 'Importing…'}
                 </span>
-              ) : 'Import Data'}
+              ) : clearFirst ? 'Clear & Reimport' : 'Import Data'}
             </button>
           </div>
         </div>

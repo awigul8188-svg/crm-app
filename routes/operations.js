@@ -472,6 +472,12 @@ router.get('/pending', (req, res) => {
 router.get('/stats', (req, res) => {
   try {
     const db = getDB();
+    const { date_from, date_to } = req.query;
+    const conditions = ['(o.pending IS NULL OR o.pending = 0)'];
+    const params = [];
+    if (date_from) { conditions.push('o.order_date >= ?'); params.push(date_from); }
+    if (date_to)   { conditions.push('o.order_date <= ?'); params.push(date_to); }
+    const where = conditions.join(' AND ');
     const stats = db.prepare(`
       SELECT
         COUNT(DISTINCT o.id) AS total_orders,
@@ -484,8 +490,12 @@ router.get('/stats', (req, res) => {
         (SELECT COUNT(*) FROM op_orders WHERE pending=1) AS pending_orders
       FROM op_orders o
       LEFT JOIN op_order_items i ON i.order_id = o.id
-    `).get();
-    const rma_count = db.prepare(`SELECT COUNT(*) AS cnt FROM op_rma WHERE rma_status = 'Open'`).get().cnt;
+      WHERE ${where}
+    `).get(...params);
+    const rmaWhere = (date_from || date_to)
+      ? `rma_status = 'Open' AND order_id IN (SELECT id FROM op_orders WHERE ${where})`
+      : `rma_status = 'Open'`;
+    const rma_count = db.prepare(`SELECT COUNT(*) AS cnt FROM op_rma WHERE ${rmaWhere}`).get(...params).cnt;
     res.json({ ...stats, open_rma: rma_count });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -493,8 +503,16 @@ router.get('/stats', (req, res) => {
 router.get('/dashboard', (req, res) => {
   try {
     const db = getDB();
+    const { date_from, date_to } = req.query;
 
-    // Revenue & GP by month (last 12 months)
+    const baseConds = ['(o.pending IS NULL OR o.pending = 0)'];
+    const simConds  = ['(pending IS NULL OR pending = 0)'];
+    const p = [];
+    if (date_from) { baseConds.push('o.order_date >= ?'); simConds.push('order_date >= ?'); p.push(date_from); }
+    if (date_to)   { baseConds.push('o.order_date <= ?'); simConds.push('order_date <= ?'); p.push(date_to); }
+    const baseWhere = baseConds.join(' AND ');
+    const simWhere  = simConds.join(' AND ');
+
     const byMonth = db.prepare(`
       SELECT
         strftime('%Y-%m', o.order_date) AS month,
@@ -505,11 +523,10 @@ router.get('/dashboard', (req, res) => {
           - COALESCE(SUM(o.rma_amount),0) AS gp
       FROM op_orders o
       LEFT JOIN op_order_items i ON i.order_id = o.id
-      WHERE o.order_date >= date('now', '-12 months') AND (o.pending IS NULL OR o.pending = 0)
+      WHERE ${baseWhere}
       GROUP BY month ORDER BY month ASC
-    `).all();
+    `).all(...p);
 
-    // GP & revenue by rep
     const byRep = db.prepare(`
       SELECT
         COALESCE(o.rep,'Unknown') AS rep,
@@ -520,26 +537,23 @@ router.get('/dashboard', (req, res) => {
           - COALESCE(SUM(o.rma_amount),0) AS gp
       FROM op_orders o
       LEFT JOIN op_order_items i ON i.order_id = o.id
-      WHERE (o.pending IS NULL OR o.pending = 0)
+      WHERE ${baseWhere}
       GROUP BY o.rep ORDER BY gp DESC
-    `).all();
+    `).all(...p);
 
-    // Orders by status
     const byStatus = db.prepare(`
       SELECT order_status AS status, COUNT(*) AS count
-      FROM op_orders WHERE (pending IS NULL OR pending = 0)
+      FROM op_orders WHERE ${simWhere}
       GROUP BY order_status ORDER BY count DESC
-    `).all();
+    `).all(...p);
 
-    // Orders by lead source
     const byLeadSource = db.prepare(`
       SELECT COALESCE(lead_source,'Unknown') AS lead_source, COUNT(*) AS count,
         COALESCE(SUM(rma_amount),0) AS rma_total
-      FROM op_orders WHERE (pending IS NULL OR pending = 0)
+      FROM op_orders WHERE ${simWhere}
       GROUP BY lead_source ORDER BY count DESC
-    `).all();
+    `).all(...p);
 
-    // Top 10 customers by revenue
     const topCustomers = db.prepare(`
       SELECT c.name, COUNT(DISTINCT o.id) AS order_count,
         COALESCE(SUM(i.selling * i.quantity),0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges),0) AS revenue,
@@ -549,18 +563,16 @@ router.get('/dashboard', (req, res) => {
       FROM op_orders o
       LEFT JOIN op_customers c ON o.customer_id = c.id
       LEFT JOIN op_order_items i ON i.order_id = o.id
-      WHERE (o.pending IS NULL OR o.pending = 0)
+      WHERE ${baseWhere}
       GROUP BY o.customer_id ORDER BY revenue DESC LIMIT 10
-    `).all();
+    `).all(...p);
 
-    // Payment status breakdown
     const byPayment = db.prepare(`
       SELECT COALESCE(payment_status,'Unpaid') AS payment_status, COUNT(*) AS count
-      FROM op_orders WHERE (pending IS NULL OR pending = 0)
+      FROM op_orders WHERE ${simWhere}
       GROUP BY payment_status ORDER BY count DESC
-    `).all();
+    `).all(...p);
 
-    // Overall KPIs
     const kpis = db.prepare(`
       SELECT
         COUNT(DISTINCT o.id) AS total_orders,
@@ -580,8 +592,8 @@ router.get('/dashboard', (req, res) => {
         (SELECT COUNT(*) FROM op_orders WHERE pending=1) AS pending_orders
       FROM op_orders o
       LEFT JOIN op_order_items i ON i.order_id = o.id
-      WHERE (o.pending IS NULL OR o.pending = 0)
-    `).get();
+      WHERE ${baseWhere}
+    `).get(...p);
 
     res.json({ kpis, byMonth, byRep, byStatus, byLeadSource, topCustomers, byPayment });
   } catch(e) { res.status(500).json({ error: e.message }); }

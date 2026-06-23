@@ -1199,19 +1199,36 @@ function RMATab() {
 }
 
 // ── Operations Dashboard ─────────────────────────────────────────────────────
-function BarChart({ data, valueKey, labelKey, color, fmt: fmtFn, height = 140 }) {
+const MONTH_ABBR = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+function fmtMonthLabel(raw) {
+  // "2024-03" → "Mar 24"
+  if (!raw) return raw
+  const m = String(raw).match(/^(\d{4})-(\d{2})$/)
+  if (!m) return raw
+  const yr = m[1].slice(2)
+  const mo = parseInt(m[2])
+  return `${MONTH_ABBR[mo] || mo} ${yr}`
+}
+
+function BarChart({ data, valueKey, labelKey, color, fmt: fmtFn, height = 140, isMonth }) {
   if (!data?.length) return <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 24 }}>No data</div>
   const max = Math.max(...data.map(d => d[valueKey] || 0))
   if (max === 0) return <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 24 }}>No data</div>
+  const minBarW = data.length > 24 ? 28 : 36
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height, overflowX: 'auto', paddingBottom: 8 }}>
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height, overflowX: 'auto', paddingBottom: 4 }}>
       {data.map((d, i) => {
-        const pct = max > 0 ? ((d[valueKey] || 0) / max) * 100 : 0
+        const val = d[valueKey] || 0
+        const pct = max > 0 ? (val / max) * 100 : 0
+        const label = isMonth ? fmtMonthLabel(d[labelKey]) : d[labelKey]
         return (
-          <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, minWidth: 36 }}>
-            <div style={{ fontSize: 9, color: '#64748b', marginBottom: 2, textAlign: 'center' }}>{fmtFn ? fmtFn(d[valueKey]) : d[valueKey]}</div>
-            <div style={{ width: '100%', background: color || BRAND, borderRadius: '4px 4px 0 0', height: `${Math.max(pct, 2)}%`, minHeight: 4, transition: 'height 0.3s', opacity: 0.85 }} />
-            <div style={{ fontSize: 9, color: '#64748b', marginTop: 4, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{d[labelKey]}</div>
+          <div key={i} title={`${label}: ${fmtFn ? fmtFn(val) : val}`}
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, minWidth: minBarW, cursor: 'default' }}>
+            <div style={{ fontSize: 9, color: '#64748b', marginBottom: 2, textAlign: 'center', lineHeight: 1.2 }}>
+              {fmtFn ? fmtFn(val) : val}
+            </div>
+            <div style={{ width: '80%', background: color || BRAND, borderRadius: '3px 3px 0 0', height: `${Math.max(pct, 2)}%`, minHeight: 4, transition: 'height 0.3s', opacity: 0.85 }} />
+            <div style={{ fontSize: 8, color: '#94a3b8', marginTop: 3, textAlign: 'center', whiteSpace: 'nowrap' }}>{label}</div>
           </div>
         )
       })}
@@ -1246,13 +1263,25 @@ function DashSection({ title, children }) {
   )
 }
 
-function DashboardTab({ onNavigateOrders }) {
+function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo]   = useState('')
 
-  useEffect(() => {
-    operationsApi.getDashboard().then(setData).catch(() => {}).finally(() => setLoading(false))
-  }, [])
+  const load = (from, to) => {
+    setLoading(true)
+    const params = {}
+    if (from) params.date_from = from
+    if (to)   params.date_to   = to
+    operationsApi.getDashboard(params).then(setData).catch(() => {}).finally(() => setLoading(false))
+    if (onDateFilterChange) onDateFilterChange(from, to)
+  }
+
+  useEffect(() => { load('', '') }, [])
+
+  const handleApply = () => load(dateFrom, dateTo)
+  const handleClear = () => { setDateFrom(''); setDateTo(''); load('', '') }
 
   if (loading) return <Loader />
   if (!data) return <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Failed to load dashboard</div>
@@ -1262,6 +1291,24 @@ function DashboardTab({ onNavigateOrders }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Date filter bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff', border: '1px solid #f1f5f9', borderRadius: 14, padding: '12px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>Date Range</span>
+        <input type="date" className="input" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+          style={{ flex: '0 0 148px', fontSize: 13 }} placeholder="From" />
+        <span style={{ color: '#94a3b8', fontSize: 13 }}>—</span>
+        <input type="date" className="input" value={dateTo} onChange={e => setDateTo(e.target.value)}
+          style={{ flex: '0 0 148px', fontSize: 13 }} placeholder="To" />
+        <button className="btn btn-primary" onClick={handleApply} style={{ padding: '7px 16px', fontSize: 13 }}>Apply</button>
+        {(dateFrom || dateTo) && (
+          <button className="btn btn-secondary" onClick={handleClear} style={{ padding: '7px 12px', fontSize: 13 }}>Clear</button>
+        )}
+        {(dateFrom || dateTo) && (
+          <span style={{ fontSize: 11, color: '#00D4C8', fontWeight: 600, marginLeft: 4 }}>
+            Filtered: {dateFrom || '—'} to {dateTo || '—'}
+          </span>
+        )}
+      </div>
       {/* KPI Row 1 */}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         <DashboardCard label="Total Revenue" value={fmt(kpis.total_revenue)} color="#0f172a" onClick={() => onNavigateOrders && onNavigateOrders()} />
@@ -1280,11 +1327,11 @@ function DashboardTab({ onNavigateOrders }) {
 
       {/* Charts row */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <DashSection title="Monthly Revenue (last 12 months)">
-          <BarChart data={byMonth} valueKey="revenue" labelKey="month" color="#00D4C8" fmtFn={v => `$${(v/1000).toFixed(0)}k`} height={150} />
+        <DashSection title="Monthly Revenue">
+          <BarChart data={byMonth} valueKey="revenue" labelKey="month" color="#00D4C8" fmtFn={v => `$${(v/1000).toFixed(0)}k`} height={150} isMonth />
         </DashSection>
         <DashSection title="Monthly Gross Profit">
-          <BarChart data={byMonth} valueKey="gp" labelKey="month" color="#10b981" fmtFn={v => `$${(v/1000).toFixed(0)}k`} height={150} />
+          <BarChart data={byMonth} valueKey="gp" labelKey="month" color="#10b981" fmtFn={v => `$${(v/1000).toFixed(0)}k`} height={150} isMonth />
         </DashSection>
       </div>
 
@@ -1306,7 +1353,7 @@ function DashboardTab({ onNavigateOrders }) {
           </div>
         </DashSection>
         <DashSection title="Orders by Month">
-          <BarChart data={byMonth} valueKey="order_count" labelKey="month" color="#f59e0b" height={140} />
+          <BarChart data={byMonth} valueKey="order_count" labelKey="month" color="#f59e0b" height={140} isMonth />
           <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {byStatus.map((s, i) => {
               const st = STATUS_STYLE[s.status] || { bg: '#f1f5f9', color: '#64748b' }
@@ -1584,7 +1631,14 @@ export default function Operations() {
           onInitialFiltersHandled={() => { setDashNavStatus(undefined); setDashNavLeadSource(undefined); setDashNavPayment(undefined) }}
         />}
         {tab === 'order-items' && <OrderItemsTab onOpenOrder={handleOpenOrderFromItems} />}
-        {tab === 'dashboard' && <DashboardTab onNavigateOrders={handleNavigateOrders} />}
+        {tab === 'dashboard' && <DashboardTab onNavigateOrders={handleNavigateOrders}
+          onDateFilterChange={(from, to) => {
+            const params = {}
+            if (from) params.date_from = from
+            if (to)   params.date_to   = to
+            operationsApi.getStats(params).then(s => { setStats(s); setPendingCount(s.pending_orders || 0) }).catch(() => {})
+          }}
+        />}
         {tab === 'customers' && (
           <EntityTab
             icon={Users} label="Customers"
