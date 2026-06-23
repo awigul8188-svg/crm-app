@@ -1677,6 +1677,7 @@ export default function Operations() {
       {showImport && (
         <ImportModal
           onClose={() => setShowImport(false)}
+          onStatsRefresh={() => operationsApi.getStats().then(s => { setStats(s); setPendingCount(s.pending_orders||0) }).catch(()=>{})}
           onDone={() => {
             setTab('orders')
             operationsApi.getStats().then(s => { setStats(s); setPendingCount(s.pending_orders||0) }).catch(()=>{})
