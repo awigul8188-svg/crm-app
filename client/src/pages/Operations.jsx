@@ -281,6 +281,137 @@ function ItemForm({ item, orderId, suppliers, onSave, onClose }) {
   )
 }
 
+// ── RMA Form (used from both OrderDetail and RMATab) ─────────────────────────
+function RMAForm({ rma, presetOrder, orderItems, customers, orders, onSave, onClose }) {
+  const blank = {
+    rma_number: '', order_id: presetOrder?.id || '', order_item_id: '', customer_id: presetOrder?.customer_id || '',
+    email: '', return_quantity: 1, return_reason: '', rma_status: 'Initiated',
+    rma_issue_date: new Date().toISOString().slice(0,10), rma_completed_date: '',
+    refund_issued: '', restocking_fee: '', return_tracking_number: '',
+    return_shipping_paid: '', notes: '', qb_credit_memo: ''
+  }
+  const [form, setForm] = useState(rma ? {
+    ...blank, ...rma,
+    order_id: rma.order_id || '',
+    order_item_id: rma.order_item_id || '',
+    customer_id: rma.customer_id || '',
+    rma_issue_date: rma.rma_issue_date?.slice(0,10) || '',
+    rma_completed_date: rma.rma_completed_date?.slice(0,10) || '',
+  } : blank)
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+  const [itemsForOrder, setItemsForOrder] = useState(orderItems || [])
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  // When order changes (and no preset), load that order's items
+  useEffect(() => {
+    if (presetOrder) { setItemsForOrder(orderItems || []); return }
+    if (!form.order_id) { setItemsForOrder([]); return }
+    operationsApi.getAllItems({ order_id: form.order_id }).then(setItemsForOrder).catch(() => {})
+  }, [form.order_id, presetOrder])
+
+  const selectedItem = itemsForOrder.find(i => String(i.id) === String(form.order_item_id))
+  const returnAmount = (Number(form.return_quantity) || 0) * (Number(selectedItem?.selling) || 0)
+
+  const handleSave = async () => {
+    if (!form.rma_number.trim()) { setErr('RMA number is required'); return }
+    setSaving(true); setErr('')
+    try {
+      const saved = rma
+        ? await operationsApi.updateRMA(rma.id, form)
+        : await operationsApi.createRMA(form)
+      onSave(saved)
+    } catch(e) { setErr(e.message) } finally { setSaving(false) }
+  }
+
+  const F = ({ label, children, half }) => (
+    <div style={{ flex: half ? '0 0 calc(50% - 6px)' : '1 1 100%', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</label>
+      {children}
+    </div>
+  )
+
+  return (
+    <Modal title={rma ? `Edit ${rma.rma_number}` : 'New RMA'} onClose={onClose} wide>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+        <F label="RMA Number" half><input className="input" value={form.rma_number} onChange={e => set('rma_number', e.target.value)} placeholder="RMA-001" /></F>
+        <F label="RMA Status" half>
+          <select className="input" value={form.rma_status} onChange={e => set('rma_status', e.target.value)}>
+            {RMA_STATUSES.map(s => <option key={s}>{s}</option>)}
+          </select>
+        </F>
+
+        {/* Order link */}
+        {presetOrder ? (
+          <F label="Order"><input className="input" value={presetOrder.order_number} readOnly style={{ background: '#f8fafc', color: '#64748b' }} /></F>
+        ) : (
+          <F label="Order">
+            <select className="input" value={form.order_id} onChange={e => { set('order_id', e.target.value); set('order_item_id', '') }}>
+              <option value="">— select order —</option>
+              {(orders||[]).map(o => <option key={o.id} value={o.id}>{o.order_number} {o.customer_name ? `· ${o.customer_name}` : ''}</option>)}
+            </select>
+          </F>
+        )}
+
+        {/* Return Item — links to a specific order item */}
+        <F label="Return Item (links to Order Item)">
+          <select className="input" value={form.order_item_id} onChange={e => set('order_item_id', e.target.value)}
+            disabled={!form.order_id && !presetOrder}>
+            <option value="">— select item —</option>
+            {itemsForOrder.map(i => (
+              <option key={i.id} value={i.id}>
+                {i.part_number || '(no part#)'} — {i.description || ''} (${i.selling}/unit)
+              </option>
+            ))}
+          </select>
+        </F>
+
+        <F label="Customer" half>
+          <select className="input" value={form.customer_id} onChange={e => set('customer_id', e.target.value)}>
+            <option value="">— select customer —</option>
+            {(customers||[]).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </F>
+        <F label="Email" half><input className="input" type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="customer@email.com" /></F>
+
+        <div style={{ flex: '1 1 100%', borderTop: '1px solid #f1f5f9', paddingTop: 12 }} />
+
+        <F label="Return Quantity" half><input className="input" type="number" min="1" value={form.return_quantity} onChange={e => set('return_quantity', e.target.value)} /></F>
+        <F label="Return Reason" half><input className="input" value={form.return_reason} onChange={e => set('return_reason', e.target.value)} placeholder="Defective, wrong item…" /></F>
+
+        {/* Auto-calculated Return Amount */}
+        {selectedItem && (
+          <div style={{ flex: '1 1 100%', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: '10px 14px', display: 'flex', gap: 20, alignItems: 'center' }}>
+            <div><span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Unit Selling Price</span><div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{fmt(selectedItem.selling)}</div></div>
+            <div style={{ color: '#94a3b8', fontSize: 18 }}>×</div>
+            <div><span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Qty</span><div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{form.return_quantity}</div></div>
+            <div style={{ color: '#94a3b8', fontSize: 18 }}>=</div>
+            <div><span style={{ fontSize: 11, fontWeight: 700, color: '#064e3b', textTransform: 'uppercase' }}>Return Amount</span><div style={{ fontSize: 22, fontWeight: 900, color: '#10b981' }}>{fmt(returnAmount)}</div></div>
+          </div>
+        )}
+
+        <div style={{ flex: '1 1 100%', borderTop: '1px solid #f1f5f9', paddingTop: 12 }} />
+
+        <F label="Issue Date" half><input className="input" type="date" value={form.rma_issue_date} onChange={e => set('rma_issue_date', e.target.value)} /></F>
+        <F label="Completed Date" half><input className="input" type="date" value={form.rma_completed_date} onChange={e => set('rma_completed_date', e.target.value)} /></F>
+        <F label="Refund Issued ($)" half><input className="input" type="number" value={form.refund_issued} onChange={e => set('refund_issued', e.target.value)} placeholder="0.00" /></F>
+        <F label="Restocking Fee ($)" half><input className="input" type="number" value={form.restocking_fee} onChange={e => set('restocking_fee', e.target.value)} placeholder="0.00" /></F>
+        <F label="Return Tracking #" half><input className="input" value={form.return_tracking_number} onChange={e => set('return_tracking_number', e.target.value)} /></F>
+        <F label="Return Shipping Paid ($)" half><input className="input" type="number" value={form.return_shipping_paid} onChange={e => set('return_shipping_paid', e.target.value)} placeholder="0.00" /></F>
+        <F label="QB Credit Memo #" half><input className="input" value={form.qb_credit_memo} onChange={e => set('qb_credit_memo', e.target.value)} /></F>
+        <F label="Notes"><textarea className="input" value={form.notes} onChange={e => set('notes', e.target.value)} rows={3} style={{ resize: 'vertical' }} /></F>
+      </div>
+
+      {err && <div style={{ background: '#fee2e2', color: '#dc2626', borderRadius: 10, padding: '10px 14px', fontSize: 13, marginTop: 12 }}>{err}</div>}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
+        <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : rma ? 'Save Changes' : 'Create RMA'}</button>
+      </div>
+    </Modal>
+  )
+}
+
 // ── Order Detail Modal ────────────────────────────────────────────────────────
 function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
   const [order, setOrder] = useState(null)
@@ -288,6 +419,8 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
   const [editOrder, setEditOrder] = useState(false)
   const [addItem, setAddItem] = useState(false)
   const [editItem, setEditItem] = useState(null)
+  const [addRMA, setAddRMA] = useState(false)
+  const [editRMA, setEditRMA] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -304,13 +437,42 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
     load(); onUpdated && onUpdated()
   }
 
+  const handleDeleteRMA = async (id) => {
+    if (!confirm('Delete this RMA?')) return
+    await operationsApi.deleteRMA(id)
+    load(); onUpdated && onUpdated()
+  }
+
   if (!order && loading) return (
     <Modal title="Loading…" onClose={onClose} wide><Loader /></Modal>
   )
   if (!order) return null
 
-  const gp       = Number(order.gp)       || 0
+  const gp        = Number(order.gp)        || 0
   const remaining = Number(order.remaining) || 0
+
+  const itemCols = [
+    { h: 'Part #',        render: i => <span style={{ fontWeight: 600, color: '#0f172a' }}>{i.part_number || '—'}</span> },
+    { h: 'Description',   render: i => <span style={{ color: '#475569' }}>{i.description || '—'}</span> },
+    { h: 'Qty',           render: i => i.quantity },
+    { h: 'Condition',     render: i => i.product_condition || '—' },
+    { h: 'Supplier',      render: i => i.supplier_name || '—' },
+    { h: 'Sell/unit',     render: i => fmt(i.selling) },
+    { h: 'Total Sell',    render: i => <span style={{ fontWeight: 700, color: BRAND }}>{fmt(i.total_selling)}</span> },
+    { h: 'Buy/unit',      render: i => fmt(i.buying) },
+    { h: 'Ext. Buy',      render: i => fmt(i.ext_total_buying) },
+    { h: 'CC Paid',       render: i => fmt(i.cc_paid) },
+    { h: 'Tax Paid',      render: i => fmt(i.tax_paid) },
+    { h: 'Ship Paid',     render: i => fmt(i.shipping_paid) },
+    { h: 'Duty Paid',     render: i => fmt(i.duty_paid) },
+    { h: 'Paid to Sup.',  render: i => fmt(i.paid_to_supplier) },
+    { h: 'Sup. Rem.',     render: i => <span style={{ color: i.supplier_remaining > 0 ? '#ef4444' : '#10b981', fontWeight: 600 }}>{fmt(i.supplier_remaining)}</span> },
+    { h: 'Pay Method',    render: i => i.payment_method || '—' },
+    { h: 'Pay Due',       render: i => fmtDate(i.payment_due) },
+    { h: 'TA PO#',        render: i => i.ta_po_number || '—' },
+    { h: 'Track→WH',      render: i => i.tracking_to_warehouse || '—' },
+    { h: 'Serials',       render: i => i.serials || '—' },
+  ]
 
   return (
     <>
@@ -319,7 +481,7 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
 
         {/* Status + actions */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <StatusBadge status={order.order_status} />
             {order.payment_status && <StatusBadge status={order.payment_status} styleMap={{ [order.payment_status]: { bg: '#dbeafe', color: '#1d4ed8' } }} />}
           </div>
@@ -332,6 +494,7 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
           <FinCard label="Order Amount"   value={fmt(order.order_amount)} />
           <FinCard label="Total Value"    value={fmt(order.total_order_value)} />
           <FinCard label="Total Buying"   value={fmt(order.total_buying)} color="#64748b" />
+          <FinCard label="RMA Amount"     value={fmt(order.rma_amount)} color="#f59e0b" />
           <FinCard label="GP"             value={fmt(gp)}        color={gp >= 0 ? '#10b981' : '#ef4444'} />
           <FinCard label="Customer Paid"  value={fmt(order.customer_paid)} color={BRAND} />
           <FinCard label="Remaining"      value={fmt(remaining)} color={remaining > 0 ? '#f59e0b' : '#10b981'} />
@@ -339,22 +502,24 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
 
         {/* Order details */}
         <SectionLabel>Details</SectionLabel>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 24px', marginBottom: 24, fontSize: 13 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 24px', marginBottom: 24, fontSize: 13 }}>
           {[
-            ['Customer',    order.customer_name || order.email || '—'],
-            ['Order Date',  fmtDate(order.order_date)],
-            ['Due Date',    fmtDate(order.due_date)],
-            ['Rep',         order.rep || '—'],
-            ['Lead Source', order.lead_source || '—'],
-            ['Shipped Via', order.shipped_via || '—'],
-            ['Tracking',    order.tracking_to_customer || '—'],
-            ['Tax Charged', fmt(order.tax_charged)],
-            ['Ship Charged',fmt(order.shipping_charged)],
-            ['CC Charges',  fmt(order.cc_charges)],
+            ['Customer',      order.customer_name || order.email || '—'],
+            ['Order Date',    fmtDate(order.order_date)],
+            ['Due Date',      fmtDate(order.due_date)],
+            ['Rep',           order.rep || '—'],
+            ['PPC Order Rep', order.ppc_order_rep || '—'],
+            ['Buyer',         order.buyer || '—'],
+            ['Lead Source',   order.lead_source || '—'],
+            ['Shipped Via',   order.shipped_via || '—'],
+            ['Tracking→Customer', order.tracking_to_customer || '—'],
+            ['Tax Charged',   fmt(order.tax_charged)],
+            ['Ship Charged',  fmt(order.shipping_charged)],
+            ['CC Charges',    fmt(order.cc_charges)],
           ].map(([k, v]) => (
-            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid #f8fafc' }}>
-              <span style={{ color: '#94a3b8', fontWeight: 600 }}>{k}</span>
-              <span style={{ color: '#0f172a', fontWeight: 500, textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word' }}>{v}</span>
+            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #f8fafc' }}>
+              <span style={{ color: '#94a3b8', fontWeight: 600, fontSize: 12 }}>{k}</span>
+              <span style={{ color: '#0f172a', fontWeight: 500, textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word', fontSize: 12 }}>{v}</span>
             </div>
           ))}
         </div>
@@ -364,13 +529,12 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
           <SectionLabel>Line Items ({order.items?.length || 0})</SectionLabel>
           <button className="btn btn-primary btn-sm" onClick={() => setAddItem(true)}><Plus size={13} /> Add Item</button>
         </div>
-
         {order.items?.length > 0 ? (
           <div style={{ overflowX: 'auto', marginBottom: 24 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 1100 }}>
               <thead>
                 <tr style={{ background: '#f8fafc' }}>
-                  {['Part #', 'Description', 'Qty', 'Condition', 'Supplier', 'Selling', 'Buying', 'Total Sell', 'Total Buy', 'Paid', 'Tracking', ''].map(h => (
+                  {[...itemCols.map(c => c.h), ''].map(h => (
                     <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -378,17 +542,9 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
               <tbody>
                 {order.items.map(item => (
                   <tr key={item.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '8px 10px', fontWeight: 600, color: '#0f172a' }}>{item.part_number || '—'}</td>
-                    <td style={{ padding: '8px 10px', color: '#475569', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.description || '—'}</td>
-                    <td style={{ padding: '8px 10px' }}>{item.quantity}</td>
-                    <td style={{ padding: '8px 10px', color: '#64748b' }}>{item.product_condition || '—'}</td>
-                    <td style={{ padding: '8px 10px', color: '#64748b' }}>{item.supplier_name || '—'}</td>
-                    <td style={{ padding: '8px 10px' }}>{fmt(item.selling)}</td>
-                    <td style={{ padding: '8px 10px', color: '#64748b' }}>{fmt(item.buying)}</td>
-                    <td style={{ padding: '8px 10px', fontWeight: 600, color: BRAND }}>{fmt(item.total_selling)}</td>
-                    <td style={{ padding: '8px 10px', color: '#64748b' }}>{fmt(item.total_buying)}</td>
-                    <td style={{ padding: '8px 10px' }}>{fmt(item.paid_to_supplier)}</td>
-                    <td style={{ padding: '8px 10px', color: '#64748b', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.tracking_to_warehouse || '—'}</td>
+                    {itemCols.map(c => (
+                      <td key={c.h} style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>{c.render(item)}</td>
+                    ))}
                     <td style={{ padding: '8px 10px' }}>
                       <div style={{ display: 'flex', gap: 4 }}>
                         <button className="btn btn-ghost btn-sm" style={{ padding: '2px 6px' }} onClick={() => setEditItem(item)}><Edit2 size={11} /></button>
@@ -407,18 +563,48 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
         )}
 
         {/* RMAs */}
-        {order.rmas?.length > 0 && (
-          <>
-            <SectionLabel>RMAs ({order.rmas.length})</SectionLabel>
-            {order.rmas.map(r => (
-              <div key={r.id} style={{ background: '#fff5f5', border: '1px solid #fecaca', borderRadius: 10, padding: '10px 14px', marginBottom: 8, fontSize: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontWeight: 700, color: '#dc2626' }}>{r.rma_number}</span>
-                <StatusBadge status={r.rma_status} styleMap={RMA_STATUS_STYLE} />
-                <span style={{ color: '#64748b' }}>Refund: {fmt(r.refund_issued)}</span>
-                <span style={{ color: '#64748b' }}>{fmtDate(r.rma_issue_date)}</span>
-              </div>
-            ))}
-          </>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <SectionLabel>RMAs ({order.rmas?.length || 0})</SectionLabel>
+          <button className="btn btn-primary btn-sm" style={{ background: '#fee2e2', color: '#dc2626', borderColor: '#fecaca' }} onClick={() => setAddRMA(true)}><Plus size={13} /> Create RMA</button>
+        </div>
+        {order.rmas?.length > 0 ? (
+          <div style={{ overflowX: 'auto', marginBottom: 24 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: '#fff5f5' }}>
+                  {['RMA #', 'Return Item', 'Qty', 'Unit Price', 'Return Amount', 'Status', 'Issue Date', 'Refund', 'Restocking', 'QB Memo', ''].map(h => (
+                    <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {order.rmas.map(r => (
+                  <tr key={r.id} style={{ borderBottom: '1px solid #fee2e2' }}>
+                    <td style={{ padding: '8px 10px', fontWeight: 700, color: '#dc2626' }}>{r.rma_number}</td>
+                    <td style={{ padding: '8px 10px', color: '#475569' }}>{r.return_item_part ? `${r.return_item_part}${r.return_item_desc ? ` — ${r.return_item_desc}` : ''}` : '—'}</td>
+                    <td style={{ padding: '8px 10px' }}>{r.return_quantity}</td>
+                    <td style={{ padding: '8px 10px' }}>{fmt(r.unit_selling_price)}</td>
+                    <td style={{ padding: '8px 10px', fontWeight: 700, color: '#10b981' }}>{fmt(r.return_amount)}</td>
+                    <td style={{ padding: '8px 10px' }}><StatusBadge status={r.rma_status} styleMap={RMA_STATUS_STYLE} /></td>
+                    <td style={{ padding: '8px 10px', color: '#64748b' }}>{fmtDate(r.rma_issue_date)}</td>
+                    <td style={{ padding: '8px 10px' }}>{fmt(r.refund_issued)}</td>
+                    <td style={{ padding: '8px 10px' }}>{fmt(r.restocking_fee)}</td>
+                    <td style={{ padding: '8px 10px', color: '#64748b' }}>{r.qb_credit_memo || '—'}</td>
+                    <td style={{ padding: '8px 10px' }}>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button className="btn btn-ghost btn-sm" style={{ padding: '2px 6px' }} onClick={() => setEditRMA(r)}><Edit2 size={11} /></button>
+                        <button className="btn btn-ghost btn-sm" style={{ padding: '2px 6px', color: '#ef4444' }} onClick={() => handleDeleteRMA(r.id)}><Trash2 size={11} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div style={{ textAlign: 'center', padding: '16px', background: '#fff5f5', borderRadius: 12, marginBottom: 24, color: '#fca5a5', fontSize: 13, border: '1px dashed #fecaca' }}>
+            No RMAs for this order.
+          </div>
         )}
 
         {/* Notes */}
@@ -441,6 +627,25 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
       {editItem && (
         <ItemForm item={editItem} orderId={order.id} suppliers={suppliers} onClose={() => setEditItem(null)}
           onSave={() => { setEditItem(null); load(); onUpdated && onUpdated() }} />
+      )}
+      {addRMA && (
+        <RMAForm
+          presetOrder={{ id: order.id, order_number: order.order_number, customer_id: order.customer_id }}
+          orderItems={order.items || []}
+          customers={customers}
+          onClose={() => setAddRMA(false)}
+          onSave={() => { setAddRMA(false); load(); onUpdated && onUpdated() }}
+        />
+      )}
+      {editRMA && (
+        <RMAForm
+          rma={editRMA}
+          presetOrder={{ id: order.id, order_number: order.order_number, customer_id: order.customer_id }}
+          orderItems={order.items || []}
+          customers={customers}
+          onClose={() => setEditRMA(null)}
+          onSave={() => { setEditRMA(null); load(); onUpdated && onUpdated() }}
+        />
       )}
     </>
   )
@@ -761,13 +966,13 @@ function OrderItemsTab({ onOpenOrder }) {
 
 // ── RMA Tab ───────────────────────────────────────────────────────────────────
 function RMATab() {
-  const [rmas, setRmas]         = useState([])
+  const [rmas, setRmas]           = useState([])
   const [customers, setCustomers] = useState([])
-  const [orders, setOrders]     = useState([])
-  const [loading, setLoading]   = useState(true)
-  const [search, setSearch]     = useState('')
+  const [orders, setOrders]       = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [search, setSearch]       = useState('')
   const [statusFilter, setStatus] = useState('')
-  const [form, setForm]         = useState(null)
+  const [formRMA, setFormRMA]     = useState(null)   // null=closed, {}=new, {...}=edit
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -784,25 +989,10 @@ function RMATab() {
 
   useEffect(() => { load() }, [load])
 
-  const blankForm = { rma_number: `RMA-${Date.now().toString().slice(-6)}`, order_id: '', customer_id: '', email: '',
-    return_quantity: 1, return_reason: '', rma_status: 'Open', rma_issue_date: new Date().toISOString().slice(0,10),
-    rma_completed_date: '', refund_issued: '', restocking_fee: '', return_tracking_number: '',
-    return_shipping_paid: '', notes: '', qb_credit_memo: '' }
-
-  const handleSave = async () => {
-    try {
-      if (form.id) await operationsApi.updateRMA(form.id, form)
-      else await operationsApi.createRMA(form)
-      setForm(null); load()
-    } catch(e) { alert(e.message) }
-  }
-
   const handleDelete = async (id) => {
     if (!confirm('Delete this RMA?')) return
     await operationsApi.deleteRMA(id); load()
   }
-
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   return (
     <div>
@@ -815,127 +1005,58 @@ function RMATab() {
           <option value="">All Statuses</option>
           {RMA_STATUSES.map(s => <option key={s}>{s}</option>)}
         </select>
-        <button className="btn btn-primary" onClick={() => setForm(blankForm)}><Plus size={15} /> New RMA</button>
+        <button className="btn btn-primary" onClick={() => setFormRMA({})}><Plus size={15} /> New RMA</button>
       </div>
 
       {loading ? <Loader /> : rmas.length === 0 ? (
-        <EmptyState icon={RotateCcw} label="RMAs" action={<button className="btn btn-primary" onClick={() => setForm(blankForm)}><Plus size={14} /> New RMA</button>} />
+        <EmptyState icon={RotateCcw} label="RMAs" action={<button className="btn btn-primary" onClick={() => setFormRMA({})}><Plus size={14} /> New RMA</button>} />
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr className="table-header">
-              {['RMA #', 'Order', 'Customer', 'Reason', 'Status', 'Refund', 'Restocking', 'Issue Date', 'QB Memo', ''].map(h => (
-                <th key={h} className="table-cell" style={{ whiteSpace: 'nowrap' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rmas.map(r => (
-              <tr key={r.id} className="table-row">
-                <td className="table-cell" style={{ fontWeight: 700, color: '#dc2626' }}>{r.rma_number}</td>
-                <td className="table-cell" style={{ color: BRAND, fontWeight: 600 }}>{r.order_number || '—'}</td>
-                <td className="table-cell">{r.customer_name || r.email || '—'}</td>
-                <td className="table-cell" style={{ color: '#64748b', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.return_reason || '—'}</td>
-                <td className="table-cell"><StatusBadge status={r.rma_status} styleMap={RMA_STATUS_STYLE} /></td>
-                <td className="table-cell" style={{ color: '#dc2626', fontWeight: 600 }}>{fmt(r.refund_issued)}</td>
-                <td className="table-cell" style={{ color: '#64748b' }}>{fmt(r.restocking_fee)}</td>
-                <td className="table-cell" style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{fmtDate(r.rma_issue_date)}</td>
-                <td className="table-cell" style={{ color: '#64748b' }}>{r.qb_credit_memo || '—'}</td>
-                <td className="table-cell">
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setForm({ ...r, rma_issue_date: r.rma_issue_date?.slice(0,10)||'', rma_completed_date: r.rma_completed_date?.slice(0,10)||'' })}><Edit2 size={13} /></button>
-                    <button className="btn btn-ghost btn-sm" style={{ color: '#ef4444' }} onClick={() => handleDelete(r.id)}><Trash2 size={13} /></button>
-                  </div>
-                </td>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr className="table-header">
+                {['RMA #', 'Order', 'Return Item', 'Qty', 'Unit Price', 'Return Amount', 'Customer', 'Reason', 'Status', 'Refund', 'Restocking', 'Issue Date', 'QB Memo', ''].map(h => (
+                  <th key={h} className="table-cell" style={{ whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rmas.map(r => (
+                <tr key={r.id} className="table-row">
+                  <td className="table-cell" style={{ fontWeight: 700, color: '#dc2626' }}>{r.rma_number}</td>
+                  <td className="table-cell" style={{ color: BRAND, fontWeight: 600 }}>{r.order_number || '—'}</td>
+                  <td className="table-cell" style={{ color: '#475569' }}>{r.return_item_part ? `${r.return_item_part}${r.return_item_desc ? ` — ${r.return_item_desc}` : ''}` : '—'}</td>
+                  <td className="table-cell">{r.return_quantity}</td>
+                  <td className="table-cell">{fmt(r.unit_selling_price)}</td>
+                  <td className="table-cell" style={{ fontWeight: 700, color: '#10b981' }}>{fmt(r.return_amount)}</td>
+                  <td className="table-cell">{r.customer_name || r.email || '—'}</td>
+                  <td className="table-cell" style={{ color: '#64748b', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.return_reason || '—'}</td>
+                  <td className="table-cell"><StatusBadge status={r.rma_status} styleMap={RMA_STATUS_STYLE} /></td>
+                  <td className="table-cell" style={{ color: '#dc2626', fontWeight: 600 }}>{fmt(r.refund_issued)}</td>
+                  <td className="table-cell" style={{ color: '#64748b' }}>{fmt(r.restocking_fee)}</td>
+                  <td className="table-cell" style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{fmtDate(r.rma_issue_date)}</td>
+                  <td className="table-cell" style={{ color: '#64748b' }}>{r.qb_credit_memo || '—'}</td>
+                  <td className="table-cell">
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setFormRMA(r)}><Edit2 size={13} /></button>
+                      <button className="btn btn-ghost btn-sm" style={{ color: '#ef4444' }} onClick={() => handleDelete(r.id)}><Trash2 size={13} /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
-      {form !== null && (
-        <Modal title={form.id ? `Edit ${form.rma_number}` : 'New RMA'} onClose={() => setForm(null)} wide>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-            {[
-              { label: 'RMA Number', key: 'rma_number', half: false },
-            ].map(({ label, key, half }) => (
-              <div key={key} style={{ flex: half ? '0 0 calc(50% - 6px)' : '1 1 100%', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</label>
-                <input className="input" value={form[key]||''} onChange={e => set(key, e.target.value)} />
-              </div>
-            ))}
-
-            <div style={{ flex: '0 0 calc(50% - 6px)', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order</label>
-              <select className="input" value={form.order_id||''} onChange={e => set('order_id', e.target.value)}>
-                <option value="">— select order —</option>
-                {orders.map(o => <option key={o.id} value={o.id}>{o.order_number}</option>)}
-              </select>
-            </div>
-            <div style={{ flex: '0 0 calc(50% - 6px)', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Customer</label>
-              <select className="input" value={form.customer_id||''} onChange={e => set('customer_id', e.target.value)}>
-                <option value="">— select customer —</option>
-                {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
-
-            <div style={{ flex: '0 0 calc(50% - 6px)', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>RMA Status</label>
-              <select className="input" value={form.rma_status} onChange={e => set('rma_status', e.target.value)}>
-                {RMA_STATUSES.map(s => <option key={s}>{s}</option>)}
-              </select>
-            </div>
-            <div style={{ flex: '0 0 calc(50% - 6px)', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Return Qty</label>
-              <input className="input" type="number" value={form.return_quantity} onChange={e => set('return_quantity', e.target.value)} min="1" />
-            </div>
-
-            <div style={{ flex: '0 0 calc(50% - 6px)', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Issue Date</label>
-              <input className="input" type="date" value={form.rma_issue_date} onChange={e => set('rma_issue_date', e.target.value)} />
-            </div>
-            <div style={{ flex: '0 0 calc(50% - 6px)', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Completed Date</label>
-              <input className="input" type="date" value={form.rma_completed_date} onChange={e => set('rma_completed_date', e.target.value)} />
-            </div>
-
-            <div style={{ flex: '0 0 calc(50% - 6px)', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Refund Issued ($)</label>
-              <input className="input" type="number" value={form.refund_issued} onChange={e => set('refund_issued', e.target.value)} placeholder="0.00" />
-            </div>
-            <div style={{ flex: '0 0 calc(50% - 6px)', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Restocking Fee ($)</label>
-              <input className="input" type="number" value={form.restocking_fee} onChange={e => set('restocking_fee', e.target.value)} placeholder="0.00" />
-            </div>
-
-            <div style={{ flex: '0 0 calc(50% - 6px)', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Return Tracking #</label>
-              <input className="input" value={form.return_tracking_number||''} onChange={e => set('return_tracking_number', e.target.value)} />
-            </div>
-            <div style={{ flex: '0 0 calc(50% - 6px)', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Return Shipping Paid ($)</label>
-              <input className="input" type="number" value={form.return_shipping_paid} onChange={e => set('return_shipping_paid', e.target.value)} placeholder="0.00" />
-            </div>
-
-            <div style={{ flex: '0 0 calc(50% - 6px)', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>QB Credit Memo #</label>
-              <input className="input" value={form.qb_credit_memo||''} onChange={e => set('qb_credit_memo', e.target.value)} />
-            </div>
-            <div style={{ flex: '1 1 100%', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Return Reason</label>
-              <input className="input" value={form.return_reason||''} onChange={e => set('return_reason', e.target.value)} />
-            </div>
-            <div style={{ flex: '1 1 100%', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Notes</label>
-              <textarea className="input" value={form.notes||''} onChange={e => set('notes', e.target.value)} rows={3} style={{ resize: 'vertical' }} />
-            </div>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-            <button className="btn btn-secondary" onClick={() => setForm(null)}>Cancel</button>
-            <button className="btn btn-primary" onClick={handleSave}>Save</button>
-          </div>
-        </Modal>
+      {formRMA !== null && (
+        <RMAForm
+          rma={formRMA.id ? formRMA : undefined}
+          orders={orders}
+          customers={customers}
+          onClose={() => setFormRMA(null)}
+          onSave={() => { setFormRMA(null); load() }}
+        />
       )}
     </div>
   )

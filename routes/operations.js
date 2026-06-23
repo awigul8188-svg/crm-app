@@ -87,7 +87,14 @@ router.get('/orders/:id', (req, res) => {
       WHERE i.order_id = ?
       ORDER BY i.id
     `).all(req.params.id);
-    const rmas = db.prepare(`SELECT * FROM op_rma WHERE order_id = ? ORDER BY id DESC`).all(req.params.id);
+    const rmas = db.prepare(`
+      SELECT r.*,
+        i.part_number AS return_item_part, i.description AS return_item_desc, i.selling AS unit_selling_price,
+        COALESCE(r.return_quantity,1) * COALESCE(i.selling,0) AS return_amount
+      FROM op_rma r
+      LEFT JOIN op_order_items i ON r.order_item_id = i.id
+      WHERE r.order_id = ? ORDER BY r.id DESC
+    `).all(req.params.id);
     res.json({ ...order, items, rmas });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -261,23 +268,31 @@ router.delete('/suppliers/:id', requireManager, (req, res) => {
 
 // ── RMA ───────────────────────────────────────────────────────────────────────
 
+const RMA_SELECT = `
+  SELECT r.*,
+    c.name AS customer_name,
+    o.order_number,
+    i.part_number AS return_item_part,
+    i.description AS return_item_desc,
+    i.selling     AS unit_selling_price,
+    COALESCE(r.return_quantity, 1) * COALESCE(i.selling, 0) AS return_amount
+  FROM op_rma r
+  LEFT JOIN op_customers c ON r.customer_id = c.id
+  LEFT JOIN op_orders o ON r.order_id = o.id
+  LEFT JOIN op_order_items i ON r.order_item_id = i.id
+`;
+
 router.get('/rma', (req, res) => {
   try {
     const db = getDB();
-    const { search, status } = req.query;
+    const { search, status, order_id } = req.query;
     let where = [];
     let params = [];
     if (search) { where.push(`(r.rma_number LIKE ? OR c.name LIKE ? OR o.order_number LIKE ?)`); const s = `%${search}%`; params.push(s, s, s); }
     if (status) { where.push(`r.rma_status = ?`); params.push(status); }
+    if (order_id) { where.push(`r.order_id = ?`); params.push(order_id); }
     const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
-    const rmas = db.prepare(`
-      SELECT r.*, c.name AS customer_name, o.order_number
-      FROM op_rma r
-      LEFT JOIN op_customers c ON r.customer_id = c.id
-      LEFT JOIN op_orders o ON r.order_id = o.id
-      ${whereClause}
-      ORDER BY r.created_at DESC
-    `).all(...params);
+    const rmas = db.prepare(`${RMA_SELECT} ${whereClause} ORDER BY r.created_at DESC`).all(...params);
     res.json(rmas);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -285,26 +300,27 @@ router.get('/rma', (req, res) => {
 router.post('/rma', requireManager, (req, res) => {
   try {
     const db = getDB();
-    const { rma_number, order_id, customer_id, email, return_quantity, return_reason,
+    const { rma_number, order_id, order_item_id, customer_id, email, return_quantity, return_reason,
             rma_status, rma_issue_date, rma_completed_date, refund_issued, restocking_fee,
             return_tracking_number, return_shipping_paid, notes, qb_credit_memo } = req.body;
     const result = db.prepare(`
-      INSERT INTO op_rma (rma_number,order_id,customer_id,email,return_quantity,return_reason,
+      INSERT INTO op_rma (rma_number,order_id,order_item_id,customer_id,email,return_quantity,return_reason,
         rma_status,rma_issue_date,rma_completed_date,refund_issued,restocking_fee,
         return_tracking_number,return_shipping_paid,notes,qb_credit_memo)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-    `).run(rma_number, order_id||null, customer_id||null, email||null, return_quantity||1,
-           return_reason||null, rma_status||'Open', rma_issue_date||null, rma_completed_date||null,
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `).run(rma_number, order_id||null, order_item_id||null, customer_id||null, email||null,
+           return_quantity||1, return_reason||null, rma_status||'Initiated',
+           rma_issue_date||null, rma_completed_date||null,
            refund_issued||0, restocking_fee||0, return_tracking_number||null,
            return_shipping_paid||0, notes||null, qb_credit_memo||null);
-    res.json(db.prepare(`SELECT r.*, c.name AS customer_name, o.order_number FROM op_rma r LEFT JOIN op_customers c ON r.customer_id=c.id LEFT JOIN op_orders o ON r.order_id=o.id WHERE r.id=?`).get(result.lastInsertRowid));
+    res.json(db.prepare(`${RMA_SELECT} WHERE r.id=?`).get(result.lastInsertRowid));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 router.get('/rma/:id', (req, res) => {
   try {
     const db = getDB();
-    const rma = db.prepare(`SELECT r.*, c.name AS customer_name, o.order_number FROM op_rma r LEFT JOIN op_customers c ON r.customer_id=c.id LEFT JOIN op_orders o ON r.order_id=o.id WHERE r.id=?`).get(req.params.id);
+    const rma = db.prepare(`${RMA_SELECT} WHERE r.id=?`).get(req.params.id);
     if (!rma) return res.status(404).json({ error: 'RMA not found' });
     res.json(rma);
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -313,19 +329,20 @@ router.get('/rma/:id', (req, res) => {
 router.put('/rma/:id', requireManager, (req, res) => {
   try {
     const db = getDB();
-    const { rma_number, order_id, customer_id, email, return_quantity, return_reason,
+    const { rma_number, order_id, order_item_id, customer_id, email, return_quantity, return_reason,
             rma_status, rma_issue_date, rma_completed_date, refund_issued, restocking_fee,
             return_tracking_number, return_shipping_paid, notes, qb_credit_memo } = req.body;
     db.prepare(`
-      UPDATE op_rma SET rma_number=?,order_id=?,customer_id=?,email=?,return_quantity=?,
+      UPDATE op_rma SET rma_number=?,order_id=?,order_item_id=?,customer_id=?,email=?,return_quantity=?,
         return_reason=?,rma_status=?,rma_issue_date=?,rma_completed_date=?,refund_issued=?,
         restocking_fee=?,return_tracking_number=?,return_shipping_paid=?,notes=?,
         qb_credit_memo=?,updated_at=CURRENT_TIMESTAMP WHERE id=?
-    `).run(rma_number, order_id||null, customer_id||null, email||null, return_quantity||1,
-           return_reason||null, rma_status||'Open', rma_issue_date||null, rma_completed_date||null,
+    `).run(rma_number, order_id||null, order_item_id||null, customer_id||null, email||null,
+           return_quantity||1, return_reason||null, rma_status||'Initiated',
+           rma_issue_date||null, rma_completed_date||null,
            refund_issued||0, restocking_fee||0, return_tracking_number||null,
            return_shipping_paid||0, notes||null, qb_credit_memo||null, req.params.id);
-    res.json(db.prepare(`SELECT r.*, c.name AS customer_name, o.order_number FROM op_rma r LEFT JOIN op_customers c ON r.customer_id=c.id LEFT JOIN op_orders o ON r.order_id=o.id WHERE r.id=?`).get(req.params.id));
+    res.json(db.prepare(`${RMA_SELECT} WHERE r.id=?`).get(req.params.id));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

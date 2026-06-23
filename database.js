@@ -261,6 +261,12 @@ function runOperationsMigrations() {
       );
     `);
   } catch(e) { console.log('Operations migration note:', e.message); }
+
+  // v2 — add order_item_id to op_rma for Return Item link
+  const rmaV2Cols = [
+    'order_item_id INTEGER REFERENCES op_order_items(id) ON DELETE SET NULL',
+  ];
+  rmaV2Cols.forEach(col => { try { db.exec(`ALTER TABLE op_rma ADD COLUMN ${col}`); } catch(e) {} });
 }
 
 module.exports = { initializeDB, getDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations };
