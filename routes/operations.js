@@ -336,6 +336,33 @@ router.delete('/rma/:id', requireManager, (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── All Order Items (global view) ────────────────────────────────────────────
+
+router.get('/items', (req, res) => {
+  try {
+    const db = getDB();
+    const { search = '', order_id } = req.query;
+    const like = `%${search}%`;
+    const rows = db.prepare(`
+      SELECT
+        i.*,
+        o.order_number,
+        s.company AS supplier_name,
+        (i.selling * i.quantity) AS total_selling,
+        (i.buying * i.quantity) AS total_buying_units,
+        (i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid) AS ext_total_buying,
+        (i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid) - i.paid_to_supplier AS supplier_remaining
+      FROM op_order_items i
+      LEFT JOIN op_orders o ON o.id = i.order_id
+      LEFT JOIN op_suppliers s ON s.id = i.supplier_id
+      WHERE (? = '' OR i.part_number LIKE ? OR i.description LIKE ? OR o.order_number LIKE ? OR s.company LIKE ?)
+        AND (? = '' OR i.order_id = ?)
+      ORDER BY i.id DESC
+    `).all(search, like, like, like, like, order_id||'', order_id||'');
+    res.json(rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Stats (for dashboard summary card) ───────────────────────────────────────
 
 router.get('/stats', (req, res) => {

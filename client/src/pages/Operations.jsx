@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { operationsApi } from '../api'
 import Modal from '../components/Modal'
-import { Search, Plus, Edit2, Trash2, Package, Users, Truck, RotateCcw, ChevronRight, X, AlertCircle } from 'lucide-react'
+import { Search, Plus, Edit2, Trash2, Package, Users, Truck, RotateCcw, ChevronRight, X, AlertCircle, List } from 'lucide-react'
 
 const BRAND = '#00D4C8'
 
@@ -447,7 +447,7 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
 }
 
 // ── Orders Tab ────────────────────────────────────────────────────────────────
-function OrdersTab() {
+function OrdersTab({ jumpOrderId, onJumpHandled }) {
   const [orders, setOrders]       = useState([])
   const [customers, setCustomers] = useState([])
   const [suppliers, setSuppliers] = useState([])
@@ -456,6 +456,10 @@ function OrdersTab() {
   const [statusFilter, setStatus] = useState('')
   const [selected, setSelected]   = useState(null)
   const [showForm, setShowForm]   = useState(false)
+
+  useEffect(() => {
+    if (jumpOrderId) { setSelected(jumpOrderId); onJumpHandled && onJumpHandled() }
+  }, [jumpOrderId])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -637,6 +641,119 @@ function EntityTab({ icon: Icon, label, fields, fetchFn, createFn, updateFn, del
             <button className="btn btn-primary" onClick={handleSave}>Save</button>
           </div>
         </Modal>
+      )}
+    </div>
+  )
+}
+
+// ── Order Items Tab ───────────────────────────────────────────────────────────
+function OrderItemsTab({ onOpenOrder }) {
+  const [rows, setRows]       = useState([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch]   = useState('')
+  const [editItem, setEditItem] = useState(null)
+  const [suppliers, setSuppliers] = useState([])
+  const timer = useRef(null)
+
+  const load = useCallback(async (q) => {
+    setLoading(true)
+    try { setRows(await operationsApi.getAllItems({ search: q })) }
+    catch(e) { console.error(e) }
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => {
+    operationsApi.getSuppliers('').then(setSuppliers).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    clearTimeout(timer.current)
+    timer.current = setTimeout(() => load(search), 300)
+  }, [search, load])
+
+  const handleDeleteItem = async (id) => {
+    if (!confirm('Delete this line item?')) return
+    try { await operationsApi.deleteItem(id); load(search) }
+    catch(e) { alert(e.message) }
+  }
+
+  const cols = [
+    { key: 'order_number',       label: 'Order #',      render: r => (
+      <button onClick={() => onOpenOrder(r.order_id)} style={{ color: BRAND, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13 }}>{r.order_number || '—'}</button>
+    )},
+    { key: 'part_number',        label: 'Part #',       bold: true },
+    { key: 'description',        label: 'Description'   },
+    { key: 'supplier_name',      label: 'Supplier'      },
+    { key: 'quantity',           label: 'Qty',          num: true },
+    { key: 'product_condition',  label: 'Condition'     },
+    { key: 'selling',            label: 'Selling/unit', num: true, fmt: true },
+    { key: 'total_selling',      label: 'Total Selling',num: true, fmt: true, highlight: BRAND },
+    { key: 'buying',             label: 'Buying/unit',  num: true, fmt: true },
+    { key: 'ext_total_buying',   label: 'Ext. Buying',  num: true, fmt: true },
+    { key: 'cc_paid',            label: 'CC Paid',      num: true, fmt: true },
+    { key: 'tax_paid',           label: 'Tax Paid',     num: true, fmt: true },
+    { key: 'shipping_paid',      label: 'Ship Paid',    num: true, fmt: true },
+    { key: 'duty_paid',          label: 'Duty Paid',    num: true, fmt: true },
+    { key: 'paid_to_supplier',   label: 'Paid to Sup.', num: true, fmt: true },
+    { key: 'supplier_remaining', label: 'Sup. Remaining',num:true, fmt: true, colorFn: v => v > 0 ? '#ef4444' : '#10b981' },
+    { key: 'payment_method',     label: 'Pay Method'    },
+    { key: 'payment_due',        label: 'Pay Due',      render: r => fmtDate(r.payment_due) },
+    { key: 'ta_po_number',       label: 'TA PO#'        },
+    { key: 'tracking_to_warehouse', label: 'Track→WH'  },
+    { key: 'serials',            label: 'Serials'       },
+  ]
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 20, alignItems: 'center' }}>
+        <div className="search-wrap" style={{ flex: 1 }}>
+          <Search size={14} className="search-icon" />
+          <input className="input" placeholder="Search by part #, description, order #, supplier…" value={search} onChange={e => setSearch(e.target.value)} />
+        </div>
+        <span style={{ fontSize: 12, color: '#94a3b8', whiteSpace: 'nowrap' }}>{rows.length} items</span>
+      </div>
+
+      {loading ? <Loader /> : rows.length === 0 ? (
+        <EmptyState icon={List} label="Order Items" action={null} />
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1400 }}>
+            <thead>
+              <tr className="table-header">
+                {cols.map(c => <th key={c.key} className="table-cell" style={{ whiteSpace: 'nowrap' }}>{c.label}</th>)}
+                <th className="table-cell"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(row => (
+                <tr key={row.id} className="table-row">
+                  {cols.map(c => {
+                    const val = row[c.key]
+                    const display = c.render ? c.render(row) : c.fmt ? fmt(val) : (val ?? '—')
+                    const color = c.colorFn ? c.colorFn(Number(val)) : c.highlight || (c.bold ? '#0f172a' : '#475569')
+                    return (
+                      <td key={c.key} className="table-cell" style={{ fontWeight: c.bold ? 600 : 400, color, whiteSpace: c.key === 'serials' ? 'pre-wrap' : 'nowrap', maxWidth: c.key === 'serials' ? 140 : undefined, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {display}
+                      </td>
+                    )
+                  })}
+                  <td className="table-cell">
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setEditItem(row)}><Edit2 size={13} /></button>
+                      <button className="btn btn-ghost btn-sm" style={{ color: '#ef4444' }} onClick={() => handleDeleteItem(row.id)}><Trash2 size={13} /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {editItem && (
+        <ItemForm item={editItem} orderId={editItem.order_id} suppliers={suppliers}
+          onClose={() => setEditItem(null)}
+          onSave={() => { setEditItem(null); load(search) }} />
       )}
     </div>
   )
@@ -828,16 +945,23 @@ function RMATab() {
 export default function Operations() {
   const [tab, setTab] = useState('orders')
   const [stats, setStats] = useState(null)
+  const [jumpOrderId, setJumpOrderId] = useState(null)
 
   useEffect(() => {
     operationsApi.getStats().then(setStats).catch(() => {})
   }, [])
 
+  const handleOpenOrderFromItems = (orderId) => {
+    setJumpOrderId(orderId)
+    setTab('orders')
+  }
+
   const tabs = [
-    { key: 'orders',    label: 'Orders',    icon: Package },
-    { key: 'customers', label: 'Customers', icon: Users },
-    { key: 'suppliers', label: 'Suppliers', icon: Truck },
-    { key: 'rma',       label: 'RMA',       icon: RotateCcw },
+    { key: 'orders',      label: 'Orders',      icon: Package },
+    { key: 'order-items', label: 'Order Items',  icon: List },
+    { key: 'customers',   label: 'Customers',   icon: Users },
+    { key: 'suppliers',   label: 'Suppliers',   icon: Truck },
+    { key: 'rma',         label: 'RMA',         icon: RotateCcw },
   ]
 
   return (
@@ -884,7 +1008,8 @@ export default function Operations() {
 
       {/* Tab content */}
       <div style={{ background: '#fff', borderRadius: 20, border: '1px solid #f1f5f9', padding: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-        {tab === 'orders' && <OrdersTab />}
+        {tab === 'orders' && <OrdersTab jumpOrderId={jumpOrderId} onJumpHandled={() => setJumpOrderId(null)} />}
+        {tab === 'order-items' && <OrderItemsTab onOpenOrder={handleOpenOrderFromItems} />}
         {tab === 'customers' && (
           <EntityTab
             icon={Users} label="Customers"
