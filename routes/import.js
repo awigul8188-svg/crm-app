@@ -208,6 +208,7 @@ router.post('/', upload.single('file'), (req, res) => {
 const MONTHS = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
 
 function parseDollar(s) {
+  if (typeof s === 'number') return s;
   if (!s && s !== 0) return 0;
   const n = parseFloat(String(s).replace(/[$,\s]/g,''));
   return isNaN(n) ? 0 : n;
@@ -224,23 +225,32 @@ function parentOrderNum(orderNum) {
 }
 
 function parseDate(raw) {
-  if (!raw) return null;
+  if (raw === null || raw === undefined || raw === '') return null;
+
+  // JS Date object — from cellDates:true on xlsx files
+  if (raw instanceof Date) {
+    if (isNaN(raw.getTime())) return null;
+    const y = raw.getFullYear();
+    const m = String(raw.getMonth() + 1).padStart(2, '0');
+    const d = String(raw.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  // Excel serial number (number, not yet converted to Date)
+  if (typeof raw === 'number' && raw > 40000 && raw < 60000) {
+    const d = new Date(Math.round((raw - 25569) * 86400 * 1000));
+    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  }
+
   const s = String(raw).trim();
+  if (!s) return null;
 
-  // M/D/YYYY — year is explicit, used directly (no tracking needed)
+  // M/D/YYYY  e.g. 1/24/2024
   const us = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (us) {
-    return `${us[3]}-${String(parseInt(us[1])).padStart(2,'0')}-${String(parseInt(us[2])).padStart(2,'0')}`;
-  }
+  if (us) return `${us[3]}-${String(parseInt(us[1])).padStart(2,'0')}-${String(parseInt(us[2])).padStart(2,'0')}`;
 
-  // Legacy Mon-DD format (kept for any old uploads)
-  const legacy = s.match(/^([A-Za-z]{3})-(\d{1,2})$/);
-  if (legacy) {
-    const monthNum = MONTHS[legacy[1].toLowerCase()];
-    if (!monthNum) return null;
-    // Without a year we default to 2024; caller should migrate to M/D/YYYY
-    return `2024-${String(monthNum).padStart(2,'0')}-${String(parseInt(legacy[2])).padStart(2,'0')}`;
-  }
+  // YYYY-MM-DD already
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
 
   return null;
 }
@@ -303,14 +313,15 @@ router.post('/operations', upload.single('file'), (req, res) => {
     const isCsv = (req.file.originalname || '').toLowerCase().endsWith('.csv');
     let wb;
     if (isCsv) {
-      // CSV must be read as string — buffer mode can misparse quoted commas
-      const csvStr = req.file.buffer.toString('utf8').replace(/^﻿/, ''); // strip BOM if present
-      wb = XLSX.read(csvStr, { type: 'string', raw: false });
+      const csvStr = req.file.buffer.toString('utf8').replace(/^﻿/, ''); // strip BOM
+      wb = XLSX.read(csvStr, { type: 'string' });
     } else {
-      wb = XLSX.read(req.file.buffer, { type: 'buffer', cellText: true, cellDates: false });
+      // cellDates:true → date cells become JS Date objects instead of serial numbers
+      wb = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: true });
     }
     const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+    // raw:true preserves Date objects and real numbers; strings stay strings
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
 
     const stats = { orders: 0, items: 0, customers: 0, suppliers: 0, rmas: 0, skipped: 0, errors: [] };
     const custCache = {}, supCache = {};
@@ -330,17 +341,19 @@ router.post('/operations', upload.single('file'), (req, res) => {
     const importOrder = db.transaction(() => {
       for (let i = 1; i < rows.length; i++) {
         const row = rows[i];
-        const col = (n) => String(row[n-1] || '').trim();
-
-        const rawDate = col(1);
+        // col() stringifies for text fields; dateVal() passes raw value to parseDate
+        const col = (n) => String(row[n-1] ?? '').trim();
+        const rawDateVal = row[0]; // may be Date object, number, or string
+        const rawDateStr = col(1); // stringified for skip checks
         const rawOrder = col(3);
 
-        // Skip month headers, quarter totals, and fully empty rows
-        if (/^(January|February|March|April|May|June|July|August|September|October|November|December|Q[1-4]\s*Total)$/i.test(rawDate)) continue;
-        if (!rawDate && !rawOrder && !col(10) && !col(4)) continue;
+        // Skip month/quarter header rows and fully empty rows
+        if (/^(January|February|March|April|May|June|July|August|September|October|November|December|Q[1-4]\s*Total)$/i.test(rawDateStr)) continue;
+        if (!rawDateStr && !rawOrder && !col(10) && !col(4)) continue;
 
-        // A row starts a new order when col 1 has a parseable date (M/D/YYYY or Mon-DD)
-        const isNewOrder = rawDate !== '' && (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(rawDate) || /^[A-Za-z]{3}-\d+$/.test(rawDate));
+        // A row starts a new order when col 1 has a parseable date
+        const parsedRowDate = parseDate(rawDateVal);
+        const isNewOrder = parsedRowDate !== null;
         const status = col(8);
         const isRefunded = status.toLowerCase() === 'refunded';
 
@@ -370,7 +383,7 @@ router.post('/operations', upload.single('file'), (req, res) => {
 
           const orderNum = rawOrder;
           const isAdj = isAdjustmentOrder(orderNum);
-          const orderDate = parseDate(rawDate);
+          const orderDate = parsedRowDate;
 
           if (isAdj) {
             // Route adjustment rows to their parent order instead of creating a new one
