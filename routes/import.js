@@ -204,4 +204,251 @@ router.post('/', upload.single('file'), (req, res) => {
   });
 });
 
+// ── Operations Import ─────────────────────────────────────────────────────────
+const MONTHS = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
+
+function parseDollar(s) {
+  if (!s && s !== 0) return 0;
+  const n = parseFloat(String(s).replace(/[$,\s]/g,''));
+  return isNaN(n) ? 0 : n;
+}
+
+function parseDate(raw, state) {
+  if (!raw) return null;
+  const rawStr = String(raw).trim();
+  const m = rawStr.match(/^([A-Za-z]{3})-(\d{1,2})$/);
+  if (!m) return null;
+  const monthNum = MONTHS[m[1].toLowerCase()];
+  if (!monthNum) return null;
+  const day = parseInt(m[2]);
+  if (state.prevMonth !== null && monthNum < state.prevMonth) state.year++;
+  state.prevMonth = monthNum;
+  return `${state.year}-${String(monthNum).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+}
+
+function mapPaymentOps(raw) {
+  if (!raw || String(raw).trim() === 'NA' || String(raw).trim() === '') return '';
+  const r = String(raw).toLowerCase().trim();
+  if (r === 'charged' || r === 'charged cc' || r === 'charged wire' || r === 'cc charged' || r.startsWith('cc charged')) return 'CC Charged';
+  if (r.startsWith('charged')) return 'CC Charged';
+  if (r === 'wire received' || r === 'wire recived' || r === 'received' || r === 'wire charged' || r === 'wire') return 'Wire Received';
+  if (r.includes('wire received')) return 'Wire Received';
+  if (r === 'net-30' || r === 'net 30' || r.startsWith('net-30') || r.startsWith('net 30') || r === 'net30-cc charged') return 'Net 30';
+  if (r === 'net-15' || r === 'net 15' || r.startsWith('net-15') || r.startsWith('net 15')) return 'Net 15';
+  if (r === 'net-10' || r === 'net 10' || r.startsWith('net-10') || r.startsWith('net 10') || r.startsWith('net10')) return 'Net 10';
+  if (r === 'net-7' || r === 'net 7' || r.startsWith('net-7') || r.startsWith('net 7')) return 'Net 7';
+  if (r.includes('paypal') || r.includes('pp received') || r === 'pp charged') return 'PayPal Received';
+  if (r.includes('check') || r.includes('cheque')) return 'Check Received';
+  return String(raw).trim();
+}
+
+function mapStatusOps(raw) {
+  if (!raw) return 'Order placed';
+  const map = {
+    'Delivered':'Delivered','Shipped to customer':'Shipped to customer',
+    'Order placed':'Order placed','In Process':'In Process',
+    'Shipped to US':'Shipped to US','Received in US':'Received in US',
+    'Refunded':'Delivered','refunded':'Delivered',
+  };
+  return map[String(raw).trim()] || String(raw).trim() || 'Order placed';
+}
+
+function syncRmaAmount(db, orderId) {
+  if (!orderId) return;
+  const res = db.prepare(`
+    SELECT COALESCE(SUM(COALESCE(r.return_quantity,1)*COALESCE(i.selling,0)),0) AS total
+    FROM op_rma r LEFT JOIN op_order_items i ON r.order_item_id=i.id WHERE r.order_id=?
+  `).get(orderId);
+  db.prepare(`UPDATE op_orders SET rma_amount=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(res.total, orderId);
+}
+
+router.post('/operations', upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+  try {
+    const db = getDB();
+    const wb = XLSX.read(req.file.buffer, { type: 'buffer', cellText: true, cellDates: false });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+
+    const stats = { orders: 0, items: 0, customers: 0, suppliers: 0, rmas: 0, skipped: 0, errors: [] };
+    const custCache = {}, supCache = {};
+
+    const existingOrders = new Set(
+      db.prepare(`SELECT order_number FROM op_orders`).all().map(o => String(o.order_number).trim())
+    );
+
+    let currentOrder = null;
+    let currentOrderId = null;
+    let rmaBuffer = [];
+    let currentOrderDate = null;
+    let currentCustomerId = null;
+    let rmaIndex = 0;
+    const dateState = { year: 2024, prevMonth: null };
+
+    const importOrder = db.transaction(() => {
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        const col = (n) => String(row[n-1] || '').trim();
+
+        const rawDate = col(1);
+        const rawOrder = col(3);
+
+        if (/^(January|February|March|April|May|June|July|August|September|October|November|December)$/i.test(rawDate)) continue;
+        if (!rawDate && !rawOrder && !col(10) && !col(4)) continue;
+
+        const isNewOrder = rawDate !== '' && /^[A-Za-z]{3}-\d+$/.test(rawDate);
+        const status = col(8);
+        const isRefunded = status.toLowerCase() === 'refunded';
+
+        if (isNewOrder && rawOrder !== '') {
+          // Flush RMAs for previous order
+          if (currentOrderId && rmaBuffer.length) {
+            for (const rmaRow of rmaBuffer) {
+              try {
+                const linkedItem = db.prepare(`SELECT id FROM op_order_items WHERE order_id=? AND part_number=? LIMIT 1`)
+                  .get(currentOrderId, rmaRow.partNumber);
+                db.prepare(`
+                  INSERT INTO op_rma (rma_number,order_id,order_item_id,customer_id,return_quantity,
+                    return_reason,rma_status,rma_issue_date,refund_issued)
+                  VALUES (?,?,?,?,?,?,?,?,?)
+                `).run(
+                  `RMA-${currentOrder}-${++rmaIndex}`,
+                  currentOrderId, linkedItem ? linkedItem.id : null, currentCustomerId,
+                  rmaRow.qty, rmaRow.remarks || null, 'Completed',
+                  currentOrderDate, rmaRow.refundAmount
+                );
+                stats.rmas++;
+              } catch(e) { stats.errors.push(`RMA error row ${i}: ${e.message}`); }
+            }
+            syncRmaAmount(db, currentOrderId);
+            rmaBuffer = [];
+          }
+
+          const orderDate = parseDate(rawDate, dateState);
+          const orderNum = rawOrder;
+
+          if (existingOrders.has(orderNum)) { stats.skipped++; currentOrderId = null; currentOrder = null; continue; }
+          existingOrders.add(orderNum);
+
+          let custId = null;
+          const custName = col(4);
+          if (custName) {
+            const key = custName.toLowerCase();
+            if (custCache[key]) {
+              custId = custCache[key];
+            } else {
+              const existing = db.prepare(`SELECT id FROM op_customers WHERE LOWER(name)=LOWER(?)`).get(custName);
+              if (existing) { custId = existing.id; }
+              else {
+                const r = db.prepare(`INSERT INTO op_customers (name) VALUES (?)`).run(custName);
+                custId = r.lastInsertRowid; stats.customers++;
+              }
+              custCache[key] = custId;
+            }
+          }
+
+          const orderStatus = mapStatusOps(isRefunded ? 'Delivered' : status);
+
+          try {
+            const result = db.prepare(`
+              INSERT INTO op_orders (order_number,order_date,customer_id,lead_source,rep,buyer,
+                payment_status,order_status,tax_charged,shipping_charged,tracking_to_customer,notes,email)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+            `).run(
+              orderNum, orderDate, custId, col(2)||null, col(5)||null, col(6)||null,
+              mapPaymentOps(col(7))||null, orderStatus,
+              parseDollar(col(23))||0, parseDollar(col(22))||0,
+              col(28)||null, col(30)||null, null
+            );
+            currentOrderId = result.lastInsertRowid;
+            currentOrder = orderNum;
+            currentOrderDate = orderDate;
+            currentCustomerId = custId;
+            rmaIndex = 0;
+            stats.orders++;
+          } catch(e) {
+            stats.errors.push(`Order ${orderNum} row ${i}: ${e.message}`);
+            currentOrderId = null; currentOrder = null;
+            continue;
+          }
+        }
+
+        if (!currentOrderId) continue;
+
+        const partNum = col(10);
+        if (!partNum && !col(15)) continue;
+
+        let supId = null;
+        const supName = col(15);
+        if (supName) {
+          const key = supName.toLowerCase();
+          if (supCache[key]) { supId = supCache[key]; }
+          else {
+            const existing = db.prepare(`SELECT id FROM op_suppliers WHERE LOWER(company)=LOWER(?)`).get(supName);
+            if (existing) { supId = existing.id; }
+            else {
+              const r = db.prepare(`INSERT INTO op_suppliers (company) VALUES (?)`).run(supName);
+              supId = r.lastInsertRowid; stats.suppliers++;
+            }
+            supCache[key] = supId;
+          }
+        }
+
+        if (isRefunded) {
+          const selling = parseDollar(col(21));
+          const cost = parseDollar(col(16));
+          const refundAmt = selling !== 0 ? Math.abs(selling) : Math.abs(cost);
+          rmaBuffer.push({ partNumber: partNum, qty: parseInt(col(11))||1, remarks: col(30), refundAmount: refundAmt });
+          continue;
+        }
+
+        try {
+          db.prepare(`
+            INSERT INTO op_order_items (order_id,part_number,description,product,supplier_id,quantity,
+              product_condition,selling,buying,cc_paid,tax_paid,shipping_paid,duty_paid,paid_to_supplier,
+              tracking_to_warehouse,ta_po_number,serials)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          `).run(
+            currentOrderId, partNum||null, null, col(9)||null, supId,
+            parseInt(col(11))||1, col(12)||null,
+            parseDollar(col(21)), parseDollar(col(16)),
+            parseDollar(col(20)), parseDollar(col(19)), parseDollar(col(18)),
+            0, parseDollar(col(14)),
+            col(27)||null, col(13)||null, col(29)||null
+          );
+          stats.items++;
+        } catch(e) { stats.errors.push(`Item row ${i}: ${e.message}`); }
+      }
+
+      // Flush final order's RMAs
+      if (currentOrderId && rmaBuffer.length) {
+        for (const rmaRow of rmaBuffer) {
+          try {
+            const linkedItem = db.prepare(`SELECT id FROM op_order_items WHERE order_id=? AND part_number=? LIMIT 1`)
+              .get(currentOrderId, rmaRow.partNumber);
+            db.prepare(`
+              INSERT INTO op_rma (rma_number,order_id,order_item_id,customer_id,return_quantity,
+                return_reason,rma_status,rma_issue_date,refund_issued)
+              VALUES (?,?,?,?,?,?,?,?,?)
+            `).run(
+              `RMA-${currentOrder}-${++rmaIndex}`,
+              currentOrderId, linkedItem ? linkedItem.id : null, currentCustomerId,
+              rmaRow.qty, rmaRow.remarks||null, 'Completed',
+              currentOrderDate, rmaRow.refundAmount
+            );
+            stats.rmas++;
+          } catch(e) { stats.errors.push(`RMA error final: ${e.message}`); }
+        }
+        syncRmaAmount(db, currentOrderId);
+      }
+    });
+
+    importOrder();
+    res.json({ ok: true, stats });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

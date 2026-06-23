@@ -126,6 +126,22 @@ export const operationsApi = {
   getDashboard: () => req('GET', '/operations/dashboard'),
 };
 
+export const importApi = {
+  importOperations: (file) => {
+    const form = new FormData();
+    form.append('file', file);
+    return fetch('/api/import/operations', {
+      method: 'POST',
+      headers: { ...(localStorage.getItem('crm_token') ? { Authorization: `Bearer ${localStorage.getItem('crm_token')}` } : {}) },
+      body: form,
+    }).then(async r => {
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Import failed');
+      return data;
+    });
+  }
+};
+
 // Purchasing-related convenience wrapper
 export const purchasingApi = {
   getStats: () => req('GET', '/purchasing/stats'),

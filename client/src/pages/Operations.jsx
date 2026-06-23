@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { operationsApi, api } from '../api'
 import Modal from '../components/Modal'
-import { Search, Plus, Edit2, Trash2, Package, Users, Truck, RotateCcw, ChevronRight, X, AlertCircle, List, ClipboardList } from 'lucide-react'
+import ImportModal from '../components/ImportModal'
+import { Search, Plus, Edit2, Trash2, Package, Users, Truck, RotateCcw, ChevronRight, X, AlertCircle, List, ClipboardList, Upload } from 'lucide-react'
 
 const BRAND = '#00D4C8'
 
@@ -1471,6 +1472,7 @@ export default function Operations() {
   const [jumpOrderId, setJumpOrderId] = useState(null)
   const [pendingCount, setPendingCount] = useState(0)
   const [showPending, setShowPending] = useState(false)
+  const [showImport, setShowImport] = useState(false)
   const [dashNavStatus, setDashNavStatus] = useState(undefined)
   const [dashNavLeadSource, setDashNavLeadSource] = useState(undefined)
   const [dashNavPayment, setDashNavPayment] = useState(undefined)
@@ -1510,6 +1512,20 @@ export default function Operations() {
           <h1 style={{ fontSize: 26, fontWeight: 800, color: '#0f172a', fontFamily: '"Bricolage Grotesque", sans-serif', margin: 0 }}>Operations</h1>
           <p style={{ fontSize: 13, color: '#94a3b8', margin: '4px 0 0' }}>Order management · Customers · Suppliers · RMA</p>
         </div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <button onClick={() => setShowImport(true)} style={{
+            display: 'flex', alignItems: 'center', gap: 7,
+            background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 12,
+            padding: '9px 16px', cursor: 'pointer', transition: 'all 0.15s',
+            fontSize: 13, fontWeight: 600, color: '#475569',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = BRAND; e.currentTarget.style.color = BRAND }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.color = '#475569' }}
+          >
+            <Upload size={15} />
+            Import Data
+          </button>
         {stats && (
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             {pendingCount > 0 && (
@@ -1542,6 +1558,7 @@ export default function Operations() {
             ))}
           </div>
         )}
+        </div>
       </div>
 
       {/* Tab bar */}
@@ -1602,6 +1619,16 @@ export default function Operations() {
         )}
         {tab === 'rma' && <RMATab />}
       </div>
+
+      {showImport && (
+        <ImportModal
+          onClose={() => setShowImport(false)}
+          onDone={() => {
+            setTab('orders')
+            operationsApi.getStats().then(s => { setStats(s); setPendingCount(s.pending_orders||0) }).catch(()=>{})
+          }}
+        />
+      )}
 
       {showPending && (
         <PendingOrdersPanel
