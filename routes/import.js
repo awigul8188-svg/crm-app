@@ -301,7 +301,14 @@ router.post('/operations', upload.single('file'), (req, res) => {
   try {
     const db = getDB();
     const isCsv = (req.file.originalname || '').toLowerCase().endsWith('.csv');
-    const wb = XLSX.read(req.file.buffer, { type: 'buffer', cellText: true, cellDates: false, raw: false, ...(isCsv ? { type: 'buffer' } : {}) });
+    let wb;
+    if (isCsv) {
+      // CSV must be read as string — buffer mode can misparse quoted commas
+      const csvStr = req.file.buffer.toString('utf8').replace(/^﻿/, ''); // strip BOM if present
+      wb = XLSX.read(csvStr, { type: 'string', raw: false });
+    } else {
+      wb = XLSX.read(req.file.buffer, { type: 'buffer', cellText: true, cellDates: false });
+    }
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
 
