@@ -4,6 +4,7 @@ import { api } from '../api'
 import { useAuth } from '../App'
 import { useNav } from '../App'
 import { DispositionBadge, TypeBadge, DISPOSITIONS, PPC_OPTIONS, ORDER_SOURCES, VERIFICATION_OPTIONS, timeAgo, formatDate } from '../components/Badges'
+import ClosedWonModal from '../components/ClosedWonModal'
 
 export default function InquiryDetail({ id }) {
   const { user } = useAuth()
@@ -21,6 +22,7 @@ export default function InquiryDetail({ id }) {
   const [editForm, setEditForm] = useState({})
   const [requirements, setRequirements] = useState([])
   const [activeTab, setActiveTab] = useState('activity')
+  const [showClosedWon, setShowClosedWon] = useState(false)
 
   const load = () => {
     Promise.all([api.getInquiry(id), api.getUsers()]).then(([inq, us]) => {
@@ -220,7 +222,11 @@ export default function InquiryDetail({ id }) {
             <div className="space-y-4 text-sm">
               <Detail label={inquiry.type === 'online_order' ? 'Status' : 'Disposition'}>
                 {editMode
-                  ? <select className="input" value={editForm.disposition} onChange={e => setEF('disposition',e.target.value)}>
+                  ? <select className="input" value={editForm.disposition} onChange={e => {
+                      const val = e.target.value
+                      if (val === 'Closed Won') { setShowClosedWon(true) }
+                      setEF('disposition', val)
+                    }}>
                       {dispositionsForType.map(d=><option key={d}>{d}</option>)}
                     </select>
                   : <DispositionBadge disposition={inquiry.disposition} />}
@@ -267,6 +273,18 @@ export default function InquiryDetail({ id }) {
           </div>
         </div>
       </div>
+
+      {showClosedWon && (
+        <ClosedWonModal
+          inquiry={inquiry}
+          requirements={requirements}
+          onClose={() => setShowClosedWon(false)}
+          onCreated={(orderId) => {
+            setShowClosedWon(false)
+            navigate('operations')
+          }}
+        />
+      )}
     </div>
   )
 }
