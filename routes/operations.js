@@ -10,11 +10,19 @@ const ORDER_TOTALS_SQL = `
     o.*,
     c.name  AS customer_name,
     c.phone AS customer_phone,
-    COALESCE(SUM(i.selling * i.quantity), 0)                                                               AS order_amount,
-    COALESCE(SUM(i.selling * i.quantity), 0) + o.tax_charged + o.shipping_charged + o.cc_charges           AS total_order_value,
-    COALESCE(SUM((i.buying + i.cc_paid + i.tax_paid + i.shipping_paid + i.duty_paid) * i.quantity), 0)     AS total_buying,
-    o.customer_paid - COALESCE(SUM((i.buying + i.cc_paid + i.tax_paid + i.shipping_paid + i.duty_paid) * i.quantity), 0) AS gp,
-    COALESCE(SUM(i.selling * i.quantity), 0) + o.tax_charged + o.shipping_charged + o.cc_charges - o.customer_paid       AS remaining
+    COALESCE(SUM(i.selling * i.quantity), 0)
+      AS order_amount,
+    COALESCE(SUM(i.selling * i.quantity), 0) + o.tax_charged + o.shipping_charged + o.cc_charges
+      AS total_order_value,
+    COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid), 0)
+      AS total_buying,
+    COALESCE(SUM(i.selling * i.quantity), 0) + o.tax_charged + o.shipping_charged + o.cc_charges
+      - COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid), 0)
+      - o.rma_amount
+      AS gp,
+    COALESCE(SUM(i.selling * i.quantity), 0) + o.tax_charged + o.shipping_charged + o.cc_charges
+      - o.customer_paid
+      AS remaining
   FROM op_orders o
   LEFT JOIN op_customers c ON o.customer_id = c.id
   LEFT JOIN op_order_items i ON i.order_id = o.id
@@ -72,8 +80,8 @@ router.get('/orders/:id', (req, res) => {
     const items = db.prepare(`
       SELECT i.*, s.company AS supplier_name,
         (i.selling * i.quantity) AS total_selling,
-        (i.buying + i.cc_paid + i.tax_paid + i.shipping_paid + i.duty_paid) * i.quantity AS total_buying,
-        (i.buying + i.cc_paid + i.tax_paid + i.shipping_paid + i.duty_paid) * i.quantity - i.paid_to_supplier AS supplier_remaining
+        (i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid) AS ext_total_buying,
+        (i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid) - i.paid_to_supplier AS supplier_remaining
       FROM op_order_items i
       LEFT JOIN op_suppliers s ON i.supplier_id = s.id
       WHERE i.order_id = ?
@@ -133,7 +141,7 @@ router.post('/orders/:id/items', (req, res) => {
     const item = db.prepare(`
       SELECT i.*, s.company AS supplier_name,
         (i.selling * i.quantity) AS total_selling,
-        (i.buying + i.cc_paid + i.tax_paid + i.shipping_paid + i.duty_paid) * i.quantity AS total_buying
+        (i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid) AS ext_total_buying
       FROM op_order_items i LEFT JOIN op_suppliers s ON i.supplier_id = s.id
       WHERE i.id = ?
     `).get(result.lastInsertRowid);
@@ -160,7 +168,7 @@ router.put('/order-items/:id', (req, res) => {
     const item = db.prepare(`
       SELECT i.*, s.company AS supplier_name,
         (i.selling * i.quantity) AS total_selling,
-        (i.buying + i.cc_paid + i.tax_paid + i.shipping_paid + i.duty_paid) * i.quantity AS total_buying
+        (i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid) AS ext_total_buying
       FROM op_order_items i LEFT JOIN op_suppliers s ON i.supplier_id = s.id
       WHERE i.id = ?
     `).get(req.params.id);
@@ -339,7 +347,9 @@ router.get('/stats', (req, res) => {
         SUM(CASE WHEN o.order_status = 'In Process' THEN 1 ELSE 0 END) AS in_process,
         SUM(CASE WHEN o.order_status = 'Order placed' THEN 1 ELSE 0 END) AS order_placed,
         COALESCE(SUM(i.selling * i.quantity), 0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges), 0) AS total_revenue,
-        COALESCE(SUM(o.customer_paid), 0) - COALESCE(SUM((i.buying + i.cc_paid + i.tax_paid + i.shipping_paid + i.duty_paid) * i.quantity), 0) AS total_gp
+        COALESCE(SUM(i.selling * i.quantity), 0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges), 0)
+          - COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid), 0)
+          - COALESCE(SUM(o.rma_amount), 0) AS total_gp
       FROM op_orders o
       LEFT JOIN op_order_items i ON i.order_id = o.id
     `).get();

@@ -5,28 +5,32 @@ import { Search, Plus, Edit2, Trash2, Package, Users, Truck, RotateCcw, ChevronR
 
 const BRAND = '#00D4C8'
 
-const ORDER_STATUSES = ['Order placed', 'In Process', 'Shipped to customer', 'Refunded', 'Cancelled']
-const LEAD_SOURCES   = ['Online', 'Outbound', 'Repeat', 'Call lead', 'Chat Lead', 'Website RFQ', 'Email Lead']
-const PAYMENT_STATUSES = ['CC Charged', 'Wire Transfer', 'PayPal', 'Check', 'Net 30', 'Pending']
-const SHIPPED_VIA    = ['UPS', 'FedEx', 'USPS', 'DHL', 'Freight', 'Pickup', 'Other']
-const RMA_STATUSES   = ['Open', 'Approved', 'Received', 'Closed', 'Rejected']
-const PAYMENT_METHODS = ['Credit Card', 'Wire Transfer', 'PayPal', 'Check', 'Net 30', 'ACH']
-const CONDITIONS     = ['New', 'Refurbished', 'Used', 'Open Box']
+const ORDER_STATUSES   = ['Order placed', 'In Process', 'Shipped to US', 'Received in US', 'Shipped to customer', 'Delivered', 'Refunded']
+const LEAD_SOURCES     = ['Chat Lead', 'Email Lead', 'Call Lead', 'RFQ', 'RFQ Lead', 'Repeat', 'Outbound', 'PPC', 'Online', 'Chat']
+const PAYMENT_STATUSES = ['CC Charged', 'Wire Received', 'Net']
+const SHIPPED_VIA      = ['FedEx', 'UPS', 'USPS', 'Customer Account']
+const RMA_STATUSES     = ['Initiated', 'In Review', 'Approved', 'Denied', 'Completed']
+const PAYMENT_METHODS  = ['Pending', 'Wire Transferred', 'Paid via CC', 'Paid via PayPal', 'Net']
+const CONDITIONS       = ['New', 'Refurbished', 'Used', 'Open Box', 'REF']
+const REPS             = ['Ethan', 'Eddie', 'Ryan', 'Justin', 'Hector', 'Aman', 'Online']
+const BUYERS           = ['Danny', 'Samit', 'Jason', 'Jorge', 'Maqsood']
 
 const STATUS_STYLE = {
   'Order placed':        { bg: '#fef9c3', color: '#a16207' },
   'In Process':          { bg: '#fee2e2', color: '#dc2626' },
+  'Shipped to US':       { bg: '#dbeafe', color: '#1d4ed8' },
+  'Received in US':      { bg: '#ede9fe', color: '#6d28d9' },
   'Shipped to customer': { bg: '#d1fae5', color: '#065f46' },
+  'Delivered':           { bg: '#ecfdf5', color: '#059669' },
   'Refunded':            { bg: '#fde8d8', color: '#9a3412' },
-  'Cancelled':           { bg: '#f1f5f9', color: '#64748b' },
 }
 
 const RMA_STATUS_STYLE = {
-  'Open':     { bg: '#fee2e2', color: '#dc2626' },
-  'Approved': { bg: '#fef9c3', color: '#a16207' },
-  'Received': { bg: '#dbeafe', color: '#1d4ed8' },
-  'Closed':   { bg: '#d1fae5', color: '#065f46' },
-  'Rejected': { bg: '#f1f5f9', color: '#64748b' },
+  'Initiated': { bg: '#dbeafe', color: '#1d4ed8' },
+  'In Review': { bg: '#fef9c3', color: '#a16207' },
+  'Approved':  { bg: '#d1fae5', color: '#065f46' },
+  'Denied':    { bg: '#fee2e2', color: '#dc2626' },
+  'Completed': { bg: '#f1f5f9', color: '#475569' },
 }
 
 function fmt(n) { return n == null ? '—' : `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` }
@@ -75,10 +79,10 @@ function EmptyState({ icon: Icon, label, action }) {
 // ── Order Form ────────────────────────────────────────────────────────────────
 function OrderForm({ order, customers, onSave, onClose }) {
   const blank = { order_number: '', order_date: new Date().toISOString().slice(0,10), customer_id: '', email: '',
-    lead_source: '', rep: '', payment_status: '', order_status: 'Order placed', due_date: '',
-    tax_charged: '', shipping_charged: '', cc_charges: '', customer_paid: '', shipped_via: '',
+    lead_source: '', rep: '', ppc_order_rep: '', buyer: '', payment_status: '', order_status: 'Order placed', due_date: '',
+    tax_charged: '', shipping_charged: '', cc_charges: '', customer_paid: '', rma_amount: '', shipped_via: '',
     tracking_to_customer: '', notes: '' }
-  const [form, setForm] = useState(order ? { ...blank, ...order, customer_id: order.customer_id || '', due_date: order.due_date?.slice(0,10)||'', order_date: order.order_date?.slice(0,10)||'' } : blank)
+  const [form, setForm] = useState(order ? { ...blank, ...order, customer_id: order.customer_id || '', due_date: order.due_date?.slice(0,10)||'', order_date: order.order_date?.slice(0,10)||'', rma_amount: order.rma_amount||'' } : blank)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
@@ -121,7 +125,25 @@ function OrderForm({ order, customers, onSave, onClose }) {
             {LEAD_SOURCES.map(s => <option key={s}>{s}</option>)}
           </select>
         </F>
-        <F label="Rep" half><input className="input" value={form.rep} onChange={e => set('rep', e.target.value)} placeholder="Rep name" /></F>
+        <F label="Rep" half>
+          <select className="input" value={form.rep} onChange={e => set('rep', e.target.value)}>
+            <option value="">—</option>
+            {REPS.map(r => <option key={r}>{r}</option>)}
+          </select>
+        </F>
+
+        <F label="PPC Order Rep" half>
+          <select className="input" value={form.ppc_order_rep} onChange={e => set('ppc_order_rep', e.target.value)}>
+            <option value="">—</option>
+            {REPS.filter(r => r !== 'Online').map(r => <option key={r}>{r}</option>)}
+          </select>
+        </F>
+        <F label="Buyer" half>
+          <select className="input" value={form.buyer} onChange={e => set('buyer', e.target.value)}>
+            <option value="">—</option>
+            {BUYERS.map(b => <option key={b}>{b}</option>)}
+          </select>
+        </F>
 
         <F label="Order Status" half>
           <select className="input" value={form.order_status} onChange={e => set('order_status', e.target.value)}>
@@ -141,6 +163,7 @@ function OrderForm({ order, customers, onSave, onClose }) {
         <F label="Shipping Charged ($)" half><input className="input" type="number" value={form.shipping_charged} onChange={e => set('shipping_charged', e.target.value)} placeholder="0.00" /></F>
         <F label="CC Charges ($)" half><input className="input" type="number" value={form.cc_charges} onChange={e => set('cc_charges', e.target.value)} placeholder="0.00" /></F>
         <F label="Customer Paid ($)" half><input className="input" type="number" value={form.customer_paid} onChange={e => set('customer_paid', e.target.value)} placeholder="0.00" /></F>
+        <F label="RMA Amount ($)" half><input className="input" type="number" value={form.rma_amount} onChange={e => set('rma_amount', e.target.value)} placeholder="0.00" /></F>
 
         <div style={{ flex: '1 1 100%', borderTop: '1px solid #f1f5f9', paddingTop: 12 }} />
 
@@ -193,7 +216,8 @@ function ItemForm({ item, orderId, suppliers, onSave, onClose }) {
   )
 
   const totalSelling = (Number(form.selling)||0) * (Number(form.quantity)||0)
-  const totalBuying  = ((Number(form.buying)||0) + (Number(form.cc_paid)||0) + (Number(form.tax_paid)||0) + (Number(form.shipping_paid)||0) + (Number(form.duty_paid)||0)) * (Number(form.quantity)||0)
+  const totalBuying  = (Number(form.buying)||0) * (Number(form.quantity)||0)
+    + (Number(form.cc_paid)||0) + (Number(form.tax_paid)||0) + (Number(form.shipping_paid)||0) + (Number(form.duty_paid)||0)
 
   return (
     <Modal title={item ? 'Edit Line Item' : 'Add Line Item'} onClose={onClose} wide>
