@@ -38,7 +38,7 @@ export default function ImportModal({ onClose, onDone, onStatsRefresh }) {
       let res
       if (mode === 'sheets') {
         if (!sheetsUrl.trim()) { setError('Enter a Google Sheets URL'); setImporting(false); return }
-        res = await importApi.importFromSheets(sheetsUrl.trim())
+        res = await importApi.importFromSheets(sheetsUrl.trim(), 977)
       } else {
         if (!file) { setImporting(false); return }
         res = await importApi.importOperations(file)

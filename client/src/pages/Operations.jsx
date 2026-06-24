@@ -1277,9 +1277,13 @@ function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
   const [dateTo, setDateTo]   = useState('')
   const [reportingPeriod, setReportingPeriod] = useState('')
   const [periods, setPeriods] = useState([])
+  const [closeConfirm, setCloseConfirm] = useState(false)
+  const [closeLoading, setCloseLoading] = useState(false)
+
+  const loadPeriods = () => operationsApi.getReportingPeriods().then(setPeriods).catch(() => {})
 
   useEffect(() => {
-    operationsApi.getReportingPeriods().then(setPeriods).catch(() => {})
+    loadPeriods()
   }, [])
 
   const load = (from, to, rp) => {
@@ -1305,6 +1309,23 @@ function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
     load('', '', val)
   }
 
+  const currentPeriodData = periods.find(p => p.reporting_period === reportingPeriod)
+  const isCurrentPeriodClosed = currentPeriodData?.closed
+
+  const handleCloseQuarter = async () => {
+    setCloseLoading(true)
+    try {
+      if (isCurrentPeriodClosed) {
+        await operationsApi.reopenQuarter(reportingPeriod)
+      } else {
+        await operationsApi.closeQuarter(reportingPeriod)
+      }
+      await loadPeriods()
+    } catch(e) {}
+    setCloseLoading(false)
+    setCloseConfirm(false)
+  }
+
   if (loading) return <Loader />
   if (!data) return <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Failed to load dashboard</div>
 
@@ -1322,7 +1343,7 @@ function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
           <option value="">All Periods</option>
           {periods.map(p => (
             <option key={p.reporting_period} value={p.reporting_period}>
-              {p.reporting_period} ({p.order_count})
+              {p.closed ? '🔒 ' : ''}{p.reporting_period} ({p.order_count})
             </option>
           ))}
         </select>
@@ -1354,7 +1375,51 @@ function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
             Filtered: {dateFrom || '—'} to {dateTo || '—'}
           </span>
         )}
+
+        {/* Close / Reopen Quarter button — only when a period is selected */}
+        {reportingPeriod && (
+          <div style={{ marginLeft: 'auto' }}>
+            {isCurrentPeriodClosed ? (
+              <button
+                onClick={() => setCloseConfirm(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', fontSize: 12, fontWeight: 700, background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0', borderRadius: 8, cursor: 'pointer' }}>
+                🔒 {reportingPeriod} Closed — Reopen?
+              </button>
+            ) : (
+              <button
+                onClick={() => setCloseConfirm(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', fontSize: 12, fontWeight: 700, background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', borderRadius: 8, cursor: 'pointer' }}>
+                🔐 Close {reportingPeriod}
+              </button>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Close Quarter confirmation dialog */}
+      {closeConfirm && reportingPeriod && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: 32, maxWidth: 420, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', marginBottom: 12 }}>
+              {isCurrentPeriodClosed ? `Reopen ${reportingPeriod}?` : `Close ${reportingPeriod}?`}
+            </div>
+            <div style={{ fontSize: 14, color: '#64748b', marginBottom: 24, lineHeight: 1.6 }}>
+              {isCurrentPeriodClosed
+                ? `This will mark ${reportingPeriod} as active again. You can continue adding orders to it.`
+                : `This will mark ${reportingPeriod} as finalized. The quarter will be locked and shown as closed in reports.`}
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={() => setCloseConfirm(false)} disabled={closeLoading}>Cancel</button>
+              <button
+                onClick={handleCloseQuarter}
+                disabled={closeLoading}
+                style={{ padding: '8px 20px', fontSize: 13, fontWeight: 700, background: isCurrentPeriodClosed ? '#00D4C8' : '#dc2626', color: '#fff', border: 'none', borderRadius: 8, cursor: closeLoading ? 'not-allowed' : 'pointer', opacity: closeLoading ? 0.7 : 1 }}>
+                {closeLoading ? 'Saving...' : isCurrentPeriodClosed ? 'Yes, Reopen' : 'Yes, Close Quarter'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* KPI Row 1 */}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         <DashboardCard label="Total Revenue" value={fmt(kpis.total_revenue)} color="#0f172a" onClick={() => onNavigateOrders && onNavigateOrders()} />

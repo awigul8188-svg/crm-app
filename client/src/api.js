@@ -133,13 +133,17 @@ export const operationsApi = {
 
   // Reporting periods
   getReportingPeriods: () => req('GET', '/operations/reporting-periods'),
+
+  // Quarter management
+  closeQuarter: (period) => req('POST', '/operations/quarters/close', { period }),
+  reopenQuarter: (period) => req('DELETE', `/operations/quarters/close/${encodeURIComponent(period)}`),
 };
 
 export const importApi = {
-  importFromSheets: (url) => fetch('/api/import/operations/from-sheets', {
+  importFromSheets: (url, startRow) => fetch('/api/import/operations/from-sheets', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ url, ...(startRow ? { startRow } : {}) }),
   }).then(r => r.json()),
 
   clearOperations: () => fetch('/api/import/operations/clear', {

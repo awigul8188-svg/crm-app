@@ -281,6 +281,16 @@ function runOperationsMigrations() {
   // v5 — AR/AP status derived from sheet col G and col N at import time
   try { db.exec(`ALTER TABLE op_orders ADD COLUMN ar_status TEXT`); } catch(e) {}
   try { db.exec(`ALTER TABLE op_order_items ADD COLUMN ap_status TEXT`); } catch(e) {}
+
+  // v6 — quarter closings (finalized periods)
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS op_quarter_closings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      period TEXT NOT NULL UNIQUE,
+      closed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      closed_by INTEGER REFERENCES users(id)
+    )`);
+  } catch(e) {}
 }
 
 module.exports = { initializeDB, getDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations };

@@ -340,9 +340,12 @@ router.delete('/operations/clear', (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-function importWorkbook(wb, db) {
+function importWorkbook(wb, db, options = {}) {
     const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+    const allRows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+    // startRow is 1-based (Excel row number). Row 1 = header, so startRow=977 means skip rows 1-976.
+    const startIdx = options.startRow ? Math.max(1, options.startRow - 1) : 1;
+    const rows = [allRows[0], ...allRows.slice(startIdx)];
 
     const stats = { orders: 0, items: 0, customers: 0, suppliers: 0, rmas: 0, skipped: 0, errors: [] };
     const custCache = {}, supCache = {};
@@ -581,13 +584,14 @@ router.post('/operations', upload.single('file'), (req, res) => {
     } else {
       wb = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: true });
     }
-    const stats = importWorkbook(wb, db);
+    const startRow = req.body.startRow ? parseInt(req.body.startRow) : null;
+    const stats = importWorkbook(wb, db, { startRow });
     res.json({ ok: true, stats });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 router.post('/operations/from-sheets', async (req, res) => {
-  const { url } = req.body;
+  const { url, startRow } = req.body;
   if (!url) return res.status(400).json({ error: 'No URL provided' });
 
   // Extract sheet ID from any Google Sheets URL format
@@ -607,7 +611,7 @@ router.post('/operations/from-sheets', async (req, res) => {
 
     const db = getDB();
     const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
-    const stats = importWorkbook(wb, db);
+    const stats = importWorkbook(wb, db, { startRow: startRow ? parseInt(startRow) : null });
     res.json({ ok: true, stats });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });

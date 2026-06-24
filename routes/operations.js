@@ -482,7 +482,29 @@ router.get('/reporting-periods', (req, res) => {
       GROUP BY reporting_period
       ORDER BY reporting_period
     `).all();
-    res.json(rows);
+    const closed = db.prepare(`SELECT period, closed_at FROM op_quarter_closings`).all();
+    const closedSet = {};
+    for (const c of closed) closedSet[c.period] = c.closed_at;
+    res.json(rows.map(r => ({ ...r, closed: !!closedSet[r.reporting_period], closed_at: closedSet[r.reporting_period] || null })));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/quarters/close', requireManager, (req, res) => {
+  try {
+    const db = getDB();
+    const { period } = req.body;
+    if (!period) return res.status(400).json({ error: 'period required' });
+    db.prepare(`INSERT OR REPLACE INTO op_quarter_closings (period, closed_at, closed_by) VALUES (?, CURRENT_TIMESTAMP, ?)`)
+      .run(period, req.user?.id || null);
+    res.json({ ok: true, period });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/quarters/close/:period', requireManager, (req, res) => {
+  try {
+    const db = getDB();
+    db.prepare(`DELETE FROM op_quarter_closings WHERE period = ?`).run(req.params.period);
+    res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
