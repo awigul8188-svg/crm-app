@@ -479,18 +479,26 @@ router.get('/stats', (req, res) => {
     if (date_to)   { conditions.push('o.order_date <= ?'); params.push(date_to); }
     const where = conditions.join(' AND ');
     const stats = db.prepare(`
+      WITH ot AS (
+        SELECT
+          o.order_status,
+          COALESCE(o.tax_charged,0) + COALESCE(o.shipping_charged,0) + COALESCE(o.cc_charges,0) AS order_charges,
+          COALESCE(SUM(i.selling * i.quantity), 0) AS item_rev,
+          COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid), 0) AS item_cost,
+          COALESCE(o.rma_amount, 0) AS rma_amount
+        FROM op_orders o
+        LEFT JOIN op_order_items i ON i.order_id = o.id
+        WHERE ${where}
+        GROUP BY o.id
+      )
       SELECT
-        COUNT(DISTINCT o.id) AS total_orders,
-        SUM(CASE WHEN o.order_status = 'In Process' THEN 1 ELSE 0 END) AS in_process,
-        SUM(CASE WHEN o.order_status = 'Order placed' THEN 1 ELSE 0 END) AS order_placed,
-        COALESCE(SUM(i.selling * i.quantity), 0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges), 0) AS total_revenue,
-        COALESCE(SUM(i.selling * i.quantity), 0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges), 0)
-          - COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid), 0)
-          - COALESCE(SUM(o.rma_amount), 0) AS total_gp,
+        COUNT(*) AS total_orders,
+        SUM(CASE WHEN order_status = 'In Process' THEN 1 ELSE 0 END) AS in_process,
+        SUM(CASE WHEN order_status = 'Order placed' THEN 1 ELSE 0 END) AS order_placed,
+        SUM(item_rev + order_charges) AS total_revenue,
+        SUM(item_rev + order_charges - item_cost - rma_amount) AS total_gp,
         (SELECT COUNT(*) FROM op_orders WHERE pending=1) AS pending_orders
-      FROM op_orders o
-      LEFT JOIN op_order_items i ON i.order_id = o.id
-      WHERE ${where}
+      FROM ot
     `).get(...params);
     const rmaWhere = (date_from || date_to)
       ? `rma_status = 'Open' AND order_id IN (SELECT id FROM op_orders WHERE ${where})`
@@ -514,31 +522,41 @@ router.get('/dashboard', (req, res) => {
     const simWhere  = simConds.join(' AND ');
 
     const byMonth = db.prepare(`
-      SELECT
-        strftime('%Y-%m', o.order_date) AS month,
-        COUNT(DISTINCT o.id) AS order_count,
-        COALESCE(SUM(i.selling * i.quantity),0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges),0) AS revenue,
-        COALESCE(SUM(i.selling * i.quantity),0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges),0)
-          - COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0)
-          - COALESCE(SUM(o.rma_amount),0) AS gp
-      FROM op_orders o
-      LEFT JOIN op_order_items i ON i.order_id = o.id
-      WHERE ${baseWhere}
-      GROUP BY month ORDER BY month ASC
+      WITH ot AS (
+        SELECT
+          strftime('%Y-%m', o.order_date) AS month,
+          COALESCE(o.tax_charged,0) + COALESCE(o.shipping_charged,0) + COALESCE(o.cc_charges,0) AS order_charges,
+          COALESCE(SUM(i.selling * i.quantity),0) AS item_rev,
+          COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0) AS item_cost,
+          COALESCE(o.rma_amount,0) AS rma_amount
+        FROM op_orders o
+        LEFT JOIN op_order_items i ON i.order_id = o.id
+        WHERE ${baseWhere}
+        GROUP BY o.id
+      )
+      SELECT month, COUNT(*) AS order_count,
+        SUM(item_rev + order_charges) AS revenue,
+        SUM(item_rev + order_charges - item_cost - rma_amount) AS gp
+      FROM ot GROUP BY month ORDER BY month ASC
     `).all(...p);
 
     const byRep = db.prepare(`
-      SELECT
-        COALESCE(o.rep,'Unknown') AS rep,
-        COUNT(DISTINCT o.id) AS order_count,
-        COALESCE(SUM(i.selling * i.quantity),0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges),0) AS revenue,
-        COALESCE(SUM(i.selling * i.quantity),0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges),0)
-          - COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0)
-          - COALESCE(SUM(o.rma_amount),0) AS gp
-      FROM op_orders o
-      LEFT JOIN op_order_items i ON i.order_id = o.id
-      WHERE ${baseWhere}
-      GROUP BY o.rep ORDER BY gp DESC
+      WITH ot AS (
+        SELECT
+          COALESCE(o.rep,'Unknown') AS rep,
+          COALESCE(o.tax_charged,0) + COALESCE(o.shipping_charged,0) + COALESCE(o.cc_charges,0) AS order_charges,
+          COALESCE(SUM(i.selling * i.quantity),0) AS item_rev,
+          COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0) AS item_cost,
+          COALESCE(o.rma_amount,0) AS rma_amount
+        FROM op_orders o
+        LEFT JOIN op_order_items i ON i.order_id = o.id
+        WHERE ${baseWhere}
+        GROUP BY o.id
+      )
+      SELECT rep, COUNT(*) AS order_count,
+        SUM(item_rev + order_charges) AS revenue,
+        SUM(item_rev + order_charges - item_cost - rma_amount) AS gp
+      FROM ot GROUP BY rep ORDER BY gp DESC
     `).all(...p);
 
     const byStatus = db.prepare(`
@@ -555,16 +573,23 @@ router.get('/dashboard', (req, res) => {
     `).all(...p);
 
     const topCustomers = db.prepare(`
-      SELECT c.name, COUNT(DISTINCT o.id) AS order_count,
-        COALESCE(SUM(i.selling * i.quantity),0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges),0) AS revenue,
-        COALESCE(SUM(i.selling * i.quantity),0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges),0)
-          - COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0)
-          - COALESCE(SUM(o.rma_amount),0) AS gp
-      FROM op_orders o
-      LEFT JOIN op_customers c ON o.customer_id = c.id
-      LEFT JOIN op_order_items i ON i.order_id = o.id
-      WHERE ${baseWhere}
-      GROUP BY o.customer_id ORDER BY revenue DESC LIMIT 10
+      WITH ot AS (
+        SELECT
+          o.customer_id,
+          COALESCE(o.tax_charged,0) + COALESCE(o.shipping_charged,0) + COALESCE(o.cc_charges,0) AS order_charges,
+          COALESCE(SUM(i.selling * i.quantity),0) AS item_rev,
+          COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0) AS item_cost,
+          COALESCE(o.rma_amount,0) AS rma_amount
+        FROM op_orders o
+        LEFT JOIN op_order_items i ON i.order_id = o.id
+        WHERE ${baseWhere}
+        GROUP BY o.id
+      )
+      SELECT c.name, COUNT(*) AS order_count,
+        SUM(ot.item_rev + ot.order_charges) AS revenue,
+        SUM(ot.item_rev + ot.order_charges - ot.item_cost - ot.rma_amount) AS gp
+      FROM ot LEFT JOIN op_customers c ON ot.customer_id = c.id
+      GROUP BY ot.customer_id ORDER BY revenue DESC LIMIT 10
     `).all(...p);
 
     const byPayment = db.prepare(`
@@ -574,25 +599,31 @@ router.get('/dashboard', (req, res) => {
     `).all(...p);
 
     const kpis = db.prepare(`
+      WITH ot AS (
+        SELECT
+          COALESCE(o.tax_charged,0) + COALESCE(o.shipping_charged,0) + COALESCE(o.cc_charges,0) AS order_charges,
+          COALESCE(SUM(i.selling * i.quantity),0) AS item_rev,
+          COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0) AS item_cost,
+          COALESCE(o.rma_amount,0) AS rma_amount,
+          COALESCE(o.customer_paid,0) AS customer_paid
+        FROM op_orders o
+        LEFT JOIN op_order_items i ON i.order_id = o.id
+        WHERE ${baseWhere}
+        GROUP BY o.id
+      )
       SELECT
-        COUNT(DISTINCT o.id) AS total_orders,
-        COALESCE(SUM(i.selling * i.quantity),0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges),0) AS total_revenue,
-        COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0) AS total_cost,
-        COALESCE(SUM(i.selling * i.quantity),0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges),0)
-          - COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0)
-          - COALESCE(SUM(o.rma_amount),0) AS total_gp,
-        COALESCE(SUM(o.rma_amount),0) AS total_rma,
-        COALESCE(SUM(o.customer_paid),0) AS total_collected,
-        (COALESCE(SUM(i.selling * i.quantity),0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges),0) - COALESCE(SUM(o.customer_paid),0)) AS total_outstanding,
-        (COALESCE(SUM(i.selling * i.quantity),0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges),0)
-          - COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0)
-          - COALESCE(SUM(o.rma_amount),0))
-        * 100.0 / NULLIF(COALESCE(SUM(i.selling * i.quantity),0) + COALESCE(SUM(o.tax_charged + o.shipping_charged + o.cc_charges),0), 0) AS gp_margin_pct,
+        COUNT(*) AS total_orders,
+        SUM(item_rev + order_charges) AS total_revenue,
+        SUM(item_cost) AS total_cost,
+        SUM(item_rev + order_charges - item_cost - rma_amount) AS total_gp,
+        SUM(rma_amount) AS total_rma,
+        SUM(customer_paid) AS total_collected,
+        SUM(item_rev + order_charges - customer_paid) AS total_outstanding,
+        SUM(item_rev + order_charges - item_cost - rma_amount) * 100.0
+          / NULLIF(SUM(item_rev + order_charges), 0) AS gp_margin_pct,
         (SELECT COUNT(*) FROM op_rma WHERE rma_status NOT IN ('Completed','Denied')) AS open_rmas,
         (SELECT COUNT(*) FROM op_orders WHERE pending=1) AS pending_orders
-      FROM op_orders o
-      LEFT JOIN op_order_items i ON i.order_id = o.id
-      WHERE ${baseWhere}
+      FROM ot
     `).get(...p);
 
     res.json({ kpis, byMonth, byRep, byStatus, byLeadSource, topCustomers, byPayment });
