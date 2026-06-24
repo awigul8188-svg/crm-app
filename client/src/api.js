@@ -138,7 +138,7 @@ export const operationsApi = {
 export const importApi = {
   importFromSheets: (url) => fetch('/api/import/operations/from-sheets', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
     body: JSON.stringify({ url }),
   }).then(r => r.json()),
 
