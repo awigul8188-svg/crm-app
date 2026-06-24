@@ -136,6 +136,12 @@ export const operationsApi = {
 };
 
 export const importApi = {
+  importFromSheets: (url) => fetch('/api/import/operations/from-sheets', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+    body: JSON.stringify({ url }),
+  }).then(r => r.json()),
+
   clearOperations: () => fetch('/api/import/operations/clear', {
     method: 'DELETE',
     headers: { ...(localStorage.getItem('crm_token') ? { Authorization: `Bearer ${localStorage.getItem('crm_token')}` } : {}) },

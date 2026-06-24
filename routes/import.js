@@ -305,22 +305,8 @@ router.delete('/operations/clear', (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/operations', upload.single('file'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-
-  try {
-    const db = getDB();
-    const isCsv = (req.file.originalname || '').toLowerCase().endsWith('.csv');
-    let wb;
-    if (isCsv) {
-      const csvStr = req.file.buffer.toString('utf8').replace(/^﻿/, ''); // strip BOM
-      wb = XLSX.read(csvStr, { type: 'string' });
-    } else {
-      // cellDates:true → date cells become JS Date objects instead of serial numbers
-      wb = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: true });
-    }
+function importWorkbook(wb, db) {
     const ws = wb.Sheets[wb.SheetNames[0]];
-    // raw:true preserves Date objects and real numbers; strings stay strings
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
 
     const stats = { orders: 0, items: 0, customers: 0, suppliers: 0, rmas: 0, skipped: 0, errors: [] };
@@ -540,10 +526,64 @@ router.post('/operations', upload.single('file'), (req, res) => {
     });
 
     importOrder();
+    return stats;
+}
+
+router.post('/operations', upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  try {
+    const db = getDB();
+    const isCsv = (req.file.originalname || '').toLowerCase().endsWith('.csv');
+    let wb;
+    if (isCsv) {
+      const csvStr = req.file.buffer.toString('utf8').replace(/^﻿/, '');
+      wb = XLSX.read(csvStr, { type: 'string' });
+    } else {
+      wb = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: true });
+    }
+    const stats = importWorkbook(wb, db);
     res.json({ ok: true, stats });
-  } catch(e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/operations/from-sheets', async (req, res) => {
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: 'No URL provided' });
+
+  // Extract sheet ID from any Google Sheets URL format
+  const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  if (!match) return res.status(400).json({ error: 'Invalid Google Sheets URL' });
+  const sheetId = match[1];
+
+  const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx`;
+
+  try {
+    const https = require('https');
+    const buffer = await new Promise((resolve, reject) => {
+      https.get(exportUrl, (r) => {
+        if (r.statusCode === 302 || r.statusCode === 301) {
+          // Follow redirect
+          https.get(r.headers.location, (r2) => {
+            const chunks = [];
+            r2.on('data', c => chunks.push(c));
+            r2.on('end', () => resolve(Buffer.concat(chunks)));
+            r2.on('error', reject);
+          }).on('error', reject);
+          return;
+        }
+        if (r.statusCode !== 200) return reject(new Error(`Google returned HTTP ${r.statusCode}. Make sure the sheet is shared as "Anyone with the link can view".`));
+        const chunks = [];
+        r.on('data', c => chunks.push(c));
+        r.on('end', () => resolve(Buffer.concat(chunks)));
+        r.on('error', reject);
+      }).on('error', reject);
+    });
+
+    const db = getDB();
+    const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+    const stats = importWorkbook(wb, db);
+    res.json({ ok: true, stats });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 module.exports = router;
