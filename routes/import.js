@@ -558,26 +558,12 @@ router.post('/operations/from-sheets', async (req, res) => {
   const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx`;
 
   try {
-    const https = require('https');
-    const buffer = await new Promise((resolve, reject) => {
-      https.get(exportUrl, (r) => {
-        if (r.statusCode === 302 || r.statusCode === 301) {
-          // Follow redirect
-          https.get(r.headers.location, (r2) => {
-            const chunks = [];
-            r2.on('data', c => chunks.push(c));
-            r2.on('end', () => resolve(Buffer.concat(chunks)));
-            r2.on('error', reject);
-          }).on('error', reject);
-          return;
-        }
-        if (r.statusCode !== 200) return reject(new Error(`Google returned HTTP ${r.statusCode}. Make sure the sheet is shared as "Anyone with the link can view".`));
-        const chunks = [];
-        r.on('data', c => chunks.push(c));
-        r.on('end', () => resolve(Buffer.concat(chunks)));
-        r.on('error', reject);
-      }).on('error', reject);
-    });
+    const response = await fetch(exportUrl);
+    if (!response.ok) {
+      throw new Error(`Google returned HTTP ${response.status}. Make sure the sheet is shared as "Anyone with the link can view".`);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
 
     const db = getDB();
     const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
