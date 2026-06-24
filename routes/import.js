@@ -214,14 +214,15 @@ function parseDollar(s) {
   return isNaN(n) ? 0 : n;
 }
 
+// Any "TA##### - <text>" pattern is an adjustment/variant of the parent order
 function isAdjustmentOrder(orderNum) {
-  return /replacement|adjust|shipping adj/i.test(String(orderNum));
+  return /^TA\d+\s*[-–]\s*.+/i.test(String(orderNum).trim());
 }
 
-// "TA001475-replacement" → "TA001475"
+// "TA001475 - Remaining qty" → "TA001475"
 // "TA001388 - Shipping adjustment" → "TA001388"
 function parentOrderNum(orderNum) {
-  return String(orderNum).replace(/\s*[-–]\s*(replacement|adjust\w*|shipping\s*adj\w*).*/i, '').trim();
+  return String(orderNum).replace(/\s*[-–]\s*.+$/i, '').trim();
 }
 
 function parseDate(raw) {
@@ -420,7 +421,7 @@ function importWorkbook(wb, db) {
           const orderDate = parsedRowDate;
 
           if (isAdj) {
-            // Route adjustment rows to their parent order instead of creating a new one
+            // Route items to parent order — do NOT create a new order
             const parent = parentOrderNum(orderNum);
             const parentRow = db.prepare(`SELECT id, customer_id FROM op_orders WHERE order_number=? LIMIT 1`).get(parent);
             if (parentRow) {
@@ -430,58 +431,59 @@ function importWorkbook(wb, db) {
               currentOrderDate = orderDate;
               rmaIndex = 0;
             } else {
-              stats.errors.push(`Adjustment row ${i}: parent order "${parent}" not found, items kept on current order`);
+              stats.errors.push(`Adjustment row ${i}: parent order "${parent}" not found, skipping items`);
+              currentOrderId = null; currentOrder = null;
             }
-            // Fall through — item data on this same row is processed below
-          }
+            // Skip order creation — fall through to item processing below
+          } else {
+            if (existingOrders.has(orderNum)) { stats.skipped++; currentOrderId = null; currentOrder = null; continue; }
+            existingOrders.add(orderNum);
 
-          if (existingOrders.has(orderNum)) { stats.skipped++; currentOrderId = null; currentOrder = null; continue; }
-          existingOrders.add(orderNum);
-
-          let custId = null;
-          const custName = col(4);
-          if (custName) {
-            const key = custName.toLowerCase();
-            if (custCache[key]) {
-              custId = custCache[key];
-            } else {
-              const existing = db.prepare(`SELECT id FROM op_customers WHERE LOWER(name)=LOWER(?)`).get(custName);
-              if (existing) { custId = existing.id; }
-              else {
-                const r = db.prepare(`INSERT INTO op_customers (name) VALUES (?)`).run(custName);
-                custId = r.lastInsertRowid; stats.customers++;
+            let custId = null;
+            const custName = col(4);
+            if (custName) {
+              const key = custName.toLowerCase();
+              if (custCache[key]) {
+                custId = custCache[key];
+              } else {
+                const existing = db.prepare(`SELECT id FROM op_customers WHERE LOWER(name)=LOWER(?)`).get(custName);
+                if (existing) { custId = existing.id; }
+                else {
+                  const r = db.prepare(`INSERT INTO op_customers (name) VALUES (?)`).run(custName);
+                  custId = r.lastInsertRowid; stats.customers++;
+                }
+                custCache[key] = custId;
               }
-              custCache[key] = custId;
             }
-          }
 
-          const orderStatus = mapStatusOps(isRefunded ? 'Delivered' : status);
+            const orderStatus = mapStatusOps(isRefunded ? 'Delivered' : status);
 
-          try {
-            const rawPayment = col(7);
-            const result = db.prepare(`
-              INSERT INTO op_orders (order_number,order_date,customer_id,lead_source,rep,buyer,
-                payment_status,order_status,tax_charged,shipping_charged,tracking_to_customer,notes,email,
-                reporting_period,ar_status)
-              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            `).run(
-              orderNum, orderDate, custId, col(2)||null, col(5)||null, col(6)||null,
-              mapPaymentOps(rawPayment)||null, orderStatus,
-              parseDollar(col(23))||0, parseDollar(col(22))||0,
-              col(28)||null, col(30)||null, null,
-              currentReportingPeriod,
-              classifyAR(rawPayment)
-            );
-            currentOrderId = result.lastInsertRowid;
-            currentOrder = orderNum;
-            currentOrderDate = orderDate;
-            currentCustomerId = custId;
-            rmaIndex = 0;
-            stats.orders++;
-          } catch(e) {
-            stats.errors.push(`Order ${orderNum} row ${i}: ${e.message}`);
-            currentOrderId = null; currentOrder = null;
-            continue;
+            try {
+              const rawPayment = col(7);
+              const result = db.prepare(`
+                INSERT INTO op_orders (order_number,order_date,customer_id,lead_source,rep,buyer,
+                  payment_status,order_status,tax_charged,shipping_charged,tracking_to_customer,notes,email,
+                  reporting_period,ar_status)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+              `).run(
+                orderNum, orderDate, custId, col(2)||null, col(5)||null, col(6)||null,
+                mapPaymentOps(rawPayment)||null, orderStatus,
+                parseDollar(col(23))||0, parseDollar(col(22))||0,
+                col(28)||null, col(30)||null, null,
+                currentReportingPeriod,
+                classifyAR(rawPayment)
+              );
+              currentOrderId = result.lastInsertRowid;
+              currentOrder = orderNum;
+              currentOrderDate = orderDate;
+              currentCustomerId = custId;
+              rmaIndex = 0;
+              stats.orders++;
+            } catch(e) {
+              stats.errors.push(`Order ${orderNum} row ${i}: ${e.message}`);
+              currentOrderId = null; currentOrder = null;
+              continue;
+            }
           }
         }
 
