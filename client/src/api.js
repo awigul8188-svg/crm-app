@@ -130,6 +130,9 @@ export const operationsApi = {
     const q = new URLSearchParams(params).toString()
     return req('GET', `/operations/dashboard${q ? '?' + q : ''}`)
   },
+
+  // Reporting periods
+  getReportingPeriods: () => req('GET', '/operations/reporting-periods'),
 };
 
 export const importApi = {

@@ -336,7 +336,7 @@ router.post('/operations', upload.single('file'), (req, res) => {
     let currentOrderDate = null;
     let currentCustomerId = null;
     let rmaIndex = 0;
-    // dateState no longer needed — M/D/YYYY has explicit year
+    let currentReportingPeriod = null; // set when a "Q{n}-{yr} Total" marker is seen
 
     const importOrder = db.transaction(() => {
       for (let i = 1; i < rows.length; i++) {
@@ -347,8 +347,22 @@ router.post('/operations', upload.single('file'), (req, res) => {
         const rawDateStr = col(1); // stringified for skip checks
         const rawOrder = col(3);
 
-        // Skip month/quarter header rows and fully empty rows
-        if (/^(January|February|March|April|May|June|July|August|September|October|November|December|Q[1-4]\s*Total)$/i.test(rawDateStr)) continue;
+        // Detect quarter-total markers to track reporting period
+        // e.g. "Q1 Total" → next section is Q2; "Q1-26 Total" → next section is Q2-26
+        const qtMatch = rawDateStr.match(/^Q(\d)(?:-(\d{2}))?\s+Total$/i);
+        if (qtMatch) {
+          const qNum = parseInt(qtMatch[1]);
+          const yr   = qtMatch[2] ? parseInt(qtMatch[2]) : null;
+          if (qNum < 4) {
+            currentReportingPeriod = `Q${qNum + 1}${yr !== null ? '-' + String(yr) : ''}`;
+          } else {
+            currentReportingPeriod = `Q1${yr !== null ? '-' + String(yr + 1) : ''}`;
+          }
+          continue;
+        }
+
+        // Skip month header rows and fully empty rows
+        if (/^(January|February|March|April|May|June|July|August|September|October|November|December)$/i.test(rawDateStr)) continue;
         if (!rawDateStr && !rawOrder && !col(10) && !col(4)) continue;
 
         // A row starts a new order when col 1 has a parseable date
@@ -426,13 +440,15 @@ router.post('/operations', upload.single('file'), (req, res) => {
           try {
             const result = db.prepare(`
               INSERT INTO op_orders (order_number,order_date,customer_id,lead_source,rep,buyer,
-                payment_status,order_status,tax_charged,shipping_charged,tracking_to_customer,notes,email)
-              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                payment_status,order_status,tax_charged,shipping_charged,tracking_to_customer,notes,email,
+                reporting_period)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             `).run(
               orderNum, orderDate, custId, col(2)||null, col(5)||null, col(6)||null,
               mapPaymentOps(col(7))||null, orderStatus,
               parseDollar(col(23))||0, parseDollar(col(22))||0,
-              col(28)||null, col(30)||null, null
+              col(28)||null, col(30)||null, null,
+              currentReportingPeriod
             );
             currentOrderId = result.lastInsertRowid;
             currentOrder = orderNum;
@@ -475,6 +491,12 @@ router.post('/operations', upload.single('file'), (req, res) => {
           rmaBuffer.push({ partNumber: partNum, qty: parseInt(col(11))||1, remarks: col(30), refundAmount: refundAmt });
           continue;
         }
+
+        // Skip items where Total Selling (col25) is blank/zero but a unit price exists —
+        // these are On Hold / Cancelled / unfinalized rows that haven't been invoiced yet.
+        const totalSelling = parseDollar(col(25));
+        const unitSelling  = parseDollar(col(21));
+        if (totalSelling === 0 && unitSelling > 0) continue;
 
         try {
           db.prepare(`

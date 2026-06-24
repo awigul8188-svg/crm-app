@@ -1275,20 +1275,35 @@ function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
   const [loading, setLoading] = useState(true)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo]   = useState('')
+  const [reportingPeriod, setReportingPeriod] = useState('')
+  const [periods, setPeriods] = useState([])
 
-  const load = (from, to) => {
+  useEffect(() => {
+    operationsApi.getReportingPeriods().then(setPeriods).catch(() => {})
+  }, [])
+
+  const load = (from, to, rp) => {
     setLoading(true)
     const params = {}
-    if (from) params.date_from = from
-    if (to)   params.date_to   = to
+    if (rp)   { params.reporting_period = rp }
+    else       { if (from) params.date_from = from; if (to) params.date_to = to }
     operationsApi.getDashboard(params).then(setData).catch(() => {}).finally(() => setLoading(false))
     if (onDateFilterChange) onDateFilterChange(from, to)
   }
 
-  useEffect(() => { load('', '') }, [])
+  useEffect(() => { load('', '', '') }, [])
 
-  const handleApply = () => load(dateFrom, dateTo)
-  const handleClear = () => { setDateFrom(''); setDateTo(''); load('', '') }
+  const handleApply = () => load(dateFrom, dateTo, reportingPeriod)
+  const handleClear = () => {
+    setDateFrom(''); setDateTo(''); setReportingPeriod('')
+    load('', '', '')
+  }
+
+  const handlePeriodChange = (val) => {
+    setReportingPeriod(val)
+    setDateFrom(''); setDateTo('')
+    load('', '', val)
+  }
 
   if (loading) return <Loader />
   if (!data) return <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Failed to load dashboard</div>
@@ -1298,19 +1313,43 @@ function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Date filter bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff', border: '1px solid #f1f5f9', borderRadius: 14, padding: '12px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>Date Range</span>
-        <input type="date" className="input" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-          style={{ flex: '0 0 148px', fontSize: 13 }} placeholder="From" />
-        <span style={{ color: '#94a3b8', fontSize: 13 }}>—</span>
-        <input type="date" className="input" value={dateTo} onChange={e => setDateTo(e.target.value)}
-          style={{ flex: '0 0 148px', fontSize: 13 }} placeholder="To" />
-        <button className="btn btn-primary" onClick={handleApply} style={{ padding: '7px 16px', fontSize: 13 }}>Apply</button>
-        {(dateFrom || dateTo) && (
+      {/* Filter bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#fff', border: '1px solid #f1f5f9', borderRadius: 14, padding: '12px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+        {/* Reporting Period */}
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>Period</span>
+        <select className="input" value={reportingPeriod} onChange={e => handlePeriodChange(e.target.value)}
+          style={{ flex: '0 0 130px', fontSize: 13 }}>
+          <option value="">All Periods</option>
+          {periods.map(p => (
+            <option key={p.reporting_period} value={p.reporting_period}>
+              {p.reporting_period} ({p.order_count})
+            </option>
+          ))}
+        </select>
+
+        {/* Divider */}
+        {!reportingPeriod && <span style={{ color: '#e2e8f0', fontSize: 18, margin: '0 2px' }}>|</span>}
+
+        {/* Date range — hidden when a reporting period is selected */}
+        {!reportingPeriod && <>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>Date Range</span>
+          <input type="date" className="input" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+            style={{ flex: '0 0 148px', fontSize: 13 }} />
+          <span style={{ color: '#94a3b8', fontSize: 13 }}>—</span>
+          <input type="date" className="input" value={dateTo} onChange={e => setDateTo(e.target.value)}
+            style={{ flex: '0 0 148px', fontSize: 13 }} />
+          <button className="btn btn-primary" onClick={handleApply} style={{ padding: '7px 16px', fontSize: 13 }}>Apply</button>
+        </>}
+
+        {(dateFrom || dateTo || reportingPeriod) && (
           <button className="btn btn-secondary" onClick={handleClear} style={{ padding: '7px 12px', fontSize: 13 }}>Clear</button>
         )}
-        {(dateFrom || dateTo) && (
+        {reportingPeriod && (
+          <span style={{ fontSize: 11, color: '#00D4C8', fontWeight: 600, marginLeft: 4 }}>
+            Showing: {reportingPeriod}
+          </span>
+        )}
+        {!reportingPeriod && (dateFrom || dateTo) && (
           <span style={{ fontSize: 11, color: '#00D4C8', fontWeight: 600, marginLeft: 4 }}>
             Filtered: {dateFrom || '—'} to {dateTo || '—'}
           </span>

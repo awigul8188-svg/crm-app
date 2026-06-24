@@ -274,6 +274,9 @@ function runOperationsMigrations() {
     'crm_inquiry_id INTEGER',
   ];
   ordersV3Cols.forEach(col => { try { db.exec(`ALTER TABLE op_orders ADD COLUMN ${col}`); } catch(e) {} });
+
+  // v4 — reporting period (e.g. "Q2-26") for quarter-based filtering independent of order date
+  try { db.exec(`ALTER TABLE op_orders ADD COLUMN reporting_period TEXT`); } catch(e) {}
 }
 
 module.exports = { initializeDB, getDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations };

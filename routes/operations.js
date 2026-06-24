@@ -33,7 +33,7 @@ const ORDER_TOTALS_SQL = `
 router.get('/orders', (req, res) => {
   try {
     const db = getDB();
-    const { search, status, rep, customer_id, lead_source, payment_status, date_from, date_to } = req.query;
+    const { search, status, rep, customer_id, lead_source, payment_status, date_from, date_to, reporting_period } = req.query;
     let where = [];
     let params = [];
 
@@ -42,13 +42,16 @@ router.get('/orders', (req, res) => {
       const s = `%${search}%`;
       params.push(s, s, s);
     }
-    if (status)         { where.push(`o.order_status = ?`);     params.push(status); }
-    if (payment_status) { where.push(`o.payment_status = ?`);   params.push(payment_status); }
-    if (rep)            { where.push(`o.rep = ?`);               params.push(rep); }
-    if (customer_id)    { where.push(`o.customer_id = ?`);       params.push(customer_id); }
-    if (lead_source)    { where.push(`o.lead_source = ?`);       params.push(lead_source); }
-    if (date_from)      { where.push(`o.order_date >= ?`);       params.push(date_from); }
-    if (date_to)        { where.push(`o.order_date <= ?`);       params.push(date_to); }
+    if (status)            { where.push(`o.order_status = ?`);       params.push(status); }
+    if (payment_status)    { where.push(`o.payment_status = ?`);     params.push(payment_status); }
+    if (rep)               { where.push(`o.rep = ?`);                 params.push(rep); }
+    if (customer_id)       { where.push(`o.customer_id = ?`);         params.push(customer_id); }
+    if (lead_source)       { where.push(`o.lead_source = ?`);         params.push(lead_source); }
+    if (reporting_period)  { where.push(`o.reporting_period = ?`);    params.push(reporting_period); }
+    else {
+      if (date_from)       { where.push(`o.order_date >= ?`);         params.push(date_from); }
+      if (date_to)         { where.push(`o.order_date <= ?`);         params.push(date_to); }
+    }
 
     const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const orders = db.prepare(`${ORDER_TOTALS_SQL} ${whereClause} GROUP BY o.id ORDER BY o.order_date DESC, o.id DESC`).all(...params);
@@ -469,14 +472,31 @@ router.get('/pending', (req, res) => {
 
 // ── Stats (for dashboard summary card) ───────────────────────────────────────
 
+router.get('/reporting-periods', (req, res) => {
+  try {
+    const db = getDB();
+    const rows = db.prepare(`
+      SELECT reporting_period, COUNT(*) AS order_count
+      FROM op_orders
+      WHERE reporting_period IS NOT NULL AND (pending IS NULL OR pending = 0)
+      GROUP BY reporting_period
+      ORDER BY reporting_period
+    `).all();
+    res.json(rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 router.get('/stats', (req, res) => {
   try {
     const db = getDB();
-    const { date_from, date_to } = req.query;
+    const { date_from, date_to, reporting_period } = req.query;
     const conditions = ['(o.pending IS NULL OR o.pending = 0)'];
     const params = [];
-    if (date_from) { conditions.push('o.order_date >= ?'); params.push(date_from); }
-    if (date_to)   { conditions.push('o.order_date <= ?'); params.push(date_to); }
+    if (reporting_period) { conditions.push('o.reporting_period = ?'); params.push(reporting_period); }
+    else {
+      if (date_from) { conditions.push('o.order_date >= ?'); params.push(date_from); }
+      if (date_to)   { conditions.push('o.order_date <= ?'); params.push(date_to); }
+    }
     const where = conditions.join(' AND ');
     const stats = db.prepare(`
       WITH ot AS (
@@ -500,7 +520,7 @@ router.get('/stats', (req, res) => {
         (SELECT COUNT(*) FROM op_orders WHERE pending=1) AS pending_orders
       FROM ot
     `).get(...params);
-    const rmaWhere = (date_from || date_to)
+    const rmaWhere = (reporting_period || date_from || date_to)
       ? `rma_status = 'Open' AND order_id IN (SELECT id FROM op_orders WHERE ${where})`
       : `rma_status = 'Open'`;
     const rma_count = db.prepare(`SELECT COUNT(*) AS cnt FROM op_rma WHERE ${rmaWhere}`).get(...params).cnt;
@@ -511,13 +531,17 @@ router.get('/stats', (req, res) => {
 router.get('/dashboard', (req, res) => {
   try {
     const db = getDB();
-    const { date_from, date_to } = req.query;
+    const { date_from, date_to, reporting_period } = req.query;
 
     const baseConds = ['(o.pending IS NULL OR o.pending = 0)'];
     const simConds  = ['(pending IS NULL OR pending = 0)'];
     const p = [];
-    if (date_from) { baseConds.push('o.order_date >= ?'); simConds.push('order_date >= ?'); p.push(date_from); }
-    if (date_to)   { baseConds.push('o.order_date <= ?'); simConds.push('order_date <= ?'); p.push(date_to); }
+    if (reporting_period) {
+      baseConds.push('o.reporting_period = ?'); simConds.push('reporting_period = ?'); p.push(reporting_period);
+    } else {
+      if (date_from) { baseConds.push('o.order_date >= ?'); simConds.push('order_date >= ?'); p.push(date_from); }
+      if (date_to)   { baseConds.push('o.order_date <= ?'); simConds.push('order_date <= ?'); p.push(date_to); }
+    }
     const baseWhere = baseConds.join(' AND ');
     const simWhere  = simConds.join(' AND ');
 
