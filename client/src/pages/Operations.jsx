@@ -1217,7 +1217,7 @@ function fmtMonthLabel(raw) {
   return `${MONTH_ABBR[mo] || mo} ${yr}`
 }
 
-function BarChart({ data, valueKey, labelKey, color, fmt: fmtFn, height = 140, isMonth }) {
+function BarChart({ data, valueKey, labelKey, color, fmtFn, height = 140, isMonth }) {
   if (!data?.length) return <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 24 }}>No data</div>
   const max = Math.max(...data.map(d => d[valueKey] || 0))
   if (max === 0) return <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 24 }}>No data</div>

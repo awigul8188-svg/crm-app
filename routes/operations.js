@@ -687,4 +687,31 @@ router.get('/dashboard', (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Temporary debug endpoint — remove after GP investigation
+router.get('/debug-rep-gp', (req, res) => {
+  try {
+    const db = getDB();
+    const { period = 'Q2-26' } = req.query;
+    const rows = db.prepare(`
+      SELECT o.order_number, o.rep,
+        ROUND(COALESCE(SUM(i.selling * i.quantity),0) + COALESCE(o.tax_charged,0) + COALESCE(o.shipping_charged,0)
+          - COALESCE(SUM(i.buying*i.quantity+i.cc_paid+i.shipping_paid+i.tax_paid+i.duty_paid),0)
+          - COALESCE(o.rma_amount,0), 2) AS gp,
+        ROUND(COALESCE(SUM(i.selling * i.quantity),0),2) AS item_rev,
+        ROUND(COALESCE(SUM(i.buying*i.quantity+i.cc_paid+i.shipping_paid+i.tax_paid+i.duty_paid),0),2) AS cost
+      FROM op_orders o
+      LEFT JOIN op_order_items i ON i.order_id = o.id
+      WHERE o.reporting_period = ? AND (o.pending IS NULL OR o.pending=0)
+      GROUP BY o.id ORDER BY o.rep, o.order_number
+    `).all(period);
+    const byRep = {};
+    for (const r of rows) {
+      if (!byRep[r.rep]) byRep[r.rep] = { orders: [], total_gp: 0 };
+      byRep[r.rep].orders.push({ order_number: r.order_number, gp: r.gp, rev: r.item_rev, cost: r.cost });
+      byRep[r.rep].total_gp = +(byRep[r.rep].total_gp + r.gp).toFixed(2);
+    }
+    res.json(byRep);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;
