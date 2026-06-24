@@ -66,6 +66,33 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/api/purchasing', require('./routes/purchasing'));
 app.use('/api/operations', require('./routes/operations'));
 
+// Temporary public debug endpoint — remove after GP investigation
+app.get('/api/debug-rep-gp', (req, res) => {
+  try {
+    const { getDB } = require('./database');
+    const db = getDB();
+    const period = req.query.period || 'Q2-26';
+    const rows = db.prepare(`
+      SELECT o.order_number, o.rep,
+        ROUND(COALESCE(SUM(i.selling*i.quantity),0)+COALESCE(o.tax_charged,0)+COALESCE(o.shipping_charged,0)
+          -COALESCE(SUM(i.buying*i.quantity+i.cc_paid+i.shipping_paid+i.tax_paid+i.duty_paid),0)
+          -COALESCE(o.rma_amount,0),2) AS gp,
+        ROUND(COALESCE(SUM(i.selling*i.quantity),0),2) AS item_rev,
+        ROUND(COALESCE(SUM(i.buying*i.quantity+i.cc_paid+i.shipping_paid+i.tax_paid+i.duty_paid),0),2) AS cost
+      FROM op_orders o LEFT JOIN op_order_items i ON i.order_id=o.id
+      WHERE o.reporting_period=? AND (o.pending IS NULL OR o.pending=0)
+      GROUP BY o.id ORDER BY o.rep, o.order_number
+    `).all(period);
+    const byRep = {};
+    for (const r of rows) {
+      if (!byRep[r.rep]) byRep[r.rep] = { total_gp: 0, orders: [] };
+      byRep[r.rep].orders.push({ n: r.order_number, gp: r.gp, rev: r.item_rev, cost: r.cost });
+      byRep[r.rep].total_gp = +(byRep[r.rep].total_gp + r.gp).toFixed(2);
+    }
+    res.json(byRep);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 const clientDist = path.join(__dirname, 'client', 'dist');
 app.use(express.static(clientDist));
 app.get('*', (req, res) => res.sendFile(path.join(clientDist, 'index.html')));
