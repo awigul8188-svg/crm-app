@@ -1371,6 +1371,52 @@ function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
         <DashboardCard label="Pending Orders" value={kpis.pending_orders} color="#d97706" sub="from CRM" onClick={() => onNavigateOrders && onNavigateOrders('pending')} />
       </div>
 
+      {/* AR / AP Row */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div style={{ background: '#fff', border: '1.5px solid #fee2e2', borderRadius: 14, padding: '16px 20px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#dc2626', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
+            AR — Accounts Receivable
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: kpis.ar_outstanding > 0 ? '#dc2626' : '#10b981', fontFamily: '"Bricolage Grotesque", sans-serif' }}>
+                {fmt(kpis.ar_outstanding)}
+              </div>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Outstanding (owed to us)</div>
+            </div>
+            {kpis.ar_partial > 0 && (
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: '#f59e0b', fontFamily: '"Bricolage Grotesque", sans-serif' }}>
+                  {fmt(kpis.ar_partial)}
+                </div>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Partially paid</div>
+              </div>
+            )}
+          </div>
+        </div>
+        <div style={{ background: '#fff', border: '1.5px solid #fef3c7', borderRadius: 14, padding: '16px 20px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#d97706', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
+            AP — Accounts Payable
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: kpis.ap_outstanding > 0 ? '#d97706' : '#10b981', fontFamily: '"Bricolage Grotesque", sans-serif' }}>
+                {fmt(kpis.ap_outstanding)}
+              </div>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Outstanding (we owe)</div>
+            </div>
+            {kpis.ap_partial > 0 && (
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: '#f59e0b', fontFamily: '"Bricolage Grotesque", sans-serif' }}>
+                  {fmt(kpis.ap_partial)}
+                </div>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Partially paid</div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Charts row */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <DashSection title="Monthly Revenue">

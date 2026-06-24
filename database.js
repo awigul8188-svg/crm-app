@@ -277,6 +277,10 @@ function runOperationsMigrations() {
 
   // v4 — reporting period (e.g. "Q2-26") for quarter-based filtering independent of order date
   try { db.exec(`ALTER TABLE op_orders ADD COLUMN reporting_period TEXT`); } catch(e) {}
+
+  // v5 — AR/AP status derived from sheet col G and col N at import time
+  try { db.exec(`ALTER TABLE op_orders ADD COLUMN ar_status TEXT`); } catch(e) {}
+  try { db.exec(`ALTER TABLE op_order_items ADD COLUMN ap_status TEXT`); } catch(e) {}
 }
 
 module.exports = { initializeDB, getDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations };

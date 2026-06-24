@@ -255,6 +255,40 @@ function parseDate(raw) {
   return null;
 }
 
+// AR status from col G (Payment Status)
+// returns: 'received' | 'pending' | 'partial' | 'na'
+function classifyAR(raw) {
+  if (!raw) return 'na';
+  const s = String(raw).toLowerCase().trim();
+  if (!s || s === 'na' || s === 'stock' || s === 'foc' || s === 'sample' || s === 'rma') return 'na';
+  const hasReceived = /received|charged|deposited|credit note|released/i.test(s);
+  const hasPending  = /^net[\s-]?\d|waiting|pending|not yet|in process|never paid/i.test(s);
+  if (hasReceived && hasPending) return 'partial'; // e.g. "50% received - rest on Net 1"
+  if (hasReceived) return 'received';
+  if (/paypal|^pp$|^pp |cheque|check|^wire$|refund/i.test(s)) return 'received';
+  if (hasPending) return 'pending';
+  return 'na';
+}
+
+// AP status from col N (Paid to vendor) — raw text, not dollar amount
+// returns: 'paid' | 'pending' | 'partial' | 'na'
+function classifyAP(raw) {
+  if (!raw) return 'na';
+  const s = String(raw).toLowerCase().trim();
+  if (!s || s === 'na' || s === 'stock') return 'na';
+  // Immediate payment methods by themselves = paid
+  if (/^(dc|pp|wire|cc|paypal|cash|zelle|bank|ebay|alibaba|gift card|dc&cc|paypal&|pp &|wire to|wire sent|full wire|100% wire)/.test(s)) return 'paid';
+  // Any "paid" or "wire paid/sent" in the text = paid
+  const hasPaid = /\bpaid\b|wire paid|wire sent|fully paid/i.test(s);
+  // Still has remaining portion
+  const hasRemain = /remain|30%\s*net|30% on net|\d+%\s*net\s*\d/i.test(s);
+  if (hasPaid && hasRemain) return 'partial';
+  if (hasPaid) return 'paid';
+  // Just payment terms without confirmation = pending
+  if (/^net[\s-]?\d|^\d+%\s*prepaid/i.test(s)) return 'pending';
+  return 'na';
+}
+
 function mapPaymentOps(raw) {
   if (!raw || String(raw).trim() === 'NA' || String(raw).trim() === '') return '';
   const r = String(raw).toLowerCase().trim();
@@ -424,17 +458,19 @@ function importWorkbook(wb, db) {
           const orderStatus = mapStatusOps(isRefunded ? 'Delivered' : status);
 
           try {
+            const rawPayment = col(7);
             const result = db.prepare(`
               INSERT INTO op_orders (order_number,order_date,customer_id,lead_source,rep,buyer,
                 payment_status,order_status,tax_charged,shipping_charged,tracking_to_customer,notes,email,
-                reporting_period)
-              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                reporting_period,ar_status)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             `).run(
               orderNum, orderDate, custId, col(2)||null, col(5)||null, col(6)||null,
-              mapPaymentOps(col(7))||null, orderStatus,
+              mapPaymentOps(rawPayment)||null, orderStatus,
               parseDollar(col(23))||0, parseDollar(col(22))||0,
               col(28)||null, col(30)||null, null,
-              currentReportingPeriod
+              currentReportingPeriod,
+              classifyAR(rawPayment)
             );
             currentOrderId = result.lastInsertRowid;
             currentOrder = orderNum;
@@ -485,18 +521,20 @@ function importWorkbook(wb, db) {
         if (totalSelling === 0 && unitSelling > 0) continue;
 
         try {
+          const rawVendorPayment = col(14);
           db.prepare(`
             INSERT INTO op_order_items (order_id,part_number,description,product,supplier_id,quantity,
               product_condition,selling,buying,cc_paid,tax_paid,shipping_paid,duty_paid,paid_to_supplier,
-              tracking_to_warehouse,ta_po_number,serials)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+              tracking_to_warehouse,ta_po_number,serials,ap_status)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
           `).run(
             currentOrderId, partNum||null, null, col(9)||null, supId,
             parseInt(col(11))||1, col(12)||null,
             parseDollar(col(21)), parseDollar(col(16)),
             parseDollar(col(20)), parseDollar(col(19)), parseDollar(col(18)),
-            0, parseDollar(col(14)),
-            col(27)||null, col(13)||null, col(29)||null
+            0, parseDollar(rawVendorPayment),
+            col(27)||null, col(13)||null, col(29)||null,
+            classifyAP(rawVendorPayment)
           );
           stats.items++;
         } catch(e) { stats.errors.push(`Item row ${i}: ${e.message}`); }

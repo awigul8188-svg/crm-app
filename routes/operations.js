@@ -501,7 +501,9 @@ router.get('/stats', (req, res) => {
     const stats = db.prepare(`
       WITH ot AS (
         SELECT
+          o.id AS order_id,
           o.order_status,
+          o.ar_status,
           COALESCE(o.tax_charged,0) + COALESCE(o.shipping_charged,0) + COALESCE(o.cc_charges,0) AS order_charges,
           COALESCE(SUM(i.selling * i.quantity), 0) AS item_rev,
           COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid), 0) AS item_cost,
@@ -517,14 +519,29 @@ router.get('/stats', (req, res) => {
         SUM(CASE WHEN order_status = 'Order placed' THEN 1 ELSE 0 END) AS order_placed,
         SUM(item_rev + order_charges) AS total_revenue,
         SUM(item_rev + order_charges - item_cost - rma_amount) AS total_gp,
-        (SELECT COUNT(*) FROM op_orders WHERE pending=1) AS pending_orders
+        (SELECT COUNT(*) FROM op_orders WHERE pending=1) AS pending_orders,
+        SUM(CASE WHEN ar_status IN ('pending','partial') THEN item_rev + order_charges ELSE 0 END) AS ar_outstanding,
+        SUM(CASE WHEN ar_status = 'partial' THEN item_rev + order_charges ELSE 0 END) AS ar_partial
       FROM ot
+    `).get(...params);
+
+    const apStats = db.prepare(`
+      SELECT
+        COALESCE(SUM(CASE WHEN i.ap_status IN ('pending','partial')
+          THEN i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid
+          ELSE 0 END), 0) AS ap_outstanding,
+        COALESCE(SUM(CASE WHEN i.ap_status = 'partial'
+          THEN i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid
+          ELSE 0 END), 0) AS ap_partial
+      FROM op_order_items i
+      JOIN op_orders o ON o.id = i.order_id
+      WHERE ${where}
     `).get(...params);
     const rmaWhere = (reporting_period || date_from || date_to)
       ? `rma_status = 'Open' AND order_id IN (SELECT id FROM op_orders WHERE ${where})`
       : `rma_status = 'Open'`;
     const rma_count = db.prepare(`SELECT COUNT(*) AS cnt FROM op_rma WHERE ${rmaWhere}`).get(...params).cnt;
-    res.json({ ...stats, open_rma: rma_count });
+    res.json({ ...stats, ...apStats, open_rma: rma_count });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -625,6 +642,7 @@ router.get('/dashboard', (req, res) => {
     const kpis = db.prepare(`
       WITH ot AS (
         SELECT
+          o.ar_status,
           COALESCE(o.tax_charged,0) + COALESCE(o.shipping_charged,0) + COALESCE(o.cc_charges,0) AS order_charges,
           COALESCE(SUM(i.selling * i.quantity),0) AS item_rev,
           COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0) AS item_cost,
@@ -646,11 +664,26 @@ router.get('/dashboard', (req, res) => {
         SUM(item_rev + order_charges - item_cost - rma_amount) * 100.0
           / NULLIF(SUM(item_rev + order_charges), 0) AS gp_margin_pct,
         (SELECT COUNT(*) FROM op_rma WHERE rma_status NOT IN ('Completed','Denied')) AS open_rmas,
-        (SELECT COUNT(*) FROM op_orders WHERE pending=1) AS pending_orders
+        (SELECT COUNT(*) FROM op_orders WHERE pending=1) AS pending_orders,
+        SUM(CASE WHEN ar_status IN ('pending','partial') THEN item_rev + order_charges ELSE 0 END) AS ar_outstanding,
+        SUM(CASE WHEN ar_status = 'partial' THEN item_rev + order_charges ELSE 0 END) AS ar_partial
       FROM ot
     `).get(...p);
 
-    res.json({ kpis, byMonth, byRep, byStatus, byLeadSource, topCustomers, byPayment });
+    const apKpis = db.prepare(`
+      SELECT
+        COALESCE(SUM(CASE WHEN i.ap_status IN ('pending','partial')
+          THEN i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid
+          ELSE 0 END), 0) AS ap_outstanding,
+        COALESCE(SUM(CASE WHEN i.ap_status = 'partial'
+          THEN i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid
+          ELSE 0 END), 0) AS ap_partial
+      FROM op_order_items i
+      JOIN op_orders o ON o.id = i.order_id
+      WHERE ${baseWhere}
+    `).get(...p);
+
+    res.json({ kpis: { ...kpis, ...apKpis }, byMonth, byRep, byStatus, byLeadSource, topCustomers, byPayment });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
