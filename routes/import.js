@@ -308,13 +308,16 @@ function mapPaymentOps(raw) {
 
 function mapStatusOps(raw) {
   if (!raw) return 'Order placed';
-  const map = {
-    'Delivered':'Delivered','Shipped to customer':'Shipped to customer',
-    'Order placed':'Order placed','In Process':'In Process',
-    'Shipped to US':'Shipped to US','Received in US':'Received in US',
-    'Refunded':'Delivered','refunded':'Delivered',
-  };
-  return map[String(raw).trim()] || String(raw).trim() || 'Order placed';
+  const s = String(raw).trim().toLowerCase();
+  if (s.includes('on hold') || s === 'hold') return 'On Hold';
+  if (s.includes('deliver'))   return 'Delivered';
+  if (s.includes('shipped to customer') || s.includes('ship to customer')) return 'Shipped to customer';
+  if (s.includes('shipped to us') || s.includes('ship to us')) return 'Shipped to US';
+  if (s.includes('received in us') || s.includes('receive in us')) return 'Received in US';
+  if (s.includes('in process') || s.includes('inprocess')) return 'In Process';
+  if (s.includes('order placed') || s.includes('placed')) return 'Order placed';
+  if (s.includes('refund') || s.includes('cancelled') || s.includes('canceled')) return 'Refunded';
+  return String(raw).trim() || 'Order placed';
 }
 
 function syncRmaAmount(db, orderId) {
