@@ -399,7 +399,7 @@ function importWorkbook(wb, db, options = {}) {
 
         // Skip month header rows and fully empty rows
         if (/^(January|February|March|April|May|June|July|August|September|October|November|December)$/i.test(rawDateStr)) continue;
-        if (!rawDateStr && !rawOrder && !col(10) && !col(4)) continue;
+        if (!rawDateStr && !rawOrder && !col(10) && !col(4) && !col(9) && parseDollar(col(21)) === 0 && parseDollar(col(16)) === 0) continue;
 
         // A row starts a new order when col 1 has a parseable date
         const parsedRowDate = parseDate(rawDateVal);
@@ -580,7 +580,8 @@ function importWorkbook(wb, db, options = {}) {
         if (!currentOrderId) continue;
 
         const partNum = col(10);
-        if (!partNum && !col(15)) continue;
+        // Only skip if there is truly nothing on the line (no part, no product, no supplier, no dollar amounts)
+        if (!partNum && !col(9) && !col(15) && parseDollar(col(21)) === 0 && parseDollar(col(16)) === 0) continue;
 
         let supId = null;
         const supName = col(15);
@@ -605,12 +606,6 @@ function importWorkbook(wb, db, options = {}) {
           rmaBuffer.push({ partNumber: partNum, qty: parseInt(col(11))||1, remarks: col(30), refundAmount: refundAmt });
           continue;
         }
-
-        // Skip items where Total Selling (col25) is blank/zero but a unit price exists —
-        // these are On Hold / Cancelled / unfinalized rows that haven't been invoiced yet.
-        const totalSelling = parseDollar(col(25));
-        const unitSelling  = parseDollar(col(21));
-        if (totalSelling === 0 && unitSelling > 0) continue;
 
         try {
           const rawVendorPayment = col(14);
