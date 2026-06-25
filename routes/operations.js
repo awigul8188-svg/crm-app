@@ -598,10 +598,14 @@ router.get('/dashboard', (req, res) => {
     const baseWhere = baseConds.join(' AND ');
     const simWhere  = simConds.join(' AND ');
 
+    // Group by reporting_period (the curated month from import row-ranges), NOT order_date.
+    // Orders are deliberately moved across calendar months on the sheet, so order_date would
+    // mis-bucket them and never match the sheet's monthly totals. reporting_period keeps each
+    // bar equal to that month's KPI/period filter total.
     const byMonth = db.prepare(`
       WITH ot AS (
         SELECT
-          strftime('%Y-%m', o.order_date) AS month,
+          COALESCE(o.reporting_period, 'Unknown') AS month,
           COALESCE(o.tax_charged,0) + COALESCE(o.shipping_charged,0) + COALESCE(o.cc_charges,0) AS order_charges,
           COALESCE(SUM(i.selling * i.quantity),0) AS item_rev,
           COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0) AS item_cost,
@@ -614,7 +618,15 @@ router.get('/dashboard', (req, res) => {
       SELECT month, COUNT(*) AS order_count,
         SUM(item_rev + order_charges) AS revenue,
         SUM(item_rev + order_charges - item_cost - rma_amount) AS gp
-      FROM ot GROUP BY month ORDER BY month ASC
+      FROM ot GROUP BY month
+      ORDER BY
+        CASE SUBSTR(month,5) WHEN '' THEN '00' ELSE SUBSTR(month,5) END,
+        CASE SUBSTR(month,1,3)
+          WHEN 'Jan' THEN 1 WHEN 'Feb' THEN 2 WHEN 'Mar' THEN 3
+          WHEN 'Apr' THEN 4 WHEN 'May' THEN 5 WHEN 'Jun' THEN 6
+          WHEN 'Jul' THEN 7 WHEN 'Aug' THEN 8 WHEN 'Sep' THEN 9
+          WHEN 'Oct' THEN 10 WHEN 'Nov' THEN 11 WHEN 'Dec' THEN 12
+          ELSE 99 END
     `).all(...p);
 
     const byRep = db.prepare(`

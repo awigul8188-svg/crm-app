@@ -1,0 +1,16 @@
+# Local audit / scratch files
+_audit_*
+
+# Dependencies
+node_modules/
+client/node_modules/
+
+# Build output
+client/dist/
+
+# Runtime data & uploads
+data/
+uploads/
+
+# Env
+.env
