@@ -424,20 +424,57 @@ function importWorkbook(wb, db, options = {}) {
           const orderDate = parsedRowDate;
 
           if (isAdj) {
-            // Route items to parent order — do NOT create a new order
             const parent = parentOrderNum(orderNum);
-            const parentRow = db.prepare(`SELECT id, customer_id FROM op_orders WHERE order_number=? LIMIT 1`).get(parent);
-            if (parentRow) {
+            const parentRow = db.prepare(`SELECT id, customer_id, reporting_period, rep FROM op_orders WHERE order_number=? LIMIT 1`).get(parent);
+
+            const parentInSamePeriod = parentRow && (parentRow.reporting_period === currentReportingPeriod || !parentRow.reporting_period || !currentReportingPeriod);
+
+            if (parentRow && parentInSamePeriod) {
+              // Same period — link items to parent order as before
               currentOrderId = parentRow.id;
               currentOrder = parent;
               currentCustomerId = parentRow.customer_id;
               currentOrderDate = orderDate;
               rmaIndex = 0;
+            } else if (parentRow && !parentInSamePeriod) {
+              // Parent is in a different period — create this adjustment as its own order in current period
+              // so the items count in the correct quarter (e.g. Q2-26 remaining qty counts in Q2-26)
+              if (existingOrders.has(orderNum)) { stats.skipped++; currentOrderId = null; currentOrder = null; }
+              else {
+                existingOrders.add(orderNum);
+                const adjRep = col(5) || parentRow.rep;
+                const adjCustId = parentRow.customer_id;
+                try {
+                  const rawPayment = col(7);
+                  const result = db.prepare(`
+                    INSERT INTO op_orders (order_number,order_date,customer_id,lead_source,rep,buyer,
+                      payment_status,order_status,tax_charged,shipping_charged,tracking_to_customer,notes,email,
+                      reporting_period,ar_status)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                  `).run(
+                    orderNum, orderDate, adjCustId, col(2)||null, adjRep||null, col(6)||null,
+                    mapPaymentOps(rawPayment)||null, mapStatusOps(status),
+                    parseDollar(col(23))||0, parseDollar(col(22))||0,
+                    col(28)||null, col(30)||null, null,
+                    currentReportingPeriod, classifyAR(rawPayment)
+                  );
+                  currentOrderId = result.lastInsertRowid;
+                  currentOrder = orderNum;
+                  currentCustomerId = adjCustId;
+                  currentOrderDate = orderDate;
+                  rmaIndex = 0;
+                  stats.orders++;
+                } catch(e) {
+                  stats.errors.push(`Adj order ${orderNum} row ${i}: ${e.message}`);
+                  currentOrderId = null; currentOrder = null;
+                }
+              }
             } else {
+              // Parent not found at all
               stats.errors.push(`Adjustment row ${i}: parent order "${parent}" not found, skipping items`);
               currentOrderId = null; currentOrder = null;
             }
-            // Skip order creation — fall through to item processing below
+            // Fall through to item processing below
           } else {
             if (existingOrders.has(orderNum)) { stats.skipped++; currentOrderId = null; currentOrder = null; continue; }
             existingOrders.add(orderNum);
