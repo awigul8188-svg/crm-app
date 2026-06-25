@@ -749,24 +749,25 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
 }
 
 // ── Orders Tab ────────────────────────────────────────────────────────────────
-function OrdersTab({ jumpOrderId, onJumpHandled, initialStatus, initialLeadSource, initialPaymentStatus, onInitialFiltersHandled, resetToken }) {
+function OrdersTab({ jumpOrderId, onJumpHandled, initialStatus, initialLeadSource, initialPaymentStatus, initialRep, initialPeriod, onInitialFiltersHandled, resetToken }) {
   const [orders, setOrders]       = useState([])
   const [customers, setCustomers] = useState([])
   const [suppliers, setSuppliers] = useState([])
   const [loading, setLoading]     = useState(true)
   const [search, setSearch]       = useState('')
   const [filterStatus, setFilterStatus] = useState(initialStatus || '')
-  const [filterRep, setFilterRep]       = useState('')
+  const [filterRep, setFilterRep]       = useState(initialRep || '')
   const [filterPayment, setFilterPayment] = useState(initialPaymentStatus || '')
   const [filterLeadSource, setFilterLeadSource] = useState(initialLeadSource || '')
   const [filterDateFrom, setFilterDateFrom] = useState('')
   const [filterDateTo, setFilterDateTo]     = useState('')
+  const [filterPeriod, setFilterPeriod]     = useState(initialPeriod || '')
 
   // Reset all filters when parent signals (e.g. after reimport)
   useEffect(() => {
     if (!resetToken) return
     setSearch(''); setFilterStatus(''); setFilterRep(''); setFilterPayment('')
-    setFilterLeadSource(''); setFilterDateFrom(''); setFilterDateTo('')
+    setFilterLeadSource(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterPeriod('')
   }, [resetToken])
   const [selected, setSelected]   = useState(null)
   const [showForm, setShowForm]   = useState(false)
@@ -787,18 +788,26 @@ function OrdersTab({ jumpOrderId, onJumpHandled, initialStatus, initialLeadSourc
     if (initialPaymentStatus !== undefined) { setFilterPayment(initialPaymentStatus || ''); onInitialFiltersHandled && onInitialFiltersHandled() }
   }, [initialPaymentStatus])
 
+  useEffect(() => {
+    if (initialRep !== undefined) { setFilterRep(initialRep || ''); onInitialFiltersHandled && onInitialFiltersHandled() }
+  }, [initialRep])
+
+  useEffect(() => {
+    if (initialPeriod !== undefined) { setFilterPeriod(initialPeriod || ''); onInitialFiltersHandled && onInitialFiltersHandled() }
+  }, [initialPeriod])
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const [o, c, s] = await Promise.all([
-        operationsApi.getOrders({ search, status: filterStatus, rep: filterRep, lead_source: filterLeadSource, payment_status: filterPayment, date_from: filterDateFrom, date_to: filterDateTo }),
+        operationsApi.getOrders({ search, status: filterStatus, rep: filterRep, lead_source: filterLeadSource, payment_status: filterPayment, date_from: filterDateFrom, date_to: filterDateTo, reporting_period: filterPeriod }),
         operationsApi.getCustomers(),
         operationsApi.getSuppliers(),
       ])
       setOrders(o); setCustomers(c); setSuppliers(s)
     } catch(e) { console.error(e) }
     finally { setLoading(false) }
-  }, [search, filterStatus, filterRep, filterLeadSource, filterPayment, filterDateFrom, filterDateTo])
+  }, [search, filterStatus, filterRep, filterLeadSource, filterPayment, filterDateFrom, filterDateTo, filterPeriod])
 
   useEffect(() => { load() }, [load])
 
@@ -818,13 +827,17 @@ function OrdersTab({ jumpOrderId, onJumpHandled, initialStatus, initialLeadSourc
         <input className="input" style={{ flex: '1 1 200px', minWidth: 180 }}
           placeholder="Search order #, customer, email…"
           value={search} onChange={e => setSearch(e.target.value)} />
-        <select className="input" style={{ flex: '0 0 150px' }} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
-          <option value="">All Statuses</option>
-          {ORDER_STATUSES.map(s => <option key={s}>{s}</option>)}
+        <select className="input" style={{ flex: '0 0 120px' }} value={filterPeriod} onChange={e => setFilterPeriod(e.target.value)}>
+          <option value="">All Months</option>
+          {['Jan-26','Feb-26','Mar-26','Apr-26','May-26','Jun-26'].map(p => <option key={p}>{p}</option>)}
         </select>
         <select className="input" style={{ flex: '0 0 130px' }} value={filterRep} onChange={e => setFilterRep(e.target.value)}>
           <option value="">All Reps</option>
           {REPS.map(r => <option key={r}>{r}</option>)}
+        </select>
+        <select className="input" style={{ flex: '0 0 150px' }} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+          <option value="">All Statuses</option>
+          {ORDER_STATUSES.map(s => <option key={s}>{s}</option>)}
         </select>
         <select className="input" style={{ flex: '0 0 150px' }} value={filterPayment} onChange={e => setFilterPayment(e.target.value)}>
           <option value="">All Payment</option>
@@ -836,9 +849,9 @@ function OrdersTab({ jumpOrderId, onJumpHandled, initialStatus, initialLeadSourc
         </select>
         <input className="input" type="date" style={{ flex: '0 0 140px' }} value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} title="From date" />
         <input className="input" type="date" style={{ flex: '0 0 140px' }} value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} title="To date" />
-        {(search || filterStatus || filterRep || filterPayment || filterLeadSource || filterDateFrom || filterDateTo) && (
+        {(search || filterStatus || filterRep || filterPayment || filterLeadSource || filterDateFrom || filterDateTo || filterPeriod) && (
           <button className="btn-secondary" style={{ padding: '0 14px', fontSize: 12 }}
-            onClick={() => { setSearch(''); setFilterStatus(''); setFilterRep(''); setFilterPayment(''); setFilterLeadSource(''); setFilterDateFrom(''); setFilterDateTo('') }}>
+            onClick={() => { setSearch(''); setFilterStatus(''); setFilterRep(''); setFilterPayment(''); setFilterLeadSource(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterPeriod('') }}>
             Clear filters
           </button>
         )}
@@ -1497,8 +1510,12 @@ function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
           <BarChart data={byRep} valueKey="gp" labelKey="rep" color="#6366f1" fmtFn={v => `$${(v/1000).toFixed(0)}k`} height={140} />
           <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
             {byRep.slice(0, 6).map((r, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0', borderBottom: '1px solid #f8fafc' }}>
-                <span style={{ fontWeight: 600, color: '#334155' }}>{r.rep}</span>
+              <div key={i}
+                onClick={() => onNavigateOrders && onNavigateOrders('', '', '', r.rep, selectedMonths.length === 1 ? selectedMonths[0] : '')}
+                style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '6px 8px', borderRadius: 8, cursor: 'pointer', transition: 'background 0.1s' }}
+                onMouseEnter={e => e.currentTarget.style.background='#f8fafc'}
+                onMouseLeave={e => e.currentTarget.style.background='transparent'}>
+                <span style={{ fontWeight: 600, color: '#334155' }}>{r.rep} <span style={{ fontSize: 10, color: '#00D4C8', fontWeight: 500 }}>→ view orders</span></span>
                 <span style={{ display: 'flex', gap: 16 }}>
                   <span style={{ color: '#64748b' }}>{r.order_count} orders</span>
                   <span style={{ color: '#10b981', fontWeight: 700 }}>{fmt(r.gp)}</span>
@@ -1690,10 +1707,15 @@ export default function Operations() {
     setTab('orders')
   }
 
-  const handleNavigateOrders = (status, leadSource, paymentStatus) => {
+  const [dashNavRep, setDashNavRep] = useState(undefined)
+  const [dashNavPeriod, setDashNavPeriod] = useState(undefined)
+
+  const handleNavigateOrders = (status, leadSource, paymentStatus, rep, period) => {
     setDashNavStatus(status || '')
     setDashNavLeadSource(leadSource || '')
     setDashNavPayment(paymentStatus || '')
+    setDashNavRep(rep || '')
+    setDashNavPeriod(period || '')
     setTab('orders')
   }
 
@@ -1785,7 +1807,8 @@ export default function Operations() {
         {tab === 'orders' && <OrdersTab
           jumpOrderId={jumpOrderId} onJumpHandled={() => setJumpOrderId(null)}
           initialStatus={dashNavStatus} initialLeadSource={dashNavLeadSource} initialPaymentStatus={dashNavPayment}
-          onInitialFiltersHandled={() => { setDashNavStatus(undefined); setDashNavLeadSource(undefined); setDashNavPayment(undefined) }}
+          initialRep={dashNavRep} initialPeriod={dashNavPeriod}
+          onInitialFiltersHandled={() => { setDashNavStatus(undefined); setDashNavLeadSource(undefined); setDashNavPayment(undefined); setDashNavRep(undefined); setDashNavPeriod(undefined) }}
           resetToken={ordersResetToken}
         />}
         {tab === 'order-items' && <OrderItemsTab onOpenOrder={handleOpenOrderFromItems} />}

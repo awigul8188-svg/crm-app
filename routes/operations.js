@@ -47,8 +47,11 @@ router.get('/orders', (req, res) => {
     if (rep)               { where.push(`o.rep = ?`);                 params.push(rep); }
     if (customer_id)       { where.push(`o.customer_id = ?`);         params.push(customer_id); }
     if (lead_source)       { where.push(`o.lead_source = ?`);         params.push(lead_source); }
-    if (reporting_period)  { where.push(`o.reporting_period = ?`);    params.push(reporting_period); }
-    else {
+    if (reporting_period)  {
+      const rps = reporting_period.split(',').map(s => s.trim()).filter(Boolean);
+      if (rps.length === 1) { where.push(`o.reporting_period = ?`); params.push(rps[0]); }
+      else { where.push(`o.reporting_period IN (${rps.map(() => '?').join(',')})`); params.push(...rps); }
+    } else {
       if (date_from)       { where.push(`o.order_date >= ?`);         params.push(date_from); }
       if (date_to)         { where.push(`o.order_date <= ?`);         params.push(date_to); }
     }
