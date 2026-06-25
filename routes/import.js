@@ -384,6 +384,8 @@ function importWorkbook(wb, db, options = {}) {
     let rmaIndex = 0;
     let currentReportingPeriod = null; // updated per-row based on Excel row position
     let currentOrderIsRMA = false; // true when order status is RMA — items stored with selling=0/buying=0
+    let currentOrderRep = null; // rep name of the current order
+    const lastOrderByRep = {}; // rep → { id, customerId, isRMA } for rerouting orphaned undated rows
 
     const importOrder = db.transaction(() => {
       for (let i = 1; i < rows.length; i++) {
@@ -448,18 +450,22 @@ function importWorkbook(wb, db, options = {}) {
               currentOrder = parent;
               currentCustomerId = parentRow.customer_id;
               currentOrderDate = orderDate;
+              currentOrderRep = parentRow.rep || col(5);
+              if (currentOrderRep) lastOrderByRep[currentOrderRep] = { id: currentOrderId, customerId: currentCustomerId, isRMA: currentOrderIsRMA };
               rmaIndex = 0;
             } else if (parentRow && !parentInSamePeriod) {
               // Parent is in a different period — create this adjustment as its own order in current period
               // so the items count in the correct quarter (e.g. Q2-26 remaining qty counts in Q2-26)
               if (existingOrders.has(orderNum)) {
                 // Multiple rows share the same adj name — add their items to the existing order
-                const existingAdj = db.prepare(`SELECT id, customer_id FROM op_orders WHERE order_number=? LIMIT 1`).get(orderNum);
+                const existingAdj = db.prepare(`SELECT id, customer_id, rep FROM op_orders WHERE order_number=? LIMIT 1`).get(orderNum);
                 if (existingAdj) {
                   currentOrderId = existingAdj.id; currentOrder = orderNum;
                   currentCustomerId = existingAdj.customer_id; currentOrderDate = orderDate;
                   currentOrderIsRMA = false; rmaIndex = 0;
-                } else { currentOrderId = null; currentOrder = null; }
+                  currentOrderRep = existingAdj.rep || col(5);
+                  if (currentOrderRep) lastOrderByRep[currentOrderRep] = { id: currentOrderId, customerId: currentCustomerId, isRMA: false };
+                } else { currentOrderId = null; currentOrder = null; currentOrderRep = null; }
               }
               else {
                 existingOrders.add(orderNum);
@@ -484,23 +490,27 @@ function importWorkbook(wb, db, options = {}) {
                   currentCustomerId = adjCustId;
                   currentOrderDate = orderDate;
                   currentOrderIsRMA = mapStatusOps(status) === 'RMA';
+                  currentOrderRep = adjRep || null;
+                  if (currentOrderRep) lastOrderByRep[currentOrderRep] = { id: currentOrderId, customerId: currentCustomerId, isRMA: currentOrderIsRMA };
                   rmaIndex = 0;
                   stats.orders++;
                 } catch(e) {
                   stats.errors.push(`Adj order ${orderNum} row ${i}: ${e.message}`);
-                  currentOrderId = null; currentOrder = null; currentOrderIsRMA = false;
+                  currentOrderId = null; currentOrder = null; currentOrderIsRMA = false; currentOrderRep = null;
                 }
               }
             } else {
               // Parent not found (e.g. pre-2026 order not imported) — create as standalone order in current period
               if (existingOrders.has(orderNum)) {
                 // Multiple rows share the same adj name — add their items to the existing order
-                const existingAdj = db.prepare(`SELECT id, customer_id FROM op_orders WHERE order_number=? LIMIT 1`).get(orderNum);
+                const existingAdj = db.prepare(`SELECT id, customer_id, rep FROM op_orders WHERE order_number=? LIMIT 1`).get(orderNum);
                 if (existingAdj) {
                   currentOrderId = existingAdj.id; currentOrder = orderNum;
                   currentCustomerId = existingAdj.customer_id; currentOrderDate = orderDate;
                   currentOrderIsRMA = false; rmaIndex = 0;
-                } else { currentOrderId = null; currentOrder = null; }
+                  currentOrderRep = existingAdj.rep || col(5);
+                  if (currentOrderRep) lastOrderByRep[currentOrderRep] = { id: currentOrderId, customerId: currentCustomerId, isRMA: false };
+                } else { currentOrderId = null; currentOrder = null; currentOrderRep = null; }
               }
               else {
                 existingOrders.add(orderNum);
@@ -535,11 +545,13 @@ function importWorkbook(wb, db, options = {}) {
                   currentCustomerId = adjCustId;
                   currentOrderDate = orderDate;
                   currentOrderIsRMA = mapStatusOps(status) === 'RMA';
+                  currentOrderRep = col(5) || null;
+                  if (currentOrderRep) lastOrderByRep[currentOrderRep] = { id: currentOrderId, customerId: currentCustomerId, isRMA: currentOrderIsRMA };
                   rmaIndex = 0;
                   stats.orders++;
                 } catch(e) {
                   stats.errors.push(`Adj order ${orderNum} row ${i}: ${e.message}`);
-                  currentOrderId = null; currentOrder = null; currentOrderIsRMA = false;
+                  currentOrderId = null; currentOrder = null; currentOrderIsRMA = false; currentOrderRep = null;
                 }
               }
             }
@@ -587,14 +599,26 @@ function importWorkbook(wb, db, options = {}) {
               currentOrderDate = orderDate;
               currentCustomerId = custId;
               currentOrderIsRMA = mapStatusOps(status) === 'RMA';
+              currentOrderRep = col(5) || null;
+              if (currentOrderRep) lastOrderByRep[currentOrderRep] = { id: currentOrderId, customerId: currentCustomerId, isRMA: currentOrderIsRMA };
               rmaIndex = 0;
               stats.orders++;
             } catch(e) {
               stats.errors.push(`Order ${orderNum} row ${i}: ${e.message}`);
-              currentOrderId = null; currentOrder = null; currentOrderIsRMA = false;
+              currentOrderId = null; currentOrder = null; currentOrderIsRMA = false; currentOrderRep = null;
               continue;
             }
           }
+        }
+
+        // For undated rows: if this row's Rep differs from the current order's Rep,
+        // reroute to that rep's last known order (fixes interleaved adj rows like TA001388 - RMA Repair)
+        if (!isNewOrder && col(5) && col(5) !== currentOrderRep && lastOrderByRep[col(5)]) {
+          const reroute = lastOrderByRep[col(5)];
+          currentOrderId = reroute.id;
+          currentCustomerId = reroute.customerId;
+          currentOrderIsRMA = reroute.isRMA;
+          currentOrderRep = col(5);
         }
 
         if (!currentOrderId) continue;
@@ -630,9 +654,14 @@ function importWorkbook(wb, db, options = {}) {
         try {
           const rawVendorPayment = col(14);
           // For RMA orders: zero out selling and buying (goods are returned, not new revenue).
-          // Only keep actual return costs: shipping_paid, tax_paid, cc_paid.
+          // Also zero shipping/tax on rows that carry original sale data (selling or buying != 0),
+          // because those costs belong to the returned goods and the sheet leaves them blank.
+          // Only rows with selling=0 and buying=0 (pure cost rows, e.g. return shipping) keep their costs.
           const itemSelling = currentOrderIsRMA ? 0 : parseDollar(col(21));
           const itemBuying  = currentOrderIsRMA ? 0 : parseDollar(col(16));
+          const hasOriginalSaleData = parseDollar(col(21)) !== 0 || parseDollar(col(16)) !== 0;
+          const itemShipping = (currentOrderIsRMA && hasOriginalSaleData) ? 0 : parseDollar(col(18));
+          const itemTax      = (currentOrderIsRMA && hasOriginalSaleData) ? 0 : parseDollar(col(19));
           db.prepare(`
             INSERT INTO op_order_items (order_id,part_number,description,product,supplier_id,quantity,
               product_condition,selling,buying,cc_paid,tax_paid,shipping_paid,duty_paid,paid_to_supplier,
@@ -642,7 +671,7 @@ function importWorkbook(wb, db, options = {}) {
             currentOrderId, partNum||null, null, col(9)||null, supId,
             parseInt(col(11))||1, col(12)||null,
             itemSelling, itemBuying,
-            parseDollar(col(20)), parseDollar(col(19)), parseDollar(col(18)),
+            parseDollar(col(20)), itemTax, itemShipping,
             0, parseDollar(rawVendorPayment),
             col(27)||null, col(13)||null, col(29)||null,
             classifyAP(rawVendorPayment)
