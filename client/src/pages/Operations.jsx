@@ -1629,17 +1629,23 @@ function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           {marketingRows.map((r, i) => (
             <div key={i}
-              style={{ flex: 1, minWidth: 150, background: '#fff', border: '1px solid #f1f5f9', borderRadius: 14, padding: '14px 16px' }}>
+              style={{ flex: 1, minWidth: 165, background: '#fff', border: '1px solid #f1f5f9', borderRadius: 14, padding: '14px 16px' }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{r.label}</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: '#10b981', fontFamily: '"Bricolage Grotesque", sans-serif', lineHeight: 1.2, marginTop: 2 }}>{fmt(r.gp)}</div>
-              <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>{fmt(r.revenue)} rev · {r.order_count} orders</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 8 }}>Revenue</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', fontFamily: '"Bricolage Grotesque", sans-serif', lineHeight: 1.15 }}>{fmt(r.revenue)}</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 6 }}>Gross Profit</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#10b981', fontFamily: '"Bricolage Grotesque", sans-serif', lineHeight: 1.15 }}>{fmt(r.gp)}</div>
+              <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 7 }}>{r.order_count} orders</div>
             </div>
           ))}
           {/* Combined total of all marketing sources */}
-          <div style={{ flex: 1, minWidth: 150, background: '#0f172a', borderRadius: 14, padding: '14px 16px' }}>
+          <div style={{ flex: 1, minWidth: 165, background: '#0f172a', borderRadius: 14, padding: '14px 16px' }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: '#7dd3fc', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Marketing Total</div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: '#4ade80', fontFamily: '"Bricolage Grotesque", sans-serif', lineHeight: 1.2, marginTop: 2 }}>{fmt(marketingTotal.gp)}</div>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 3 }}>{fmt(marketingTotal.revenue)} rev · {marketingTotal.order_count} orders</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 8 }}>Revenue</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: '#fff', fontFamily: '"Bricolage Grotesque", sans-serif', lineHeight: 1.15 }}>{fmt(marketingTotal.revenue)}</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 6 }}>Gross Profit</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: '#4ade80', fontFamily: '"Bricolage Grotesque", sans-serif', lineHeight: 1.15 }}>{fmt(marketingTotal.gp)}</div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)', marginTop: 7 }}>{marketingTotal.order_count} orders</div>
           </div>
         </div>
       </DashSection>
