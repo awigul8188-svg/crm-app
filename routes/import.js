@@ -386,6 +386,7 @@ function importWorkbook(wb, db, options = {}) {
     let currentOrderIsRMA = false; // true when order status is RMA — items stored with selling=0/buying=0
     let currentOrderRep = null; // rep name of the current order
     const lastOrderByRep = {}; // rep → { id, customerId, isRMA } for rerouting orphaned undated rows
+    const sessionOrders = new Set(); // order numbers CREATED in this import run (vs pre-existing in DB)
 
     const importOrder = db.transaction(() => {
       for (let i = 1; i < rows.length; i++) {
@@ -402,6 +403,10 @@ function importWorkbook(wb, db, options = {}) {
 
         // Skip month header rows and fully empty rows
         if (/^(January|February|March|April|May|June|July|August|September|October|November|December)$/i.test(rawDateStr)) continue;
+        // Skip quarterly/section TOTAL rows (e.g. "Q1-26 Total", "Q4-25 Total", marked with rep "END").
+        // They hold column SUMS (total shipping/tax/CC for the period), not order data, and would
+        // otherwise be absorbed as a phantom high-cost line item on the order directly above them.
+        if (/total/i.test(rawDateStr) || col(5).toUpperCase() === 'END') continue;
         if (!rawDateStr && !rawOrder && !col(10) && !col(4) && !col(9) && parseDollar(col(21)) === 0 && parseDollar(col(16)) === 0) continue;
 
         // A row starts a new order when col 1 has a parseable date
@@ -557,8 +562,29 @@ function importWorkbook(wb, db, options = {}) {
             }
             // Fall through to item processing below
           } else {
-            if (existingOrders.has(orderNum)) { stats.skipped++; currentOrderId = null; currentOrder = null; currentOrderIsRMA = false; continue; }
+            if (existingOrders.has(orderNum)) {
+              // A repeated order# already created earlier IN THIS RUN, in the SAME reporting period,
+              // is an additional line of a multi-line order whose order#/date was repeated on the
+              // continuation row (instead of left blank). Attach the line to that order rather than
+              // dropping it (the old behaviour skipped it, losing its GP/revenue — e.g. RMA shipping
+              // lines and split-date orders like TA001295). Cross-period repeats and orders that only
+              // exist from a PRIOR import still skip (preserves curated months and re-import idempotency).
+              const ex = sessionOrders.has(orderNum)
+                ? db.prepare(`SELECT id, customer_id, rep, reporting_period FROM op_orders WHERE order_number=? LIMIT 1`).get(orderNum)
+                : null;
+              if (ex && (ex.reporting_period === currentReportingPeriod || !ex.reporting_period || !currentReportingPeriod)) {
+                currentOrderId = ex.id; currentOrder = orderNum; currentCustomerId = ex.customer_id;
+                currentOrderDate = orderDate; currentOrderRep = ex.rep || col(5);
+                currentOrderIsRMA = mapStatusOps(status) === 'RMA';
+                if (currentOrderRep) lastOrderByRep[currentOrderRep] = { id: currentOrderId, customerId: currentCustomerId, isRMA: currentOrderIsRMA };
+                rmaIndex = 0;
+                // fall through to item processing for this row
+              } else {
+                stats.skipped++; currentOrderId = null; currentOrder = null; currentOrderIsRMA = false; continue;
+              }
+            } else {
             existingOrders.add(orderNum);
+            sessionOrders.add(orderNum);
 
             let custId = null;
             const custName = col(4);
@@ -608,6 +634,7 @@ function importWorkbook(wb, db, options = {}) {
               currentOrderId = null; currentOrder = null; currentOrderIsRMA = false; currentOrderRep = null;
               continue;
             }
+            }
           }
         }
 
@@ -646,13 +673,14 @@ function importWorkbook(wb, db, options = {}) {
           }
         }
 
-        if (isRefunded) {
-          const selling = parseDollar(col(21));
-          const cost = parseDollar(col(16));
-          const refundAmt = selling !== 0 ? Math.abs(selling) : Math.abs(cost);
-          rmaBuffer.push({ partNumber: partNum, qty: parseInt(col(11))||1, remarks: col(30), refundAmount: refundAmt });
-          continue;
-        }
+        // Refunded rows are imported as ordinary (usually negative-value) line items so their GP
+        // contribution matches the sheet's GP column directly. Previously they were diverted into
+        // the RMA buffer, where the order's rma_amount was derived from a LINKED sale item's selling
+        // price — which is 0 when the refund has no matching item in the same order. That silently
+        // dropped the refund from GP (e.g. standalone "Refund adjustment" orders TA001245/TA001278,
+        // cost-only refunds like TA001292, and refunded sale rows like TA001425). Letting the row
+        // flow through as a normal item reverses revenue/cost exactly as the sheet does. Manual
+        // returns are still tracked via the RMA tab (operations.js), which is unaffected.
 
         try {
           const rawVendorPayment = col(14);
