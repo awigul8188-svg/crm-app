@@ -1275,55 +1275,59 @@ function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
   const [loading, setLoading] = useState(true)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo]   = useState('')
-  const [reportingPeriod, setReportingPeriod] = useState('')
+  const [selectedMonths, setSelectedMonths] = useState([])
   const [periods, setPeriods] = useState([])
-  const [closeConfirm, setCloseConfirm] = useState(false)
+  const [closeConfirm, setCloseConfirm] = useState(null) // 'close' | 'reopen' | null
   const [closeLoading, setCloseLoading] = useState(false)
 
   const loadPeriods = () => operationsApi.getReportingPeriods().then(setPeriods).catch(() => {})
 
-  useEffect(() => {
-    loadPeriods()
-  }, [])
+  useEffect(() => { loadPeriods() }, [])
 
-  const load = (from, to, rp) => {
+  const load = (from, to, months) => {
     setLoading(true)
     const params = {}
-    if (rp)   { params.reporting_period = rp }
-    else       { if (from) params.date_from = from; if (to) params.date_to = to }
+    if (months && months.length) { params.reporting_period = months.join(',') }
+    else { if (from) params.date_from = from; if (to) params.date_to = to }
     operationsApi.getDashboard(params).then(setData).catch(() => {}).finally(() => setLoading(false))
     if (onDateFilterChange) onDateFilterChange(from, to)
   }
 
-  useEffect(() => { load('', '', '') }, [])
+  useEffect(() => { load('', '', []) }, [])
 
-  const handleApply = () => load(dateFrom, dateTo, reportingPeriod)
-  const handleClear = () => {
-    setDateFrom(''); setDateTo(''); setReportingPeriod('')
-    load('', '', '')
-  }
-
-  const handlePeriodChange = (val) => {
-    setReportingPeriod(val)
+  const toggleMonth = (period) => {
+    const next = selectedMonths.includes(period)
+      ? selectedMonths.filter(m => m !== period)
+      : [...selectedMonths, period]
+    setSelectedMonths(next)
     setDateFrom(''); setDateTo('')
-    load('', '', val)
+    load('', '', next)
   }
 
-  const currentPeriodData = periods.find(p => p.reporting_period === reportingPeriod)
-  const isCurrentPeriodClosed = currentPeriodData?.closed
+  const handleApply = () => load(dateFrom, dateTo, [])
+  const handleClear = () => {
+    setDateFrom(''); setDateTo(''); setSelectedMonths([])
+    load('', '', [])
+  }
 
-  const handleCloseQuarter = async () => {
+  // For close/reopen: work on selected open/closed months
+  const selectedPeriodData = periods.filter(p => selectedMonths.includes(p.reporting_period))
+  const openSelected   = selectedPeriodData.filter(p => !p.closed)
+  const closedSelected = selectedPeriodData.filter(p => p.closed)
+  const allSelectedClosed = selectedMonths.length > 0 && openSelected.length === 0
+
+  const handleCloseMonths = async () => {
     setCloseLoading(true)
     try {
-      if (isCurrentPeriodClosed) {
-        await operationsApi.reopenQuarter(reportingPeriod)
+      if (allSelectedClosed) {
+        for (const p of closedSelected) await operationsApi.reopenQuarter(p.reporting_period)
       } else {
-        await operationsApi.closeQuarter(reportingPeriod)
+        for (const p of openSelected) await operationsApi.closeQuarter(p.reporting_period)
       }
       await loadPeriods()
     } catch(e) {}
     setCloseLoading(false)
-    setCloseConfirm(false)
+    setCloseConfirm(null)
   }
 
   if (loading) return <Loader />
@@ -1335,86 +1339,81 @@ function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Filter bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#fff', border: '1px solid #f1f5f9', borderRadius: 14, padding: '12px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-        {/* Reporting Period */}
-        <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>Period</span>
-        <select className="input" value={reportingPeriod} onChange={e => handlePeriodChange(e.target.value)}
-          style={{ flex: '0 0 130px', fontSize: 13 }}>
-          <option value="">All Periods</option>
-          {periods.map(p => (
-            <option key={p.reporting_period} value={p.reporting_period}>
-              {p.closed ? '🔒 ' : ''}{p.reporting_period} ({p.order_count})
-            </option>
-          ))}
-        </select>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: '#fff', border: '1px solid #f1f5f9', borderRadius: 14, padding: '12px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap', marginRight: 4 }}>Month</span>
 
-        {/* Divider */}
-        {!reportingPeriod && <span style={{ color: '#e2e8f0', fontSize: 18, margin: '0 2px' }}>|</span>}
+        {/* Month chips */}
+        {periods.map(p => {
+          const active = selectedMonths.includes(p.reporting_period)
+          return (
+            <button key={p.reporting_period} onClick={() => toggleMonth(p.reporting_period)} style={{
+              padding: '5px 11px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none',
+              background: active ? '#00D4C8' : p.closed ? '#f1f5f9' : '#f8fafc',
+              color: active ? '#fff' : p.closed ? '#64748b' : '#334155',
+              outline: active ? 'none' : p.closed ? '1.5px solid #e2e8f0' : '1.5px solid #e2e8f0',
+              transition: 'all 0.15s',
+            }}>
+              {p.closed ? '🔒 ' : ''}{p.reporting_period}
+            </button>
+          )
+        })}
 
-        {/* Date range — hidden when a reporting period is selected */}
-        {!reportingPeriod && <>
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>Date Range</span>
+        {periods.length > 0 && <span style={{ color: '#e2e8f0', fontSize: 18, margin: '0 4px' }}>|</span>}
+
+        {/* Date range — hidden when months are selected */}
+        {selectedMonths.length === 0 && <>
           <input type="date" className="input" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-            style={{ flex: '0 0 148px', fontSize: 13 }} />
+            style={{ flex: '0 0 140px', fontSize: 13 }} />
           <span style={{ color: '#94a3b8', fontSize: 13 }}>—</span>
           <input type="date" className="input" value={dateTo} onChange={e => setDateTo(e.target.value)}
-            style={{ flex: '0 0 148px', fontSize: 13 }} />
-          <button className="btn btn-primary" onClick={handleApply} style={{ padding: '7px 16px', fontSize: 13 }}>Apply</button>
+            style={{ flex: '0 0 140px', fontSize: 13 }} />
+          <button className="btn btn-primary" onClick={handleApply} style={{ padding: '7px 14px', fontSize: 13 }}>Apply</button>
         </>}
 
-        {(dateFrom || dateTo || reportingPeriod) && (
+        {(dateFrom || dateTo || selectedMonths.length > 0) && (
           <button className="btn btn-secondary" onClick={handleClear} style={{ padding: '7px 12px', fontSize: 13 }}>Clear</button>
         )}
-        {reportingPeriod && (
-          <span style={{ fontSize: 11, color: '#00D4C8', fontWeight: 600, marginLeft: 4 }}>
-            Showing: {reportingPeriod}
-          </span>
-        )}
-        {!reportingPeriod && (dateFrom || dateTo) && (
-          <span style={{ fontSize: 11, color: '#00D4C8', fontWeight: 600, marginLeft: 4 }}>
-            Filtered: {dateFrom || '—'} to {dateTo || '—'}
-          </span>
-        )}
 
-        {/* Close / Reopen Quarter button — only when a period is selected */}
-        {reportingPeriod && (
+        {/* Close / Reopen Month button */}
+        {selectedMonths.length > 0 && (
           <div style={{ marginLeft: 'auto' }}>
-            {isCurrentPeriodClosed ? (
-              <button
-                onClick={() => setCloseConfirm(true)}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', fontSize: 12, fontWeight: 700, background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0', borderRadius: 8, cursor: 'pointer' }}>
-                🔒 {reportingPeriod} Closed — Reopen?
+            {allSelectedClosed ? (
+              <button onClick={() => setCloseConfirm('reopen')} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', fontSize: 12, fontWeight: 700, background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0', borderRadius: 8, cursor: 'pointer' }}>
+                🔒 Closed — Reopen?
               </button>
             ) : (
-              <button
-                onClick={() => setCloseConfirm(true)}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', fontSize: 12, fontWeight: 700, background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', borderRadius: 8, cursor: 'pointer' }}>
-                🔐 Close {reportingPeriod}
+              <button onClick={() => setCloseConfirm('close')} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', fontSize: 12, fontWeight: 700, background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', borderRadius: 8, cursor: 'pointer' }}>
+                🔐 Close Month{openSelected.length > 1 ? 's' : ''}
               </button>
             )}
           </div>
         )}
       </div>
 
-      {/* Close Quarter confirmation dialog */}
-      {closeConfirm && reportingPeriod && (
+      {/* Close / Reopen Month confirmation dialog */}
+      {closeConfirm && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ background: '#fff', borderRadius: 16, padding: 32, maxWidth: 420, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
             <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', marginBottom: 12 }}>
-              {isCurrentPeriodClosed ? `Reopen ${reportingPeriod}?` : `Close ${reportingPeriod}?`}
+              {closeConfirm === 'reopen' ? 'Reopen Month(s)?' : 'Close Month(s)?'}
             </div>
-            <div style={{ fontSize: 14, color: '#64748b', marginBottom: 24, lineHeight: 1.6 }}>
-              {isCurrentPeriodClosed
-                ? `This will mark ${reportingPeriod} as active again. You can continue adding orders to it.`
-                : `This will mark ${reportingPeriod} as finalized. The quarter will be locked and shown as closed in reports.`}
+            <div style={{ fontSize: 14, color: '#64748b', marginBottom: 8, lineHeight: 1.6 }}>
+              {closeConfirm === 'reopen'
+                ? `This will reopen the following months and allow new orders to be added:`
+                : `This will finalize the following months and lock them:`}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 20 }}>
+              {(closeConfirm === 'reopen' ? closedSelected : openSelected).map(p => (
+                <span key={p.reporting_period} style={{ background: '#f0fffe', border: '1px solid #00D4C8', color: '#0f172a', borderRadius: 6, padding: '3px 10px', fontSize: 13, fontWeight: 600 }}>
+                  {p.reporting_period}
+                </span>
+              ))}
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button className="btn btn-secondary" onClick={() => setCloseConfirm(false)} disabled={closeLoading}>Cancel</button>
-              <button
-                onClick={handleCloseQuarter}
-                disabled={closeLoading}
-                style={{ padding: '8px 20px', fontSize: 13, fontWeight: 700, background: isCurrentPeriodClosed ? '#00D4C8' : '#dc2626', color: '#fff', border: 'none', borderRadius: 8, cursor: closeLoading ? 'not-allowed' : 'pointer', opacity: closeLoading ? 0.7 : 1 }}>
-                {closeLoading ? 'Saving...' : isCurrentPeriodClosed ? 'Yes, Reopen' : 'Yes, Close Quarter'}
+              <button className="btn btn-secondary" onClick={() => setCloseConfirm(null)} disabled={closeLoading}>Cancel</button>
+              <button onClick={handleCloseMonths} disabled={closeLoading}
+                style={{ padding: '8px 20px', fontSize: 13, fontWeight: 700, background: closeConfirm === 'reopen' ? '#00D4C8' : '#dc2626', color: '#fff', border: 'none', borderRadius: 8, cursor: closeLoading ? 'not-allowed' : 'pointer', opacity: closeLoading ? 0.7 : 1 }}>
+                {closeLoading ? 'Saving...' : closeConfirm === 'reopen' ? 'Yes, Reopen' : 'Yes, Close'}
               </button>
             </div>
           </div>

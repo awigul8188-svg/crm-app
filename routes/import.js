@@ -340,6 +340,23 @@ router.delete('/operations/clear', (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Month-based reporting period ranges (1-based Excel row numbers)
+const MONTH_RANGES = [
+  { period: 'Jan-26', start: 977,  end: 1063 },
+  { period: 'Feb-26', start: 1065, end: 1137 },
+  { period: 'Mar-26', start: 1138, end: 1230 },
+  { period: 'Apr-26', start: 1232, end: 1336 },
+  { period: 'May-26', start: 1337, end: 1410 },
+  { period: 'Jun-26', start: 1411, end: Infinity },
+];
+
+function getPeriodForRow(excelRow) {
+  for (const r of MONTH_RANGES) {
+    if (excelRow >= r.start && excelRow <= r.end) return r.period;
+  }
+  return null;
+}
+
 function importWorkbook(wb, db, options = {}) {
     const ws = wb.Sheets[wb.SheetNames[0]];
     const allRows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
@@ -360,10 +377,11 @@ function importWorkbook(wb, db, options = {}) {
     let currentOrderDate = null;
     let currentCustomerId = null;
     let rmaIndex = 0;
-    let currentReportingPeriod = null; // set when a "Q{n}-{yr} Total" marker is seen
+    let currentReportingPeriod = null; // updated per-row based on Excel row position
 
     const importOrder = db.transaction(() => {
       for (let i = 1; i < rows.length; i++) {
+        const excelRow = startIdx + i; // 1-based Excel row number
         const row = rows[i];
         // col() stringifies for text fields; dateVal() passes raw value to parseDate
         const col = (n) => String(row[n-1] ?? '').trim();
@@ -371,19 +389,8 @@ function importWorkbook(wb, db, options = {}) {
         const rawDateStr = col(1); // stringified for skip checks
         const rawOrder = col(3);
 
-        // Detect quarter-total markers to track reporting period
-        // e.g. "Q1 Total" → next section is Q2; "Q1-26 Total" → next section is Q2-26
-        const qtMatch = rawDateStr.match(/^Q(\d)(?:-(\d{2}))?\s+Total$/i);
-        if (qtMatch) {
-          const qNum = parseInt(qtMatch[1]);
-          const yr   = qtMatch[2] ? parseInt(qtMatch[2]) : null;
-          if (qNum < 4) {
-            currentReportingPeriod = `Q${qNum + 1}${yr !== null ? '-' + String(yr) : ''}`;
-          } else {
-            currentReportingPeriod = `Q1${yr !== null ? '-' + String(yr + 1) : ''}`;
-          }
-          continue;
-        }
+        // Assign reporting period by row position (month ranges defined above)
+        currentReportingPeriod = getPeriodForRow(excelRow);
 
         // Skip month header rows and fully empty rows
         if (/^(January|February|March|April|May|June|July|August|September|October|November|December)$/i.test(rawDateStr)) continue;

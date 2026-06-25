@@ -480,7 +480,14 @@ router.get('/reporting-periods', (req, res) => {
       FROM op_orders
       WHERE reporting_period IS NOT NULL AND (pending IS NULL OR pending = 0)
       GROUP BY reporting_period
-      ORDER BY reporting_period
+      ORDER BY
+        CASE SUBSTR(reporting_period,5) WHEN '' THEN '00' ELSE SUBSTR(reporting_period,5) END,
+        CASE SUBSTR(reporting_period,1,3)
+          WHEN 'Jan' THEN 1 WHEN 'Feb' THEN 2 WHEN 'Mar' THEN 3
+          WHEN 'Apr' THEN 4 WHEN 'May' THEN 5 WHEN 'Jun' THEN 6
+          WHEN 'Jul' THEN 7 WHEN 'Aug' THEN 8 WHEN 'Sep' THEN 9
+          WHEN 'Oct' THEN 10 WHEN 'Nov' THEN 11 WHEN 'Dec' THEN 12
+          ELSE 99 END
     `).all();
     const closed = db.prepare(`SELECT period, closed_at FROM op_quarter_closings`).all();
     const closedSet = {};
@@ -512,14 +519,8 @@ router.get('/stats', (req, res) => {
   try {
     const db = getDB();
     const { date_from, date_to, reporting_period } = req.query;
-    const conditions = ['(o.pending IS NULL OR o.pending = 0)'];
-    const params = [];
-    if (reporting_period) { conditions.push('o.reporting_period = ?'); params.push(reporting_period); }
-    else {
-      if (date_from) { conditions.push('o.order_date >= ?'); params.push(date_from); }
-      if (date_to)   { conditions.push('o.order_date <= ?'); params.push(date_to); }
-    }
-    const where = conditions.join(' AND ');
+    const { baseConds, p: params } = buildPeriodConds(reporting_period, date_from, date_to);
+    const where = baseConds.join(' AND ');
     const stats = db.prepare(`
       WITH ot AS (
         SELECT
@@ -567,20 +568,30 @@ router.get('/stats', (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+function buildPeriodConds(reporting_period, date_from, date_to) {
+  const baseConds = ['(o.pending IS NULL OR o.pending = 0)'];
+  const simConds  = ['(pending IS NULL OR pending = 0)'];
+  const p = [];
+  if (reporting_period) {
+    const periods = reporting_period.split(',').map(s => s.trim()).filter(Boolean);
+    if (periods.length === 1) {
+      baseConds.push('o.reporting_period = ?'); simConds.push('reporting_period = ?'); p.push(periods[0]);
+    } else {
+      const ph = periods.map(() => '?').join(',');
+      baseConds.push(`o.reporting_period IN (${ph})`); simConds.push(`reporting_period IN (${ph})`); p.push(...periods);
+    }
+  } else {
+    if (date_from) { baseConds.push('o.order_date >= ?'); simConds.push('order_date >= ?'); p.push(date_from); }
+    if (date_to)   { baseConds.push('o.order_date <= ?'); simConds.push('order_date <= ?'); p.push(date_to); }
+  }
+  return { baseConds, simConds, p };
+}
+
 router.get('/dashboard', (req, res) => {
   try {
     const db = getDB();
     const { date_from, date_to, reporting_period } = req.query;
-
-    const baseConds = ['(o.pending IS NULL OR o.pending = 0)'];
-    const simConds  = ['(pending IS NULL OR pending = 0)'];
-    const p = [];
-    if (reporting_period) {
-      baseConds.push('o.reporting_period = ?'); simConds.push('reporting_period = ?'); p.push(reporting_period);
-    } else {
-      if (date_from) { baseConds.push('o.order_date >= ?'); simConds.push('order_date >= ?'); p.push(date_from); }
-      if (date_to)   { baseConds.push('o.order_date <= ?'); simConds.push('order_date <= ?'); p.push(date_to); }
-    }
+    const { baseConds, simConds, p } = buildPeriodConds(reporting_period, date_from, date_to);
     const baseWhere = baseConds.join(' AND ');
     const simWhere  = simConds.join(' AND ');
 
