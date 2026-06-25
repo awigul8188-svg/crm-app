@@ -626,6 +626,9 @@ function importWorkbook(wb, db, options = {}) {
         const partNum = col(10);
         // Only skip if there is truly nothing on the line (no part, no product, no supplier, no dollar amounts including shipping/tax)
         if (!partNum && !col(9) && !col(15) && parseDollar(col(21)) === 0 && parseDollar(col(16)) === 0 && parseDollar(col(18)) === 0 && parseDollar(col(19)) === 0) continue;
+        // Skip continuation rows where the sheet GP formula is blank but selling/buying are both non-zero.
+        // These are unfinalised rows the sheet intentionally excludes from GP (e.g. formula not filled in).
+        if (!isNewOrder && !col(26) && parseDollar(col(21)) !== 0 && parseDollar(col(16)) !== 0 && !currentOrderIsRMA) continue;
 
         let supId = null;
         const supName = col(15);
