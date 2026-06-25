@@ -664,9 +664,32 @@ function importWorkbook(wb, db, options = {}) {
           const itemBuying  = currentOrderIsRMA ? 0 : parseDollar(col(16));
           const hasOriginalSaleData = parseDollar(col(21)) !== 0 || parseDollar(col(16)) !== 0;
           const zeroForRMA  = currentOrderIsRMA && hasOriginalSaleData;
-          const itemShipping = zeroForRMA ? 0 : parseDollar(col(18));
           const itemTax      = zeroForRMA ? 0 : parseDollar(col(19));
           const itemCC       = zeroForRMA ? 0 : parseDollar(col(20));
+          // Derive shipping_paid from col24 (EXT Cost formula) when available.
+          // col17 = buying×qty, col24 = full EXT cost (may include shipping/tax/CC).
+          // If col24 = col17 (no extras), shipping is not in EXT cost → use 0, not col18.
+          // This prevents double-counting when col18 holds something the sheet excluded.
+          let itemShipping;
+          if (zeroForRMA) {
+            itemShipping = 0;
+          } else {
+            const extCost = parseDollar(col(24));
+            const buyExt  = parseDollar(col(17));
+            if (extCost > 0 && buyExt > 0) {
+              itemShipping = Math.max(0, extCost - buyExt - itemTax - itemCC);
+            } else {
+              itemShipping = parseDollar(col(18));
+            }
+          }
+          // Accumulate shipping_charged from continuation rows (header row's col22 is already
+          // stored in the INSERT; only undated rows need the UPDATE to avoid double-counting).
+          if (!isNewOrder && !zeroForRMA) {
+            const itemShipChg = parseDollar(col(22));
+            if (itemShipChg !== 0) {
+              db.prepare(`UPDATE op_orders SET shipping_charged = shipping_charged + ? WHERE id = ?`).run(itemShipChg, currentOrderId);
+            }
+          }
           db.prepare(`
             INSERT INTO op_order_items (order_id,part_number,description,product,supplier_id,quantity,
               product_condition,selling,buying,cc_paid,tax_paid,shipping_paid,duty_paid,paid_to_supplier,
