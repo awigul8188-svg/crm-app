@@ -1341,6 +1341,26 @@ function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
     load('', '', next)
   }
 
+  // Quarters derived from the available reporting periods (e.g. Apr-26/May-26/Jun-26 → Q2-26).
+  const QUARTER_OF = { Jan: 'Q1', Feb: 'Q1', Mar: 'Q1', Apr: 'Q2', May: 'Q2', Jun: 'Q2',
+    Jul: 'Q3', Aug: 'Q3', Sep: 'Q3', Oct: 'Q4', Nov: 'Q4', Dec: 'Q4' }
+  const quarters = (() => {
+    const map = {}
+    periods.forEach(p => {
+      const [mon, yr] = p.reporting_period.split('-')
+      const q = QUARTER_OF[mon]; if (!q) return
+      const key = `${q}-${yr}`
+      ;(map[key] = map[key] || []).push(p.reporting_period)
+    })
+    return Object.entries(map).map(([label, months]) => ({ label, months })).sort((a, b) => a.label.localeCompare(b.label))
+  })()
+  const quarterActive = (months) => months.length === selectedMonths.length && months.every(m => selectedMonths.includes(m))
+  const selectQuarter = (months) => {
+    const next = quarterActive(months) ? [] : months
+    setSelectedMonths(next); setDateFrom(''); setDateTo('')
+    load('', '', next)
+  }
+
   const handleApply = () => load(dateFrom, dateTo, [])
   const handleClear = () => {
     setDateFrom(''); setDateTo(''); setSelectedMonths([])
@@ -1398,6 +1418,24 @@ function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Filter bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: '#fff', border: '1px solid #f1f5f9', borderRadius: 14, padding: '12px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+        {/* Quarter chips — select all months in the quarter */}
+        {quarters.length > 0 && <>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap', marginRight: 4 }}>Quarter</span>
+          {quarters.map(q => {
+            const active = quarterActive(q.months)
+            return (
+              <button key={q.label} onClick={() => selectQuarter(q.months)} style={{
+                padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none',
+                background: active ? '#0f172a' : '#f8fafc', color: active ? '#fff' : '#334155',
+                outline: active ? 'none' : '1.5px solid #e2e8f0', transition: 'all 0.15s',
+              }}>
+                {q.label}
+              </button>
+            )
+          })}
+          <span style={{ color: '#e2e8f0', fontSize: 18, margin: '0 4px' }}>|</span>
+        </>}
+
         <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap', marginRight: 4 }}>Month</span>
 
         {/* Month chips */}
