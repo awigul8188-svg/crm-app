@@ -269,7 +269,7 @@ function ItemForm({ item, orderId, suppliers: suppliersProp, onSave, onClose }) 
   const blank = { part_number: '', description: '', product: '', supplier_id: '', quantity: 1,
     product_condition: '', selling: '', buying: '', cc_paid: '', tax_paid: '', shipping_paid: '',
     duty_paid: '', paid_to_supplier: '', payment_method: '', payment_due: '',
-    tracking_to_warehouse: '', ta_po_number: '', serials: '' }
+    tracking_to_warehouse: '', ta_po_number: '', serials: '', line_status: 'processed' }
   const [form, setForm] = useState(item ? { ...blank, ...item, supplier_id: item.supplier_id||'', payment_due: item.payment_due?.slice(0,10)||'' } : blank)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
@@ -311,6 +311,23 @@ function ItemForm({ item, orderId, suppliers: suppliersProp, onSave, onClose }) 
   return (
     <Modal title={item ? 'Edit Line Item' : 'Add Line Item'} onClose={onClose} wide>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+        <FF label="Line Status">
+          <div style={{ display: 'flex', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden', width: 'fit-content' }}>
+            {['processed', 'pending'].map(st => {
+              const active = (form.line_status || 'processed') === st
+              return (
+                <button key={st} type="button" onClick={() => set('line_status', st)}
+                  style={{ padding: '8px 22px', fontSize: 13, fontWeight: 700, border: 'none', cursor: 'pointer', textTransform: 'capitalize',
+                    background: active ? (st === 'pending' ? '#f59e0b' : '#10b981') : '#fff',
+                    color: active ? '#fff' : '#64748b' }}>
+                  {st}
+                </button>
+              )
+            })}
+          </div>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 5 }}>Pending lines are excluded from dashboard revenue &amp; GP until set to Processed.</div>
+        </FF>
+
         <FF label="Part Number" half><input className="input" value={form.part_number} onChange={e => set('part_number', e.target.value)} placeholder="ABC-123" /></FF>
         <FF label="Quantity" half><input className="input" type="number" value={form.quantity} onChange={e => set('quantity', e.target.value)} min="1" /></FF>
         <FF label="Description"><input className="input" value={form.description} onChange={e => set('description', e.target.value)} placeholder="Product description" /></FF>
@@ -549,6 +566,13 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
 
   const itemCols = [
     { h: 'Part #',        render: i => <span style={{ fontWeight: 600, color: '#0f172a' }}>{i.part_number || '—'}</span> },
+    { h: 'Status',        render: i => {
+        const pending = (i.line_status || 'processed') === 'pending'
+        return <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
+          padding: '2px 8px', borderRadius: 100, whiteSpace: 'nowrap',
+          background: pending ? '#fef3c7' : '#dcfce7', color: pending ? '#b45309' : '#15803d' }}>
+          {pending ? 'Pending' : 'Processed'}</span>
+      } },
     { h: 'Description',   render: i => <span style={{ color: '#475569' }}>{i.description || '—'}</span> },
     { h: 'Qty',           render: i => i.quantity },
     { h: 'Condition',     render: i => i.product_condition || '—' },

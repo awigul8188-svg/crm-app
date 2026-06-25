@@ -653,9 +653,12 @@ function importWorkbook(wb, db, options = {}) {
         const partNum = col(10);
         // Only skip if there is truly nothing on the line (no part, no product, no supplier, no dollar amounts including shipping/tax)
         if (!partNum && !col(9) && !col(15) && parseDollar(col(21)) === 0 && parseDollar(col(16)) === 0 && parseDollar(col(18)) === 0 && parseDollar(col(19)) === 0) continue;
-        // Skip rows where the sheet GP formula is blank but selling is non-zero.
-        // Covers Cancelled/On-Hold/formula-gap rows the sheet intentionally excludes from GP.
-        if (!col(26) && parseDollar(col(21)) !== 0 && !currentOrderIsRMA) continue;
+        // A blank sheet GP cell (col 26) marks a line the sheet intentionally excludes from GP —
+        // Cancelled / On-Hold / formula-gap rows. Import these as PENDING line items (instead of
+        // dropping them) so the order is complete on screen while they stay out of dashboard revenue
+        // & GP until reviewed and marked Processed. RMA-order lines are already zeroed/handled and
+        // stay Processed.
+        const isPendingLine = (!col(26) && !currentOrderIsRMA);
 
         let supId = null;
         const supName = col(15);
@@ -712,7 +715,7 @@ function importWorkbook(wb, db, options = {}) {
           }
           // Accumulate shipping_charged from continuation rows (header row's col22 is already
           // stored in the INSERT; only undated rows need the UPDATE to avoid double-counting).
-          if (!isNewOrder && !zeroForRMA) {
+          if (!isNewOrder && !zeroForRMA && !isPendingLine) {
             const itemShipChg = parseDollar(col(22));
             if (itemShipChg !== 0) {
               db.prepare(`UPDATE op_orders SET shipping_charged = shipping_charged + ? WHERE id = ?`).run(itemShipChg, currentOrderId);
@@ -721,8 +724,8 @@ function importWorkbook(wb, db, options = {}) {
           db.prepare(`
             INSERT INTO op_order_items (order_id,part_number,description,product,supplier_id,quantity,
               product_condition,selling,buying,cc_paid,tax_paid,shipping_paid,duty_paid,paid_to_supplier,
-              tracking_to_warehouse,ta_po_number,serials,ap_status)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+              tracking_to_warehouse,ta_po_number,serials,ap_status,line_status)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
           `).run(
             currentOrderId, partNum||null, null, col(9)||null, supId,
             parseInt(col(11))||1, col(12)||null,
@@ -730,7 +733,8 @@ function importWorkbook(wb, db, options = {}) {
             itemCC, itemTax, itemShipping,
             0, parseDollar(rawVendorPayment),
             col(27)||null, col(13)||null, col(29)||null,
-            classifyAP(rawVendorPayment)
+            classifyAP(rawVendorPayment),
+            isPendingLine ? 'pending' : 'processed'
           );
           stats.items++;
         } catch(e) { stats.errors.push(`Item row ${i}: ${e.message}`); }

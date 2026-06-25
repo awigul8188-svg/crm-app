@@ -291,6 +291,11 @@ function runOperationsMigrations() {
       closed_by INTEGER REFERENCES users(id)
     )`);
   } catch(e) {}
+
+  // v7 — per-line-item processing status. 'pending' lines are EXCLUDED from dashboard/stats
+  // revenue & GP rollups until set to 'processed'. Defaults to 'processed' so existing/imported
+  // data keeps counting unchanged.
+  try { db.exec(`ALTER TABLE op_order_items ADD COLUMN line_status TEXT DEFAULT 'processed'`); } catch(e) {}
 }
 
 module.exports = { initializeDB, getDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations };

@@ -25,7 +25,7 @@ const ORDER_TOTALS_SQL = `
       AS remaining
   FROM op_orders o
   LEFT JOIN op_customers c ON o.customer_id = c.id
-  LEFT JOIN op_order_items i ON i.order_id = o.id
+  LEFT JOIN op_order_items i ON i.order_id = o.id AND COALESCE(i.line_status,'processed') = 'processed'
 `;
 
 // ── Orders ────────────────────────────────────────────────────────────────────
@@ -145,17 +145,17 @@ router.post('/orders/:id/items', (req, res) => {
     const db = getDB();
     const { part_number, description, product, supplier_id, quantity, product_condition,
             selling, buying, cc_paid, tax_paid, shipping_paid, duty_paid, paid_to_supplier,
-            payment_method, payment_due, tracking_to_warehouse, ta_po_number, serials } = req.body;
+            payment_method, payment_due, tracking_to_warehouse, ta_po_number, serials, line_status } = req.body;
     const result = db.prepare(`
       INSERT INTO op_order_items (order_id,part_number,description,product,supplier_id,quantity,
         product_condition,selling,buying,cc_paid,tax_paid,shipping_paid,duty_paid,paid_to_supplier,
-        payment_method,payment_due,tracking_to_warehouse,ta_po_number,serials)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        payment_method,payment_due,tracking_to_warehouse,ta_po_number,serials,line_status)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     `).run(req.params.id, part_number||null, description||null, product||null, supplier_id||null,
            quantity||1, product_condition||null, selling||0, buying||0, cc_paid||0,
            tax_paid||0, shipping_paid||0, duty_paid||0, paid_to_supplier||0,
            payment_method||null, payment_due||null, tracking_to_warehouse||null,
-           ta_po_number||null, serials||null);
+           ta_po_number||null, serials||null, line_status === 'pending' ? 'pending' : 'processed');
     const item = db.prepare(`
       SELECT i.*, s.company AS supplier_name,
         (i.selling * i.quantity) AS total_selling,
@@ -172,17 +172,17 @@ router.put('/order-items/:id', (req, res) => {
     const db = getDB();
     const { part_number, description, product, supplier_id, quantity, product_condition,
             selling, buying, cc_paid, tax_paid, shipping_paid, duty_paid, paid_to_supplier,
-            payment_method, payment_due, tracking_to_warehouse, ta_po_number, serials } = req.body;
+            payment_method, payment_due, tracking_to_warehouse, ta_po_number, serials, line_status } = req.body;
     db.prepare(`
       UPDATE op_order_items SET part_number=?,description=?,product=?,supplier_id=?,quantity=?,
         product_condition=?,selling=?,buying=?,cc_paid=?,tax_paid=?,shipping_paid=?,duty_paid=?,
         paid_to_supplier=?,payment_method=?,payment_due=?,tracking_to_warehouse=?,ta_po_number=?,
-        serials=?,updated_at=CURRENT_TIMESTAMP WHERE id=?
+        serials=?,line_status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?
     `).run(part_number||null, description||null, product||null, supplier_id||null,
            quantity||1, product_condition||null, selling||0, buying||0, cc_paid||0,
            tax_paid||0, shipping_paid||0, duty_paid||0, paid_to_supplier||0,
            payment_method||null, payment_due||null, tracking_to_warehouse||null,
-           ta_po_number||null, serials||null, req.params.id);
+           ta_po_number||null, serials||null, line_status === 'pending' ? 'pending' : 'processed', req.params.id);
     const item = db.prepare(`
       SELECT i.*, s.company AS supplier_name,
         (i.selling * i.quantity) AS total_selling,
@@ -535,7 +535,7 @@ router.get('/stats', (req, res) => {
           COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid), 0) AS item_cost,
           COALESCE(o.rma_amount, 0) AS rma_amount
         FROM op_orders o
-        LEFT JOIN op_order_items i ON i.order_id = o.id
+        LEFT JOIN op_order_items i ON i.order_id = o.id AND COALESCE(i.line_status,'processed') = 'processed'
         WHERE ${where}
         GROUP BY o.id
       )
@@ -611,7 +611,7 @@ router.get('/dashboard', (req, res) => {
           COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0) AS item_cost,
           COALESCE(o.rma_amount,0) AS rma_amount
         FROM op_orders o
-        LEFT JOIN op_order_items i ON i.order_id = o.id
+        LEFT JOIN op_order_items i ON i.order_id = o.id AND COALESCE(i.line_status,'processed') = 'processed'
         WHERE ${baseWhere}
         GROUP BY o.id
       )
@@ -638,7 +638,7 @@ router.get('/dashboard', (req, res) => {
           COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0) AS item_cost,
           COALESCE(o.rma_amount,0) AS rma_amount
         FROM op_orders o
-        LEFT JOIN op_order_items i ON i.order_id = o.id
+        LEFT JOIN op_order_items i ON i.order_id = o.id AND COALESCE(i.line_status,'processed') = 'processed'
         WHERE ${baseWhere}
         GROUP BY o.id
       )
@@ -658,7 +658,7 @@ router.get('/dashboard', (req, res) => {
           COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0) AS item_cost,
           COALESCE(o.rma_amount,0) AS rma_amount
         FROM op_orders o
-        LEFT JOIN op_order_items i ON i.order_id = o.id
+        LEFT JOIN op_order_items i ON i.order_id = o.id AND COALESCE(i.line_status,'processed') = 'processed'
         WHERE ${baseWhere}
         GROUP BY o.id
       )
@@ -678,7 +678,7 @@ router.get('/dashboard', (req, res) => {
           COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0) AS item_cost,
           COALESCE(o.rma_amount,0) AS rma_amount
         FROM op_orders o
-        LEFT JOIN op_order_items i ON i.order_id = o.id
+        LEFT JOIN op_order_items i ON i.order_id = o.id AND COALESCE(i.line_status,'processed') = 'processed'
         WHERE ${baseWhere}
         GROUP BY o.id
       )
@@ -710,7 +710,7 @@ router.get('/dashboard', (req, res) => {
           COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0) AS item_cost,
           COALESCE(o.rma_amount,0) AS rma_amount
         FROM op_orders o
-        LEFT JOIN op_order_items i ON i.order_id = o.id
+        LEFT JOIN op_order_items i ON i.order_id = o.id AND COALESCE(i.line_status,'processed') = 'processed'
         WHERE ${baseWhere}
         GROUP BY o.id
       )
@@ -737,7 +737,7 @@ router.get('/dashboard', (req, res) => {
           COALESCE(o.rma_amount,0) AS rma_amount,
           COALESCE(o.customer_paid,0) AS customer_paid
         FROM op_orders o
-        LEFT JOIN op_order_items i ON i.order_id = o.id
+        LEFT JOIN op_order_items i ON i.order_id = o.id AND COALESCE(i.line_status,'processed') = 'processed'
         WHERE ${baseWhere}
         GROUP BY o.id
       )
