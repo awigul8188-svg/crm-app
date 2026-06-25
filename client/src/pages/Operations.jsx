@@ -1346,7 +1346,7 @@ function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
   if (loading) return <Loader />
   if (!data) return <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Failed to load dashboard</div>
 
-  const { kpis, byMonth, byRep, byStatus, byLeadSource, topCustomers, byPayment } = data
+  const { kpis, byMonth, byRep, bySource, byBuyer, byStatus, byLeadSource, topCustomers, byPayment } = data
   const gpMargin = kpis.gp_margin_pct ? `${kpis.gp_margin_pct.toFixed(1)}%` : '—'
 
   return (
@@ -1537,6 +1537,46 @@ function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
                 </div>
               )
             })}
+          </div>
+        </DashSection>
+      </div>
+
+      {/* Marketing & Buyer metrics — GP / Revenue by Source and by Buyer */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <DashSection title="GP & Revenue by Source">
+          <BarChart data={bySource} valueKey="gp" labelKey="lead_source" color="#0ea5e9" fmtFn={v => `$${(v/1000).toFixed(0)}k`} height={140} />
+          <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', padding: '0 8px 4px', gap: 8 }}>
+              <span style={{ flex: 2 }}>Source</span><span style={{ flex: 1, textAlign: 'right' }}>Orders</span><span style={{ flex: 1, textAlign: 'right' }}>GP</span><span style={{ flex: 1, textAlign: 'right' }}>Revenue</span>
+            </div>
+            {bySource.slice(0, 8).map((s, i) => (
+              <div key={i}
+                onClick={() => onNavigateOrders && onNavigateOrders(null, s.lead_source)}
+                style={{ display: 'flex', fontSize: 12, padding: '6px 8px', borderRadius: 8, cursor: 'pointer', gap: 8, transition: 'background 0.1s' }}
+                onMouseEnter={e => e.currentTarget.style.background='#f8fafc'}
+                onMouseLeave={e => e.currentTarget.style.background='transparent'}>
+                <span style={{ flex: 2, fontWeight: 600, color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.lead_source}</span>
+                <span style={{ flex: 1, textAlign: 'right', color: '#64748b' }}>{s.order_count}</span>
+                <span style={{ flex: 1, textAlign: 'right', color: '#10b981', fontWeight: 700 }}>{fmt(s.gp)}</span>
+                <span style={{ flex: 1, textAlign: 'right', color: '#0f172a', fontWeight: 600 }}>{fmt(s.revenue)}</span>
+              </div>
+            ))}
+          </div>
+        </DashSection>
+        <DashSection title="GP & Revenue by Buyer">
+          <BarChart data={byBuyer} valueKey="gp" labelKey="buyer" color="#8b5cf6" fmtFn={v => `$${(v/1000).toFixed(0)}k`} height={140} />
+          <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', padding: '0 8px 4px', gap: 8 }}>
+              <span style={{ flex: 2 }}>Buyer</span><span style={{ flex: 1, textAlign: 'right' }}>Orders</span><span style={{ flex: 1, textAlign: 'right' }}>GP</span><span style={{ flex: 1, textAlign: 'right' }}>Revenue</span>
+            </div>
+            {byBuyer.slice(0, 8).map((b, i) => (
+              <div key={i} style={{ display: 'flex', fontSize: 12, padding: '6px 8px', borderRadius: 8, gap: 8 }}>
+                <span style={{ flex: 2, fontWeight: 600, color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.buyer}</span>
+                <span style={{ flex: 1, textAlign: 'right', color: '#64748b' }}>{b.order_count}</span>
+                <span style={{ flex: 1, textAlign: 'right', color: '#10b981', fontWeight: 700 }}>{fmt(b.gp)}</span>
+                <span style={{ flex: 1, textAlign: 'right', color: '#0f172a', fontWeight: 600 }}>{fmt(b.revenue)}</span>
+              </div>
+            ))}
           </div>
         </DashSection>
       </div>

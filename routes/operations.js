@@ -648,6 +648,46 @@ router.get('/dashboard', (req, res) => {
       FROM ot GROUP BY rep ORDER BY gp DESC
     `).all(...p);
 
+    // Revenue + GP by lead source (Marketing metrics) — per-order totals grouped by source.
+    const bySource = db.prepare(`
+      WITH ot AS (
+        SELECT
+          COALESCE(NULLIF(TRIM(o.lead_source),''),'Unknown') AS lead_source,
+          COALESCE(o.tax_charged,0) + COALESCE(o.shipping_charged,0) + COALESCE(o.cc_charges,0) AS order_charges,
+          COALESCE(SUM(i.selling * i.quantity),0) AS item_rev,
+          COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0) AS item_cost,
+          COALESCE(o.rma_amount,0) AS rma_amount
+        FROM op_orders o
+        LEFT JOIN op_order_items i ON i.order_id = o.id
+        WHERE ${baseWhere}
+        GROUP BY o.id
+      )
+      SELECT lead_source, COUNT(*) AS order_count,
+        SUM(item_rev + order_charges) AS revenue,
+        SUM(item_rev + order_charges - item_cost - rma_amount) AS gp
+      FROM ot GROUP BY lead_source ORDER BY gp DESC
+    `).all(...p);
+
+    // Revenue + GP by buyer (purchaser who sourced the goods) — per-order totals grouped by buyer.
+    const byBuyer = db.prepare(`
+      WITH ot AS (
+        SELECT
+          COALESCE(NULLIF(TRIM(o.buyer),''),'Unknown') AS buyer,
+          COALESCE(o.tax_charged,0) + COALESCE(o.shipping_charged,0) + COALESCE(o.cc_charges,0) AS order_charges,
+          COALESCE(SUM(i.selling * i.quantity),0) AS item_rev,
+          COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0) AS item_cost,
+          COALESCE(o.rma_amount,0) AS rma_amount
+        FROM op_orders o
+        LEFT JOIN op_order_items i ON i.order_id = o.id
+        WHERE ${baseWhere}
+        GROUP BY o.id
+      )
+      SELECT buyer, COUNT(*) AS order_count,
+        SUM(item_rev + order_charges) AS revenue,
+        SUM(item_rev + order_charges - item_cost - rma_amount) AS gp
+      FROM ot GROUP BY buyer ORDER BY gp DESC
+    `).all(...p);
+
     const byStatus = db.prepare(`
       SELECT order_status AS status, COUNT(*) AS count
       FROM op_orders WHERE ${simWhere}
@@ -731,7 +771,7 @@ router.get('/dashboard', (req, res) => {
       WHERE ${baseWhere}
     `).get(...p);
 
-    res.json({ kpis: { ...kpis, ...apKpis }, byMonth, byRep, byStatus, byLeadSource, topCustomers, byPayment });
+    res.json({ kpis: { ...kpis, ...apKpis }, byMonth, byRep, bySource, byBuyer, byStatus, byLeadSource, topCustomers, byPayment });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
