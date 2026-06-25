@@ -470,9 +470,47 @@ function importWorkbook(wb, db, options = {}) {
                 }
               }
             } else {
-              // Parent not found at all
-              stats.errors.push(`Adjustment row ${i}: parent order "${parent}" not found, skipping items`);
-              currentOrderId = null; currentOrder = null;
+              // Parent not found (e.g. pre-2026 order not imported) — create as standalone order in current period
+              if (existingOrders.has(orderNum)) { stats.skipped++; currentOrderId = null; currentOrder = null; }
+              else {
+                existingOrders.add(orderNum);
+                let adjCustId = null;
+                const custName = col(4);
+                if (custName) {
+                  const key = custName.toLowerCase();
+                  if (custCache[key]) { adjCustId = custCache[key]; }
+                  else {
+                    const existing = db.prepare(`SELECT id FROM op_customers WHERE LOWER(name)=LOWER(?)`).get(custName);
+                    if (existing) { adjCustId = existing.id; }
+                    else { const r = db.prepare(`INSERT INTO op_customers (name) VALUES (?)`).run(custName); adjCustId = r.lastInsertRowid; stats.customers++; }
+                    custCache[key] = adjCustId;
+                  }
+                }
+                try {
+                  const rawPayment = col(7);
+                  const result = db.prepare(`
+                    INSERT INTO op_orders (order_number,order_date,customer_id,lead_source,rep,buyer,
+                      payment_status,order_status,tax_charged,shipping_charged,tracking_to_customer,notes,email,
+                      reporting_period,ar_status)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                  `).run(
+                    orderNum, orderDate, adjCustId, col(2)||null, col(5)||null, col(6)||null,
+                    mapPaymentOps(rawPayment)||null, mapStatusOps(status),
+                    parseDollar(col(23))||0, parseDollar(col(22))||0,
+                    col(28)||null, col(30)||null, null,
+                    currentReportingPeriod, classifyAR(rawPayment)
+                  );
+                  currentOrderId = result.lastInsertRowid;
+                  currentOrder = orderNum;
+                  currentCustomerId = adjCustId;
+                  currentOrderDate = orderDate;
+                  rmaIndex = 0;
+                  stats.orders++;
+                } catch(e) {
+                  stats.errors.push(`Adj order ${orderNum} row ${i}: ${e.message}`);
+                  currentOrderId = null; currentOrder = null;
+                }
+              }
             }
             // Fall through to item processing below
           } else {
