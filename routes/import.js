@@ -316,7 +316,9 @@ function mapStatusOps(raw) {
   if (s.includes('received in us') || s.includes('receive in us')) return 'Received in US';
   if (s.includes('in process') || s.includes('inprocess')) return 'In Process';
   if (s.includes('order placed') || s.includes('placed')) return 'Order placed';
-  if (s.includes('refund') || s.includes('cancelled') || s.includes('canceled')) return 'Refunded';
+  if (s === 'rma') return 'RMA';
+  if (s.includes('cancel')) return 'Cancelled';
+  if (s.includes('refund')) return 'Refunded';
   return String(raw).trim() || 'Order placed';
 }
 

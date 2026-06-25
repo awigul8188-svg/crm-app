@@ -6,7 +6,7 @@ import { Search, Plus, Edit2, Trash2, Package, Users, Truck, RotateCcw, ChevronR
 
 const BRAND = '#00D4C8'
 
-const ORDER_STATUSES   = ['Order placed', 'In Process', 'On Hold', 'Shipped to US', 'Received in US', 'Shipped to customer', 'Delivered', 'Refunded']
+const ORDER_STATUSES   = ['Order placed', 'In Process', 'On Hold', 'Shipped to US', 'Received in US', 'Shipped to customer', 'Delivered', 'Refunded', 'Cancelled', 'RMA']
 const LEAD_SOURCES     = ['Chat Lead', 'Email Lead', 'Call Lead', 'RFQ', 'RFQ Lead', 'Repeat', 'Outbound', 'PPC', 'Online', 'Chat']
 const PAYMENT_STATUSES = ['CC Charged', 'Wire Received', 'Net']
 const SHIPPED_VIA      = ['FedEx', 'UPS', 'USPS', 'Customer Account']
