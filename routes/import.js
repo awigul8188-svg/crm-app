@@ -660,8 +660,10 @@ function importWorkbook(wb, db, options = {}) {
           const itemSelling = currentOrderIsRMA ? 0 : parseDollar(col(21));
           const itemBuying  = currentOrderIsRMA ? 0 : parseDollar(col(16));
           const hasOriginalSaleData = parseDollar(col(21)) !== 0 || parseDollar(col(16)) !== 0;
-          const itemShipping = (currentOrderIsRMA && hasOriginalSaleData) ? 0 : parseDollar(col(18));
-          const itemTax      = (currentOrderIsRMA && hasOriginalSaleData) ? 0 : parseDollar(col(19));
+          const zeroForRMA  = currentOrderIsRMA && hasOriginalSaleData;
+          const itemShipping = zeroForRMA ? 0 : parseDollar(col(18));
+          const itemTax      = zeroForRMA ? 0 : parseDollar(col(19));
+          const itemCC       = zeroForRMA ? 0 : parseDollar(col(20));
           db.prepare(`
             INSERT INTO op_order_items (order_id,part_number,description,product,supplier_id,quantity,
               product_condition,selling,buying,cc_paid,tax_paid,shipping_paid,duty_paid,paid_to_supplier,
@@ -671,7 +673,7 @@ function importWorkbook(wb, db, options = {}) {
             currentOrderId, partNum||null, null, col(9)||null, supId,
             parseInt(col(11))||1, col(12)||null,
             itemSelling, itemBuying,
-            parseDollar(col(20)), itemTax, itemShipping,
+            itemCC, itemTax, itemShipping,
             0, parseDollar(rawVendorPayment),
             col(27)||null, col(13)||null, col(29)||null,
             classifyAP(rawVendorPayment)
