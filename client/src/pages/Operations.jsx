@@ -1373,6 +1373,27 @@ function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
   const { kpis, byMonth, byRep, bySource, byBuyer, byStatus, byLeadSource, topCustomers, byPayment } = data
   const gpMargin = kpis.gp_margin_pct ? `${kpis.gp_margin_pct.toFixed(1)}%` : '—'
 
+  // Marketing metrics — specific lead sources shown individually + a combined total.
+  // Matchers are mutually exclusive so the Total never double-counts a source.
+  const MKT_BUCKETS = [
+    { label: 'Chat',       match: s => /chat/i.test(s || '') && !/lead/i.test(s || '') }, // website-closed chat orders
+    { label: 'Chat Lead',  match: s => /chat/i.test(s || '') && /lead/i.test(s || '') },  // chat-originated, rep-closed
+    { label: 'Call Lead',  match: s => /call|inbound/i.test(s || '') },                    // 'Call lead' + 'Inbound call'
+    { label: 'RFQ Lead',   match: s => /rfq|form/i.test(s || '') },                         // 'RFQ Lead' + 'Web RFQ Lead' + 'Form lead'
+    { label: 'Email Lead', match: s => /email/i.test(s || '') },
+    { label: 'Online',     match: s => /online/i.test(s || '') },
+  ]
+  const sum = (arr, k) => arr.reduce((a, r) => a + (r[k] || 0), 0)
+  const marketingRows = MKT_BUCKETS.map(b => {
+    const rs = (bySource || []).filter(r => b.match(r.lead_source))
+    return { label: b.label, order_count: sum(rs, 'order_count'), revenue: sum(rs, 'revenue'), gp: sum(rs, 'gp') }
+  })
+  const marketingTotal = {
+    order_count: sum(marketingRows, 'order_count'),
+    revenue: sum(marketingRows, 'revenue'),
+    gp: sum(marketingRows, 'gp'),
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Filter bar */}
@@ -1564,6 +1585,26 @@ function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
           </div>
         </DashSection>
       </div>
+
+      {/* Marketing Metrics — selected lead sources individually + a combined total */}
+      <DashSection title="Marketing Metrics — Revenue & GP by Source">
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {marketingRows.map((r, i) => (
+            <div key={i}
+              style={{ flex: 1, minWidth: 150, background: '#fff', border: '1px solid #f1f5f9', borderRadius: 14, padding: '14px 16px' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{r.label}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#10b981', fontFamily: '"Bricolage Grotesque", sans-serif', lineHeight: 1.2, marginTop: 2 }}>{fmt(r.gp)}</div>
+              <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>{fmt(r.revenue)} rev · {r.order_count} orders</div>
+            </div>
+          ))}
+          {/* Combined total of all marketing sources */}
+          <div style={{ flex: 1, minWidth: 150, background: '#0f172a', borderRadius: 14, padding: '14px 16px' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#7dd3fc', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Marketing Total</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: '#4ade80', fontFamily: '"Bricolage Grotesque", sans-serif', lineHeight: 1.2, marginTop: 2 }}>{fmt(marketingTotal.gp)}</div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 3 }}>{fmt(marketingTotal.revenue)} rev · {marketingTotal.order_count} orders</div>
+          </div>
+        </div>
+      </DashSection>
 
       {/* Marketing & Buyer metrics — GP / Revenue by Source and by Buyer */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
