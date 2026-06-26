@@ -806,6 +806,30 @@ function importWorkbook(wb, db, options = {}) {
       })();
     } catch(e) { stats.errors.push('AR backfill: ' + e.message); }
 
+    // ── Backfill due dates from Net terms ────────────────────────────────────
+    // The customer payment term lives in the Payment Status (e.g. "Net 30"). Compute the order's
+    // due date = order_date + N days so AR aging / overdue alerts work on imported orders. Only
+    // fills orders that have a Net term and no due date yet; also records the term in `net`.
+    try {
+      const netOrders = db.prepare(`
+        SELECT id, order_date, payment_status FROM op_orders
+        WHERE (due_date IS NULL OR due_date = '') AND order_date IS NOT NULL AND payment_status LIKE 'Net%'
+      `).all();
+      const upd = db.prepare(`UPDATE op_orders SET net=?, due_date=? WHERE id=?`);
+      db.transaction(() => {
+        for (const o of netOrders) {
+          const m = String(o.payment_status).match(/net\s*-?\s*(\d+)/i);
+          if (!m) continue;
+          const days = parseInt(m[1], 10);
+          const dt = new Date(`${o.order_date}T00:00:00Z`);
+          if (isNaN(dt.getTime())) continue;
+          dt.setUTCDate(dt.getUTCDate() + days);
+          upd.run(`Net ${days}`, dt.toISOString().slice(0, 10), o.id);
+          stats.dueDates = (stats.dueDates || 0) + 1;
+        }
+      })();
+    } catch(e) { stats.errors.push('Due-date backfill: ' + e.message); }
+
     return stats;
 }
 
