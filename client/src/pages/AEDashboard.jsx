@@ -875,13 +875,22 @@ export default function AEDashboard() {
   }
   useEffect(() => { loadOverview() }, [])
 
+  // New online orders awaiting attention (not yet Processed/Cancelled) — red badge on the Orders tab.
+  const [newOrders, setNewOrders] = useState(0)
+  useEffect(() => {
+    fetch('/api/inquiries?type=online_order', { headers: { Authorization:`Bearer ${localStorage.getItem('crm_token')}` } })
+      .then(r => r.json())
+      .then(list => setNewOrders((Array.isArray(list) ? list : []).filter(o => !['Processed','Cancelled'].includes(o.disposition)).length))
+      .catch(() => {})
+  }, [activeTab])
+
   const greeting = () => { const h = new Date().getHours(); return h<12?'Good morning':h<17?'Good afternoon':'Good evening' }
 
   const tabs = [
     { key:'overview', label:'My Overview', icon:<LayoutDashboard size={13} /> },
     { key:'leads',    label:'Leads',       icon:<Target size={13} /> },
     { key:'repeat',   label:'Repeat',      icon:<RotateCcw size={13} /> },
-    { key:'orders',   label:'Orders',      icon:<ShoppingBag size={13} /> },
+    { key:'orders',   label:'Orders',      icon:<ShoppingBag size={13} />, badge:newOrders },
   ]
 
   return (
@@ -919,6 +928,7 @@ export default function AEDashboard() {
           <button key={tab.key} onClick={() => setActiveTab(tab.key)}
             style={{ display:'flex', alignItems:'center', gap:6, padding:'9px 18px', borderRadius:10, border:'none', background:activeTab===tab.key?'#fff':'transparent', color:activeTab===tab.key?'#0f172a':'#64748b', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', boxShadow:activeTab===tab.key?'0 1px 4px rgba(0,0,0,0.08)':'none', transition:'all 0.15s', whiteSpace:'nowrap' }}>
             {tab.icon}{tab.label}
+            {tab.badge > 0 && <span style={{ marginLeft:4, minWidth:18, height:18, padding:'0 5px', borderRadius:100, background:'#dc2626', color:'#fff', fontSize:10, fontWeight:800, display:'inline-flex', alignItems:'center', justifyContent:'center' }}>{tab.badge}</span>}
           </button>
         ))}
       </div>

@@ -750,6 +750,14 @@ export default function Dashboard() {
 
   useEffect(() => { api.getUsers().then(setUsers) }, [])
 
+  // New online orders awaiting attention (not yet Processed/Cancelled) — red badge on the Orders tab.
+  const [newOrders, setNewOrders] = useState(0)
+  useEffect(() => {
+    api.getInquiries('online_order', {})
+      .then(list => setNewOrders((list || []).filter(o => !['Processed', 'Cancelled'].includes(o.disposition)).length))
+      .catch(() => {})
+  }, [activeTab])
+
   const dateF = getDateFilters(preset, customFrom, customTo)
   const filters = { from: dateF.from, to: dateF.to, dispositions: filterDispositions, sources: filterSources, users: filterUsers }
 
@@ -759,7 +767,7 @@ export default function Dashboard() {
     { key: 'overview', label: 'Overview',      icon: <LayoutDashboard size={13} /> },
     { key: 'leads',    label: 'Leads',         icon: <Target size={13} /> },
     { key: 'repeat',   label: 'Repeat',        icon: <RotateCcw size={13} /> },
-    { key: 'orders',   label: 'Online Orders', icon: <ShoppingBag size={13} /> },
+    { key: 'orders',   label: 'Online Orders', icon: <ShoppingBag size={13} />, badge: newOrders },
   ]
 
   return (
@@ -799,6 +807,7 @@ export default function Dashboard() {
                 : 'bg-transparent text-ink-400 border-transparent hover:text-ink-700'
             }`}>
             {tab.icon}{tab.label}
+            {tab.badge > 0 && <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-red-600 text-white text-[10px] font-bold">{tab.badge}</span>}
           </button>
         ))}
       </div>
