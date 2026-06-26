@@ -14,7 +14,6 @@ export default function Modal({ title, onClose, children, wide }) {
 
   return createPortal(
     <div
-      onClick={onClose}
       style={{
         position: 'fixed', inset: 0, zIndex: 99999,
         display: 'flex', alignItems: 'center', justifyContent: 'center',

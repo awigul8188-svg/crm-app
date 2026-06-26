@@ -4,7 +4,7 @@ import Modal from '../components/Modal'
 import ImportModal from '../components/ImportModal'
 import SearchableSelect from '../components/SearchableSelect'
 import MultiSelect from '../components/MultiSelect'
-import { Search, Plus, Edit2, Trash2, Package, Users, Truck, RotateCcw, ChevronRight, X, AlertCircle, List, ClipboardList, Upload, DollarSign, CreditCard } from 'lucide-react'
+import { Search, Plus, Edit2, Trash2, Package, Users, Truck, RotateCcw, ChevronRight, X, AlertCircle, List, ClipboardList, Upload, DollarSign, CreditCard, CheckCircle2, Info } from 'lucide-react'
 
 const BRAND = '#00D4C8'
 
@@ -126,6 +126,47 @@ function SearchPill({ value, onChange, placeholder, style }) {
   )
 }
 
+// ── Toast feedback ────────────────────────────────────────────────────────────
+// Module-level emitter so any handler can fire a toast: toast('Saved', 'success').
+const _toastSubs = new Set()
+let _toastSeq = 0
+function toast(message, type = 'success') {
+  const t = { id: ++_toastSeq, message, type }
+  _toastSubs.forEach(fn => fn(t))
+}
+const TOAST_STYLE = {
+  success: { bg: '#ecfdf5', bd: '#a7f3d0', fg: '#065f46', Icon: CheckCircle2 },
+  error:   { bg: '#fef2f2', bd: '#fecaca', fg: '#991b1b', Icon: AlertCircle },
+  info:    { bg: '#eff6ff', bd: '#bfdbfe', fg: '#1e40af', Icon: Info },
+}
+function ToastHost() {
+  const [items, setItems] = useState([])
+  useEffect(() => {
+    const add = (t) => {
+      setItems(list => [...list, t])
+      setTimeout(() => setItems(list => list.filter(x => x.id !== t.id)), 3400)
+    }
+    _toastSubs.add(add)
+    return () => _toastSubs.delete(add)
+  }, [])
+  const dismiss = id => setItems(list => list.filter(x => x.id !== id))
+  return (
+    <div style={{ position: 'fixed', top: 18, right: 18, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 10, pointerEvents: 'none' }}>
+      {items.map(t => {
+        const s = TOAST_STYLE[t.type] || TOAST_STYLE.success
+        return (
+          <div key={t.id} className="slide-down" style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: 10, minWidth: 240, maxWidth: 400,
+            background: s.bg, border: `1px solid ${s.bd}`, color: s.fg, borderRadius: 12, padding: '11px 14px', boxShadow: '0 8px 24px rgba(0,0,0,0.10)', fontSize: 13, fontWeight: 600 }}>
+            <s.Icon size={16} style={{ flexShrink: 0 }} />
+            <span style={{ flex: 1 }}>{t.message}</span>
+            <button onClick={() => dismiss(t.id)} aria-label="Dismiss" style={{ background: 'none', border: 'none', cursor: 'pointer', color: s.fg, opacity: 0.55, display: 'flex', padding: 0 }}><X size={14} /></button>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function EmptyState({ icon: Icon, label, action }) {
   return (
     <div style={{ textAlign: 'center', padding: '64px 24px' }}>
@@ -226,6 +267,7 @@ function OrderForm({ order, customers: customersProp, onSave, onClose, isPending
     setSaving(true); setErr('')
     try {
       const saved = order ? await operationsApi.updateOrder(order.id, form) : await operationsApi.createOrder(form)
+      toast(order ? 'Order updated' : 'Order created')
       onSave(saved)
     } catch(e) { setErr(e.message) } finally { setSaving(false) }
   }
@@ -422,6 +464,7 @@ function ItemForm({ item, orderId, orderDate, suppliers: suppliersProp, onSave, 
     setSaving(true); setErr('')
     try {
       const saved = item ? await operationsApi.updateItem(item.id, form) : await operationsApi.addItem(orderId, form)
+      toast(item ? 'Line item updated' : 'Line item added')
       onSave(saved)
     } catch(e) { setErr(e.message) } finally { setSaving(false) }
   }
@@ -581,6 +624,7 @@ function RMAForm({ rma, presetOrder, orderItems, customers, orders, onSave, onCl
       const saved = rma
         ? await operationsApi.updateRMA(rma.id, form)
         : await operationsApi.createRMA(form)
+      toast(rma ? 'RMA updated' : 'RMA created')
       onSave(saved)
     } catch(e) { setErr(e.message) } finally { setSaving(false) }
   }
@@ -687,6 +731,7 @@ function PaymentForm({ orderId, payment, onSaved, onClose }) {
     try {
       if (payment) await operationsApi.updatePayment(payment.id, form)
       else await operationsApi.addPayment(orderId, form)
+      toast(payment ? 'Payment updated' : 'Payment recorded')
       onSaved()
     } catch(e) { setErr(e.message) } finally { setSaving(false) }
   }
@@ -743,7 +788,7 @@ function SupplierPaymentsModal({ item, onClose, onChanged }) {
     } catch(e) { setErr(e.message) } finally { setSaving(false) }
   }
   const edit = (p) => { setEditId(p.id); setForm({ amount: p.amount, payment_date: p.payment_date?.slice(0,10) || '', method: p.method || '', reference: p.reference || '', notes: p.notes || '' }) }
-  const del = async (id) => { if (!confirm('Delete this payment?')) return; await operationsApi.deleteItemPayment(id); if (editId === id) { setEditId(null); setForm(blank) } load(); onChanged && onChanged() }
+  const del = async (id) => { if (!confirm('Delete this payment?')) return; try { await operationsApi.deleteItemPayment(id); toast('Supplier payment deleted'); if (editId === id) { setEditId(null); setForm(blank) } load(); onChanged && onChanged() } catch(e) { toast(e.message || 'Could not delete payment', 'error') } }
 
   const st = balance <= 0.005 && extCost > 0 ? { label: 'Paid', bg: '#dcfce7', color: '#15803d' }
     : paid > 0.005 ? { label: 'Partial', bg: '#fef3c7', color: '#b45309' }
@@ -827,22 +872,22 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
 
   const handleDeletePayment = async (id) => {
     if (!confirm('Delete this payment?')) return
-    await operationsApi.deletePayment(id)
-    load(); onUpdated && onUpdated()
+    try { await operationsApi.deletePayment(id); toast('Payment deleted'); load(); onUpdated && onUpdated() }
+    catch(e) { toast(e.message || 'Could not delete payment', 'error') }
   }
 
   useEffect(() => { load() }, [load])
 
   const handleDeleteItem = async (id) => {
     if (!confirm('Delete this line item?')) return
-    await operationsApi.deleteItem(id)
-    load(); onUpdated && onUpdated()
+    try { await operationsApi.deleteItem(id); toast('Line item deleted'); load(); onUpdated && onUpdated() }
+    catch(e) { toast(e.message || 'Could not delete line item', 'error') }
   }
 
   const handleDeleteRMA = async (id) => {
     if (!confirm('Delete this RMA?')) return
-    await operationsApi.deleteRMA(id)
-    load(); onUpdated && onUpdated()
+    try { await operationsApi.deleteRMA(id); toast('RMA deleted'); load(); onUpdated && onUpdated() }
+    catch(e) { toast(e.message || 'Could not delete RMA', 'error') }
   }
 
   // Move order / line items (or a partial quantity of a line) to the next reporting month
@@ -1249,8 +1294,16 @@ function OrdersTab({ jumpOrderId, onJumpHandled, initialStatus, initialLeadSourc
 
   const handleDelete = async (id) => {
     if (!confirm('Delete this order and all its line items?')) return
-    await operationsApi.deleteOrder(id); load()
+    try { await operationsApi.deleteOrder(id); toast('Order deleted'); load() }
+    catch(e) { toast(e.message || 'Could not delete order', 'error') }
   }
+
+  const orderTotals = orders.reduce((a, o) => ({
+    amt: a.amt + (Number(o.order_amount) || 0),
+    val: a.val + (Number(o.total_order_value) || 0),
+    gp:  a.gp  + (Number(o.gp) || 0),
+    rem: a.rem + (Number(o.remaining) || 0),
+  }), { amt: 0, val: 0, gp: 0, rem: 0 })
 
   return (
     <div>
@@ -1300,8 +1353,8 @@ function OrdersTab({ jumpOrderId, onJumpHandled, initialStatus, initialLeadSourc
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr className="table-header">
-                {['Order #', 'Date', 'Customer', 'Rep', 'Status', 'Order Amt', 'Total Value', 'GP', 'Remaining', ''].map(h => (
-                  <th key={h} className="table-cell" style={{ whiteSpace: 'nowrap' }}>{h}</th>
+                {[{h:'Order #'},{h:'Date'},{h:'Customer'},{h:'Rep'},{h:'Status'},{h:'Order Amt',num:1},{h:'Total Value',num:1},{h:'GP',num:1},{h:'Remaining',num:1},{h:''}].map(c => (
+                  <th key={c.h} className="table-cell" style={{ whiteSpace: 'nowrap', textAlign: c.num ? 'right' : 'left' }}>{c.h}</th>
                 ))}
               </tr>
             </thead>
@@ -1316,10 +1369,10 @@ function OrdersTab({ jumpOrderId, onJumpHandled, initialStatus, initialLeadSourc
                     <td className="table-cell" style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.customer_name || o.email || '—'}</td>
                     <td className="table-cell" style={{ color: '#64748b' }}>{o.rep || '—'}</td>
                     <td className="table-cell"><StatusBadge status={o.order_status} /></td>
-                    <td className="table-cell" style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(o.order_amount)}</td>
-                    <td className="table-cell" style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{fmt(o.total_order_value)}</td>
-                    <td className="table-cell" style={{ fontWeight: 700, color: gp >= 0 ? '#10b981' : '#ef4444', fontVariantNumeric: 'tabular-nums' }}>{fmt(gp)}</td>
-                    <td className="table-cell" style={{ color: rem > 0 ? '#f59e0b' : '#10b981', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{fmt(rem)}</td>
+                    <td className="table-cell" style={{ fontVariantNumeric: 'tabular-nums', textAlign: 'right' }}>{fmt(o.order_amount)}</td>
+                    <td className="table-cell" style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600, textAlign: 'right' }}>{fmt(o.total_order_value)}</td>
+                    <td className="table-cell" style={{ fontWeight: 700, color: gp >= 0 ? '#10b981' : '#ef4444', fontVariantNumeric: 'tabular-nums', textAlign: 'right' }}>{fmt(gp)}</td>
+                    <td className="table-cell" style={{ color: rem > 0 ? '#f59e0b' : '#10b981', fontWeight: 600, fontVariantNumeric: 'tabular-nums', textAlign: 'right' }}>{fmt(rem)}</td>
                     <td className="table-cell" onClick={e => e.stopPropagation()}>
                       <div style={{ display: 'flex', gap: 4 }}>
                         <button className="btn btn-ghost btn-sm" onClick={() => setSelected(o.id)}><ChevronRight size={14} /></button>
@@ -1330,6 +1383,16 @@ function OrdersTab({ jumpOrderId, onJumpHandled, initialStatus, initialLeadSourc
                 )
               })}
             </tbody>
+            <tfoot>
+              <tr style={{ position: 'sticky', bottom: 0, background: '#f8fafc', borderTop: '2px solid #e2e8f0' }}>
+                <td className="table-cell" colSpan={5} style={{ fontWeight: 700, color: '#475569' }}>{orders.length} order{orders.length === 1 ? '' : 's'}</td>
+                <td className="table-cell" style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: '#475569' }}>{fmt(orderTotals.amt)}</td>
+                <td className="table-cell" style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>{fmt(orderTotals.val)}</td>
+                <td className="table-cell" style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800, color: orderTotals.gp >= 0 ? '#10b981' : '#ef4444' }}>{fmt(orderTotals.gp)}</td>
+                <td className="table-cell" style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: orderTotals.rem > 0 ? '#f59e0b' : '#10b981' }}>{fmt(orderTotals.rem)}</td>
+                <td className="table-cell" />
+              </tr>
+            </tfoot>
           </table>
         </div>
       )}
@@ -1371,7 +1434,7 @@ function EntityTab({ icon: Icon, label, fields, fetchFn, createFn, updateFn, del
 
   const handleDelete = async (id) => {
     if (!confirm(`Delete this ${label.toLowerCase()}?`)) return
-    try { await deleteFn(id); load() } catch(e) { alert(e.message) }
+    try { await deleteFn(id); toast(`${label.slice(0,-1)} deleted`); load() } catch(e) { toast(e.message || 'Could not delete', 'error') }
   }
 
   const blankForm = () => {
@@ -1467,8 +1530,8 @@ function OrderItemsTab({ onOpenOrder }) {
 
   const handleDeleteItem = async (id) => {
     if (!confirm('Delete this line item?')) return
-    try { await operationsApi.deleteItem(id); load(search) }
-    catch(e) { alert(e.message) }
+    try { await operationsApi.deleteItem(id); toast('Line item deleted'); load(search) }
+    catch(e) { toast(e.message || 'Could not delete line item', 'error') }
   }
 
   const cols = [
@@ -1577,7 +1640,8 @@ function RMATab() {
 
   const handleDelete = async (id) => {
     if (!confirm('Delete this RMA?')) return
-    await operationsApi.deleteRMA(id); load()
+    try { await operationsApi.deleteRMA(id); toast('RMA deleted'); load() }
+    catch(e) { toast(e.message || 'Could not delete RMA', 'error') }
   }
 
   return (
@@ -1783,7 +1847,8 @@ function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
       await operationsApi.closeMonth()
       await Promise.all([loadOpen(), loadPeriods()])
       load('', '', selectedMonths)
-    } catch(e) {}
+      toast('Month closed')
+    } catch(e) { toast(e.message || 'Could not close month', 'error') }
     setCloseLoading(false); setCloseConfirm(null)
   }
   const handleReopenLast = async () => {
@@ -2465,7 +2530,8 @@ function ReceivablesTab({ onOpenOrder }) {
 
 // ── Main Operations Page ──────────────────────────────────────────────────────
 export default function Operations() {
-  const [tab, setTab] = useState('orders')
+  const [tab, setTabState] = useState(() => { try { return localStorage.getItem('ops_tab') || 'orders' } catch { return 'orders' } })
+  const setTab = (k) => { setTabState(k); try { localStorage.setItem('ops_tab', k) } catch {} }
   const [stats, setStats] = useState(null)
   const [jumpOrderId, setJumpOrderId] = useState(null)
   const [pendingCount, setPendingCount] = useState(0)
@@ -2524,6 +2590,7 @@ export default function Operations() {
   return (
     <div className="page-wrap fade-in">
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <ToastHost />
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
