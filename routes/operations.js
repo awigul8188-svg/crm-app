@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getDB } = require('../database');
 const { authenticate, requireManager } = require('../middleware/auth');
+const { businessToday } = require('./businessTime');
 
 router.use(authenticate);
 
@@ -878,6 +879,57 @@ router.get('/stats', (req, res) => {
       : `rma_status NOT IN ('Completed','Denied')`;
     const rma_count = db.prepare(`SELECT COUNT(*) AS cnt FROM op_rma WHERE ${rmaWhere}`).get(...params).cnt;
     res.json({ ...stats, ...apStats, open_rma: rma_count });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// The reporting_period months of the current calendar quarter (e.g. Q2 -> Apr-26/May-26/Jun-26).
+function currentQuarterPeriods() {
+  const today = businessToday();                 // 'YYYY-MM-DD' in the business timezone
+  const year = parseInt(today.slice(0, 4), 10);
+  const m0 = parseInt(today.slice(5, 7), 10) - 1; // 0..11
+  const qIdx = Math.floor(m0 / 3);                // 0..3
+  const startMonth = qIdx * 3;                    // 0,3,6,9
+  const yy = String(year).slice(-2);
+  return {
+    label: `Q${qIdx + 1} ${year}`,
+    periods: [0, 1, 2].map(i => `${PERIOD_MONTHS[startMonth + i]}-${yy}`),
+  };
+}
+
+// Per-rep GP for the running quarter, broken out by month — resets automatically each quarter.
+// Each user sees only their own credited GP (o.rep = their name; online orders credit "Online",
+// not a person, so they're naturally excluded). Same GP formula as the Operations dashboard byRep.
+router.get('/my-gp', (req, res) => {
+  try {
+    const db = getDB();
+    const rep = req.user.name;
+    const { label, periods } = currentQuarterPeriods();
+    const ph = periods.map(() => '?').join(',');
+    const rows = db.prepare(`
+      WITH ot AS (
+        SELECT
+          o.reporting_period AS month,
+          COALESCE(o.tax_charged,0) + COALESCE(o.shipping_charged,0) + COALESCE(o.cc_charges,0) AS order_charges,
+          COALESCE(SUM(i.selling * i.quantity),0) AS item_rev,
+          COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0) AS item_cost,
+          COALESCE(o.rma_amount,0) AS rma_amount
+        FROM op_orders o
+        LEFT JOIN op_order_items i ON i.order_id = o.id AND COALESCE(i.line_status,'processed') = 'processed'
+        WHERE o.rep = ? AND (o.pending IS NULL OR o.pending = 0) AND o.reporting_period IN (${ph})
+        GROUP BY o.id
+      )
+      SELECT month, COUNT(*) AS order_count,
+        SUM(item_rev + order_charges - item_cost - rma_amount) AS gp
+      FROM ot GROUP BY month
+    `).all(rep, ...periods);
+    const byMonth = Object.fromEntries(rows.map(r => [r.month, r]));
+    const months = periods.map(p => ({
+      month: p,
+      gp: +((byMonth[p]?.gp) || 0).toFixed(2),
+      order_count: byMonth[p]?.order_count || 0,
+    }));
+    const total_gp = +months.reduce((s, m) => s + m.gp, 0).toFixed(2);
+    res.json({ quarter: label, rep, months, total_gp });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

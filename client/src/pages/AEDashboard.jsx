@@ -7,6 +7,7 @@ import { useAuth } from '../App'
 import { formatDate, formatDateShort, timeAgo, DispositionBadge, DISPOSITIONS, PPC_OPTIONS, VERIFICATION_OPTIONS, ORDER_SOURCES, LEAD_SOURCES } from '../components/Badges'
 import NewInquiryModal from '../components/NewInquiryModal'
 import ClosedWonModal from '../components/ClosedWonModal'
+import QuarterGPTile from '../components/QuarterGPTile'
 
 const BRAND = '#00D4C8'
 const C = ['#00D4C8','#3b82f6','#6366f1','#f59e0b','#ef4444','#10b981','#8b5cf6','#f97316','#ec4899','#84cc16']
@@ -858,6 +859,10 @@ function AEOverviewTab({ data, loading, dateFilters, onDrilldown, onNavigate }) 
         <MetricCard label="Leads Today" value={data.today.leads} color="#3b82f6" onClick={() => onDrilldown({ title:'My Leads Today', type:'lead', filters:{ from:todayStr, to:todayStr } })} sub={<button onClick={e => { e.stopPropagation(); onNavigate('leads') }} style={{ color:BRAND, background:'none', border:'none', cursor:'pointer', fontSize:12, padding:0, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>View all →</button>} />
         <MetricCard label="Repeat Today" value={data.today.repeat} color="#6366f1" onClick={() => onDrilldown({ title:'My Repeat Today', type:'repeat', filters:{ from:todayStr, to:todayStr } })} sub={<button onClick={e => { e.stopPropagation(); onNavigate('repeat') }} style={{ color:BRAND, background:'none', border:'none', cursor:'pointer', fontSize:12, padding:0, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>View all →</button>} />
         <MetricCard label="Orders Today" value={data.today.orders} color="#f59e0b" onClick={() => onDrilldown({ title:'My Orders Today', type:'online_order', filters:{ from:todayStr, to:todayStr } })} sub={<button onClick={e => { e.stopPropagation(); onNavigate('orders') }} style={{ color:BRAND, background:'none', border:'none', cursor:'pointer', fontSize:12, padding:0, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>View all →</button>} />
+      </div>
+
+      <div style={{ marginBottom:20 }}>
+        <QuarterGPTile />
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, marginBottom:20 }}>

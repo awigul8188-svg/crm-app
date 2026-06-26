@@ -7,6 +7,7 @@ import { useAuth } from '../App'
 import { useNav } from '../App'
 import { DISPOSITIONS, LEAD_SOURCES, ORDER_SOURCES, formatDate, formatDateShort, DispositionBadge } from '../components/Badges'
 import MultiSelect from '../components/MultiSelect'
+import QuarterGPTile from '../components/QuarterGPTile'
 
 const BRAND = '#00D4C8'
 const CHART_COLORS = ['#00D4C8','#3b82f6','#6366f1','#f59e0b','#ef4444','#10b981','#8b5cf6','#f97316','#ec4899','#84cc16']
@@ -382,6 +383,7 @@ function Loader() {
 // ── Overview Tab ────────────────────────────────────────────────
 function OverviewTab({ filters, users, onDrilldown }) {
   const { navigate } = useNav()
+  const { user } = useAuth()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const summary = useSummary()
@@ -412,6 +414,12 @@ function OverviewTab({ filters, users, onDrilldown }) {
         <MetricCard label="Online Orders" value={getTotal('online_order')} color="#f59e0b" onClick={() => onDrilldown({ title:'All Online Orders', type:'online_order', filters: { from: filters.from, to: filters.to } })} sub={<button onClick={e => { e.stopPropagation(); navigate('orders') }} style={{ color:BRAND, background:'none', border:'none', cursor:'pointer', fontSize:12, padding:0, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>View all →</button>} />
         <MetricCard label="Win Rate" value={`${wonRate}%`} color={BRAND} sub={`${data?.wonCount||0} of ${data?.totalCount||0}`} />
       </div>
+      {/* Personal GP for the running quarter — managers only (not purchasing managers). */}
+      {user.role === 'manager' && (
+        <div style={{ marginBottom:20 }}>
+          <QuarterGPTile />
+        </div>
+      )}
       <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:20, marginBottom:20 }}>
         <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
           <SectionTitle>Activity Trend</SectionTitle>
