@@ -7,6 +7,7 @@ import { DispositionBadge, DISPOSITIONS, LEAD_SOURCES, ORDER_SOURCES, formatDate
 import NewInquiryModal from '../components/NewInquiryModal'
 import MultiSelect from '../components/MultiSelect'
 import PageHeader from '../components/PageHeader'
+import ClosedWonModal from '../components/ClosedWonModal'
 
 const TYPE_ICONS  = { lead: '◎', repeat: '↻', online_order: '◈' }
 const TYPE_LABELS = { lead: 'Lead', repeat: 'Repeat Inquiry', online_order: 'Online Order' }
@@ -18,7 +19,7 @@ const HEADERS = {
 }
 
 // Inline disposition dropdown — appears in place of the badge
-function InlineDispositionEdit({ inquiry, dispositions, onSave, onCancel }) {
+function InlineDispositionEdit({ inquiry, dispositions, onSave, onCancel, onClosedWon }) {
   const ref = useRef()
   const [value, setValue] = useState(inquiry.disposition || '')
   const [saving, setSaving] = useState(false)
@@ -36,32 +37,10 @@ function InlineDispositionEdit({ inquiry, dispositions, onSave, onCancel }) {
     const newDisp = e.target.value
     setValue(newDisp)
 
-    // Closed Won — save disposition then silently queue in Operations
+    // Closed Won — open the Create Order form; nothing is saved/created until the rep saves it there.
     if (newDisp === 'Closed Won') {
-      try {
-        await api.updateInquiry(inquiry.id, {
-          disposition: 'Closed Won',
-          assigned_to: inquiry.assigned_to,
-          notes: inquiry.notes,
-          requirements: inquiry.requirements,
-          ppc_or_outbound: inquiry.ppc_or_outbound,
-          order_amount: inquiry.order_amount,
-          order_ref: inquiry.order_ref,
-        });
-        // Silently create draft order in Operations
-        import('../api').then(({ operationsApi }) => {
-          operationsApi.createFromCRM({
-            customer_name: inquiry.customer_name,
-            customer_email: inquiry.customer_email,
-            customer_phone: inquiry.customer_phone,
-            lead_source: inquiry.lead_source,
-            rep: inquiry.assigned_name,
-            crm_inquiry_id: inquiry.id,
-            requirements: inquiry.requirements || [],
-          }).catch(() => {});
-        });
-        onSave(inquiry.id, 'Closed Won');
-      } catch(e) { onCancel(); }
+      onCancel()              // close the inline dropdown
+      onClosedWon(inquiry)    // parent opens the order form
       return;
     }
 
@@ -124,6 +103,7 @@ export default function InquiryList({ type, title }) {
   const [search, setSearch] = useState('')
   const [deleting, setDeleting] = useState(null)
   const [editingDisp, setEditingDisp] = useState(null) // inquiry id being edited
+  const [cwInquiry, setCwInquiry] = useState(null)      // inquiry being converted to an order
 
   const load = () => {
     setLoading(true)
@@ -275,6 +255,7 @@ export default function InquiryList({ type, title }) {
                           dispositions={dispositionOptions}
                           onSave={handleDispSave}
                           onCancel={() => setEditingDisp(null)}
+                          onClosedWon={setCwInquiry}
                         />
                       ) : (
                         <div
@@ -365,6 +346,24 @@ export default function InquiryList({ type, title }) {
           defaultType={type}
           onClose={() => setShowNew(false)}
           onCreated={() => { setShowNew(false); load() }}
+        />
+      )}
+
+      {cwInquiry && (
+        <ClosedWonModal
+          inquiry={cwInquiry}
+          requirements={cwInquiry.requirements || []}
+          onCreated={async () => {
+            try {
+              await api.updateInquiry(cwInquiry.id, {
+                disposition: 'Closed Won', assigned_to: cwInquiry.assigned_to, notes: cwInquiry.notes,
+                requirements: cwInquiry.requirements, ppc_or_outbound: cwInquiry.ppc_or_outbound,
+                order_amount: cwInquiry.order_amount, order_ref: cwInquiry.order_ref,
+              })
+            } catch {}
+            load()
+          }}
+          onClose={() => setCwInquiry(null)}
         />
       )}
 
