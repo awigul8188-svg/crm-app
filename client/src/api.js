@@ -27,6 +27,8 @@ export const api = {
   deleteUser: (id) => req('DELETE', `/users/${id}`),
   resetAePasswords: () => req('POST', '/users/reset-ae-passwords'),
   resetPurchaserPasswords: () => req('POST', '/users/reset-purchaser-passwords'),
+  getBuyerCandidates: () => req('GET', '/users/buyer-candidates'),
+  createPurchasersFromBuyers: (buyers) => req('POST', '/users/create-from-buyers', { buyers }),
 
   getCustomers: (search) => req('GET', `/customers${search ? `?search=${encodeURIComponent(search)}` : ''}`),
   createCustomer: (data) => req('POST', '/customers', data),

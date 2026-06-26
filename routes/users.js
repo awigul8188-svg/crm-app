@@ -130,4 +130,59 @@ router.post('/reset-purchaser-passwords', (req, res) => {
   }
 });
 
+// Username base from a buyer/full name: first word, lowercased, alphanumeric only.
+function firstNameUsername(name) {
+  return String(name || '').trim().split(/\s+/)[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+// Distinct Operations buyers + a proposed purchaser username + whether one already exists.
+router.get('/buyer-candidates', requireManager, (req, res) => {
+  const db = getDB();
+  try {
+    const buyers = db.prepare("SELECT DISTINCT TRIM(buyer) AS buyer FROM op_orders WHERE buyer IS NOT NULL AND TRIM(buyer) <> '' ORDER BY buyer COLLATE NOCASE").all();
+    const usernames = new Set(db.prepare('SELECT LOWER(username) AS u FROM users').all().map(r => r.u));
+    const purchaserNames = new Set(db.prepare("SELECT LOWER(name) AS n FROM users WHERE role='purchaser'").all().map(r => r.n));
+    res.json(buyers.map(b => {
+      const username = firstNameUsername(b.buyer);
+      const exists = purchaserNames.has(b.buyer.toLowerCase()) || usernames.has(username);
+      return { buyer: b.buyer, username, exists };
+    }));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Bulk-create purchaser accounts from selected buyer names. username = first name (deduped),
+// password = username + '123'. Returns the credential list once.
+router.post('/create-from-buyers', requireManager, (req, res) => {
+  const { buyers } = req.body;
+  if (!Array.isArray(buyers) || !buyers.length) return res.status(400).json({ error: 'buyers array required' });
+  const db = getDB();
+  try {
+    const taken = new Set(db.prepare('SELECT LOWER(username) AS u FROM users').all().map(r => r.u));
+    const results = [];
+    db.transaction(() => {
+      buyers.forEach(raw => {
+        const name = String(raw || '').trim();
+        if (!name) return;
+        let base = firstNameUsername(name) || 'buyer';
+        let username = base, n = 1;
+        while (taken.has(username)) { n++; username = base + n; }
+        taken.add(username);
+        const password = username + '123';
+        const hash = bcrypt.hashSync(password, 10);
+        try {
+          db.prepare("INSERT INTO users (username, password, name, role, created_by) VALUES (?, ?, ?, 'purchaser', ?)").run(username, hash, name, req.user.id);
+        } catch (e) {
+          db.prepare("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, 'purchaser')").run(username, hash, name);
+        }
+        results.push({ name, username, password });
+      });
+    })();
+    res.json({ results });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 module.exports = router;

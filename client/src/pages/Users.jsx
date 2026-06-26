@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { UserCog, KeyRound, Copy, Check } from 'lucide-react'
+import { UserCog, KeyRound, Copy, Check, UserPlus } from 'lucide-react'
 import { api } from '../api'
 import { useAuth } from '../App'
 import Modal from '../components/Modal'
@@ -45,6 +45,11 @@ export default function Users() {
   const [resetType, setResetType] = useState('ae')
   const [copiedAll, setCopiedAll] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
+  const [showBuyers, setShowBuyers] = useState(false)
+  const [buyerCandidates, setBuyerCandidates] = useState([])
+  const [buyerLoading, setBuyerLoading] = useState(false)
+  const [selectedBuyers, setSelectedBuyers] = useState(new Set())
+  const [creatingBuyers, setCreatingBuyers] = useState(false)
 
   const load = () => api.getUsers().then(u => { setUsers(u); setLoading(false) }).catch(e => { setError(e.message || 'Could not load users'); setLoading(false) })
   useEffect(() => { load() }, [])
@@ -79,6 +84,29 @@ export default function Users() {
     try { await api.deleteUser(id); load() }
     catch (e) { alert(e.message) }
     finally { setDeletingId(null) }
+  }
+
+  const openBuyers = async () => {
+    setShowBuyers(true); setBuyerLoading(true); setError('')
+    try {
+      const list = await api.getBuyerCandidates()
+      setBuyerCandidates(list)
+      setSelectedBuyers(new Set(list.filter(b => !b.exists).map(b => b.buyer)))
+    } catch (e) { setError(e.message || 'Could not load buyers') }
+    finally { setBuyerLoading(false) }
+  }
+  const toggleBuyer = (name) => setSelectedBuyers(s => { const n = new Set(s); n.has(name) ? n.delete(name) : n.add(name); return n })
+  const handleCreateBuyers = async () => {
+    const list = [...selectedBuyers]
+    if (!list.length) return
+    setCreatingBuyers(true); setError('')
+    try {
+      const data = await api.createPurchasersFromBuyers(list)
+      setShowBuyers(false); setSelectedBuyers(new Set())
+      setResetType('buyer'); setResetResults(data.results || [])
+      load()
+    } catch (e) { setError(e.message || 'Could not create purchasers') }
+    finally { setCreatingBuyers(false) }
   }
 
   const handleResetPasswords = async (type) => {
@@ -124,6 +152,10 @@ export default function Users() {
           <button onClick={() => handleResetPasswords('purchaser')} disabled={resetting}
             className="btn btn-sm text-amber-600 bg-amber-50 border border-amber-100 hover:bg-amber-100">
             <KeyRound size={13} /> Reset Purchaser Passwords
+          </button>
+          <button onClick={openBuyers}
+            className="btn btn-sm text-cyan-700 bg-cyan-50 border border-cyan-100 hover:bg-cyan-100">
+            <UserPlus size={13} /> Import Buyers
           </button>
         </>
       )}
@@ -300,9 +332,48 @@ export default function Users() {
         </Modal>
       )}
 
+      {/* Import Buyers as Purchasers modal */}
+      {showBuyers && (
+        <Modal title="Import Buyers as Purchasers" onClose={() => setShowBuyers(false)} wide>
+          {buyerLoading ? (
+            <div style={{ padding:40, textAlign:'center', color:'#94a3b8' }}>Loading buyers…</div>
+          ) : buyerCandidates.length === 0 ? (
+            <div style={{ padding:40, textAlign:'center', color:'#94a3b8' }}>No buyers found in Operations orders.</div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+              <div style={{ fontSize:13, color:'#64748b' }}>
+                Each selected buyer becomes a <b>purchaser</b>. Username = first name (lowercased); password = username + <code style={{ background:'#f1f5f9', padding:'1px 5px', borderRadius:5 }}>123</code>. Duplicates get a number suffix.
+              </div>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <span style={{ fontSize:12, color:'#94a3b8' }}>{selectedBuyers.size} selected · {buyerCandidates.filter(b=>b.exists).length} already exist</span>
+                <div style={{ display:'flex', gap:12 }}>
+                  <button onClick={()=>setSelectedBuyers(new Set(buyerCandidates.filter(b=>!b.exists).map(b=>b.buyer)))} style={{ fontSize:12, color:BRAND, background:'none', border:'none', cursor:'pointer', fontWeight:700 }}>Select all new</button>
+                  <button onClick={()=>setSelectedBuyers(new Set())} style={{ fontSize:12, color:'#64748b', background:'none', border:'none', cursor:'pointer', fontWeight:700 }}>Clear</button>
+                </div>
+              </div>
+              <div style={{ border:'1px solid #e2e8f0', borderRadius:12, maxHeight:'46vh', overflow:'auto' }}>
+                {buyerCandidates.map(b => (
+                  <label key={b.buyer} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderBottom:'1px solid #f1f5f9', cursor:b.exists?'default':'pointer', opacity:b.exists?0.55:1 }}>
+                    <input type="checkbox" disabled={b.exists} checked={selectedBuyers.has(b.buyer)} onChange={()=>toggleBuyer(b.buyer)} />
+                    <span style={{ fontWeight:600, fontSize:13, color:'#0f172a', flex:1 }}>{b.buyer}</span>
+                    <span style={{ fontFamily:'monospace', fontSize:12, color:'#94a3b8' }}>→ {b.username}</span>
+                    {b.exists && <span style={{ fontSize:11, fontWeight:700, color:'#94a3b8', background:'#f1f5f9', borderRadius:20, padding:'2px 8px' }}>already a user</span>}
+                  </label>
+                ))}
+              </div>
+              {error && <div style={{ background:'#fef2f2', border:'1px solid #fecaca', borderRadius:10, padding:'10px 14px', fontSize:13, color:'#dc2626' }}>⚠ {error}</div>}
+              <div style={{ display:'flex', gap:10 }}>
+                <button onClick={() => setShowBuyers(false)} className="btn-secondary" style={{ flex:1 }}>Cancel</button>
+                <button onClick={handleCreateBuyers} disabled={creatingBuyers || selectedBuyers.size===0} className="btn-primary" style={{ flex:1 }}>{creatingBuyers ? 'Creating…' : `Create ${selectedBuyers.size} Purchaser${selectedBuyers.size===1?'':'s'}`}</button>
+              </div>
+            </div>
+          )}
+        </Modal>
+      )}
+
       {/* Reset passwords results modal */}
       {resetResults && (
-        <Modal title={`${resetType === 'ae' ? 'AE' : 'Purchaser'} Passwords Reset`} onClose={() => setResetResults(null)} wide>
+        <Modal title={resetType === 'buyer' ? 'New Purchasers Created' : `${resetType === 'ae' ? 'AE' : 'Purchaser'} Passwords Reset`} onClose={() => setResetResults(null)} wide>
           <div style={{ background:'#fff7ed', border:'1px solid #fed7aa', borderRadius:12, padding:'10px 14px', marginBottom:14, fontSize:13, color:'#c2410c' }}>
             ⚠ Save these — they won't be shown again
           </div>
