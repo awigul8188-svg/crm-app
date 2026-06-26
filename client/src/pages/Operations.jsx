@@ -928,7 +928,14 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
   const remaining = Number(order.remaining) || 0
 
   const itemCols = [
-    { h: 'Part #',        render: i => <span style={{ fontWeight: 600, color: '#0f172a' }}>{i.part_number || '—'}</span> },
+    { h: 'Part #',        render: i => (
+        <button type="button" onClick={() => setEditItem(i)} title="Edit line item"
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontWeight: 600, color: BRAND, fontSize: 'inherit', fontFamily: 'inherit', textAlign: 'left' }}
+          onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
+          onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}>
+          {i.part_number || '(no part#)'}
+        </button>
+      ) },
     { h: 'Status',        render: i => {
         const pending = (i.line_status || 'processed') === 'pending'
         return <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
@@ -1538,7 +1545,10 @@ function OrderItemsTab({ onOpenOrder }) {
     { key: 'order_number',       label: 'Order #',      render: r => (
       <button onClick={() => onOpenOrder(r.order_id)} style={{ color: BRAND, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13 }}>{r.order_number || '—'}</button>
     )},
-    { key: 'part_number',        label: 'Part #',       bold: true },
+    { key: 'part_number',        label: 'Part #',       render: r => (
+      <button onClick={() => setEditItem(r)} title="Edit line item" style={{ color: BRAND, fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13, textAlign: 'left' }}
+        onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'} onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}>{r.part_number || '(no part#)'}</button>
+    )},
     { key: 'description',        label: 'Description'   },
     { key: 'supplier_name',      label: 'Supplier'      },
     { key: 'quantity',           label: 'Qty',          num: true },
@@ -1574,7 +1584,7 @@ function OrderItemsTab({ onOpenOrder }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1400 }}>
             <thead>
               <tr className="table-header">
-                {cols.map(c => <th key={c.key} className="table-cell" style={{ whiteSpace: 'nowrap' }}>{c.label}</th>)}
+                {cols.map(c => <th key={c.key} className="table-cell" style={{ whiteSpace: 'nowrap', textAlign: c.num ? 'right' : 'left' }}>{c.label}</th>)}
                 <th className="table-cell"></th>
               </tr>
             </thead>
@@ -1586,7 +1596,7 @@ function OrderItemsTab({ onOpenOrder }) {
                     const display = c.render ? c.render(row) : c.fmt ? fmt(val) : (val ?? '—')
                     const color = c.colorFn ? c.colorFn(Number(val)) : c.highlight || (c.bold ? '#0f172a' : '#475569')
                     return (
-                      <td key={c.key} className="table-cell" style={{ fontWeight: c.bold ? 600 : 400, color, whiteSpace: c.key === 'serials' ? 'pre-wrap' : 'nowrap', maxWidth: c.key === 'serials' ? 140 : undefined, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <td key={c.key} className="table-cell" style={{ fontWeight: c.bold ? 600 : 400, color, textAlign: c.num ? 'right' : 'left', fontVariantNumeric: c.num ? 'tabular-nums' : undefined, whiteSpace: c.key === 'serials' ? 'pre-wrap' : 'nowrap', maxWidth: c.key === 'serials' ? 140 : undefined, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {display}
                       </td>
                     )
