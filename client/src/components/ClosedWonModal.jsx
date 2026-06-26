@@ -6,6 +6,17 @@ import { CheckCircle, Package, Plus, Trash2 } from 'lucide-react'
 const BRAND = '#00D4C8'
 const PAYMENT_STATUSES = ['CC Charged', 'Wire Received', 'Net']
 const CONDITIONS = ['', 'NEW', 'REF', 'USED', 'PULL', 'NEW OEM']
+const NET_TERMS = [
+  { label: 'Due on receipt', days: 0 }, { label: 'Net 7', days: 7 }, { label: 'Net 10', days: 10 },
+  { label: 'Net 15', days: 15 }, { label: 'Net 30', days: 30 }, { label: 'Net 45', days: 45 }, { label: 'Net 60', days: 60 },
+]
+function addDays(dateStr, days) {
+  if (!dateStr) return ''
+  const d = new Date(`${dateStr}T00:00:00Z`)
+  if (isNaN(d.getTime())) return ''
+  d.setUTCDate(d.getUTCDate() + (Number(days) || 0))
+  return d.toISOString().slice(0, 10)
+}
 
 const money = (n) => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -18,6 +29,12 @@ export default function ClosedWonModal({ inquiry, requirements = [], onClose, on
     payment_status: '', net: '', due_date: '', tax_charged: '', shipping_charged: '', cc_charges: '', notes: '',
   })
   const setH = (k, v) => setHeader(f => ({ ...f, [k]: v }))
+  const today = new Date().toISOString().slice(0, 10)
+  // Selecting a Net term auto-fills the due date (today + N days), same as the Operations order form.
+  const onTermsChange = (label) => setHeader(f => {
+    const days = NET_TERMS.find(t => t.label === label)?.days
+    return { ...f, net: label, due_date: (days !== undefined) ? addDays(today, days) : f.due_date }
+  })
 
   const [items, setItems] = useState(() => {
     const reqs = (requirements || []).filter(r => r.part_number?.trim())
@@ -135,8 +152,16 @@ export default function ClosedWonModal({ inquiry, requirements = [], onClose, on
             <option value="">—</option>{PAYMENT_STATUSES.map(s => <option key={s}>{s}</option>)}
           </select>
         </Field>
-        <Field label="Net (terms)" half><input className="input" value={header.net} onChange={e => setH('net', e.target.value)} placeholder="Net 30…" /></Field>
-        <Field label="Due Date" half><input className="input" type="date" value={header.due_date} onChange={e => setH('due_date', e.target.value)} /></Field>
+        <Field label="Net (terms)" half>
+          <select className="input" value={header.net} onChange={e => onTermsChange(e.target.value)}>
+            <option value="">—</option>
+            {NET_TERMS.map(t => <option key={t.label}>{t.label}</option>)}
+          </select>
+        </Field>
+        <Field label="Due Date" half>
+          <input className="input" type="date" value={header.due_date} onChange={e => setH('due_date', e.target.value)} />
+          {NET_TERMS.some(t => t.label === header.net) && <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 3 }}>Auto-set from terms · editable</div>}
+        </Field>
         <Field label="Tax Charged ($)" half><input className="input" type="number" value={header.tax_charged} onChange={e => setH('tax_charged', e.target.value)} placeholder="0.00" /></Field>
         <Field label="Shipping Charged ($)" half><input className="input" type="number" value={header.shipping_charged} onChange={e => setH('shipping_charged', e.target.value)} placeholder="0.00" /></Field>
         <Field label="CC Charges ($)" half><input className="input" type="number" value={header.cc_charges} onChange={e => setH('cc_charges', e.target.value)} placeholder="0.00" /></Field>

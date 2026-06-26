@@ -612,7 +612,7 @@ router.post('/from-crm', authenticate, (req, res) => {
         payment_status, net, due_date, tax_charged, shipping_charged, cc_charges, notes, order_status, pending, crm_inquiry_id)
       VALUES (?, date('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Order placed', 1, ?)
     `).run(orderNum, customer.id, customer_email||'', lead_source||'', rep||'', buyer||null,
-           payment_status||null, num(net), due_date||null, num(tax_charged), num(shipping_charged), num(cc_charges), notes||null,
+           payment_status||null, net||null, due_date||null, num(tax_charged), num(shipping_charged), num(cc_charges), notes||null,
            crm_inquiry_id||null);
     const orderId = result.lastInsertRowid;
 
