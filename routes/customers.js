@@ -1,9 +1,10 @@
 const express = require('express');
 const { getDB } = require('../database');
-const { authenticate, requireManager } = require('../middleware/auth');
+const { authenticate, requireManager, requireCrmAccess } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authenticate);
+router.use(requireCrmAccess); // sales-side only — purchasing roles get 403
 
 router.get('/', (req, res) => {
   const db = getDB();

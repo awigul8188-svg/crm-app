@@ -18,13 +18,15 @@ function TALogo({ size = 36 }) {
   )
 }
 
-const NAV = [
-  { name: 'dashboard', label: 'Dashboard',       Icon: LayoutDashboard },
+const DASHBOARD_NAV = { name: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard }
+// Sales-side pages — only for CRM roles (manager + ae). Purchasing roles never see these.
+const CRM_NAV = [
   { name: 'leads',     label: 'Leads',            Icon: Target },
   { name: 'repeat',    label: 'Repeat Inquiries', Icon: RotateCcw },
   { name: 'orders',    label: 'Online Orders',    Icon: ShoppingBag },
   { name: 'customers', label: 'Customers',        Icon: Users },
 ]
+const CRM_ROLES = ['manager', 'ae']
 
 const ADMIN_NAV = [
   { name: 'operations', label: 'Operations', Icon: Settings2 },
@@ -101,7 +103,7 @@ export default function Layout({ children }) {
             Main Menu
           </div>
 
-          {NAV.map(({ name, label, Icon }) => (
+          {[DASHBOARD_NAV, ...(CRM_ROLES.includes(user.role) ? CRM_NAV : [])].map(({ name, label, Icon }) => (
             <button key={name} onClick={() => navigate(name)}
               className={`nav-item ${page.name === name ? 'nav-active' : 'nav-inactive'}`}>
               <Icon size={15} className="flex-shrink-0" />

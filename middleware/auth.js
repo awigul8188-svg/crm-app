@@ -25,4 +25,12 @@ function requireManager(req, res, next) {
   next();
 }
 
-module.exports = { authenticate, requireManager, JWT_SECRET };
+// CRM data (customers, inquiries/leads/repeat/online-orders, analytics) is sales-side only.
+// Whitelist (not blacklist) so any future role is denied by default — purchasing roles must never read it.
+const CRM_ROLES = ['manager', 'ae'];
+function requireCrmAccess(req, res, next) {
+  if (CRM_ROLES.includes(req.user?.role)) return next();
+  return res.status(403).json({ error: 'Not authorized for CRM data' });
+}
+
+module.exports = { authenticate, requireManager, requireCrmAccess, CRM_ROLES, JWT_SECRET };

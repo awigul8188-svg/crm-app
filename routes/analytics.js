@@ -1,9 +1,10 @@
 const express = require('express');
 const { getDB } = require('../database');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requireCrmAccess } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authenticate);
+router.use(requireCrmAccess); // sales-side only — purchasing roles get 403
 
 function buildInFilter(column, value) {
   if (!value) return null;

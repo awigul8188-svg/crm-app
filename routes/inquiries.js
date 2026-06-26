@@ -1,9 +1,10 @@
 const express = require('express');
 const { getDB } = require('../database');
-const { authenticate, requireManager } = require('../middleware/auth');
+const { authenticate, requireManager, requireCrmAccess } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authenticate);
+router.use(requireCrmAccess); // sales-side only — purchasing roles get 403
 
 function logActivity(db, entityId, user, action, comment = null) {
   db.prepare('INSERT INTO activity_log (entity_type, entity_id, user_id, user_name, action, comment) VALUES (?, ?, ?, ?, ?, ?)').run('inquiry', entityId, user.id, user.name, action, comment);

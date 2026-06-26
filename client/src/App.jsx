@@ -103,25 +103,32 @@ export default function App() {
     </AuthContext.Provider>
   )
 
+  // Role-appropriate home/dashboard — also the fallback when a role hits a page it may not see.
+  const home = () => {
+    if (user.role === 'ae') return <AEDashboard />
+    if (user.role === 'purchaser') return <PurchaserDashboard />
+    if (user.role === 'purchasing_manager') return <PurchasingManagerView />
+    return <Dashboard />
+  }
+  // CRM (sales-side) pages — purchasing roles are redirected home. Mirrors the backend requireCrmAccess gate.
+  const CRM_ROLES = ['manager', 'ae']
+  const isCrm = CRM_ROLES.includes(user.role)
+
   const renderPage = () => {
     switch (page.name) {
-      case 'dashboard':
-        if (user.role === 'ae') return <AEDashboard />
-        if (user.role === 'purchaser') return <PurchaserDashboard />
-        if (user.role === 'purchasing_manager') return <PurchasingManagerView />
-        return <Dashboard />
-      case 'leads':           return <InquiryList type="lead" title="Leads" />
-      case 'repeat':          return <InquiryList type="repeat" title="Repeat Inquiries" />
-      case 'orders':          return <InquiryList type="online_order" title="Online Orders" />
-      case 'customers':       return <Customers />
-      case 'customer-detail': return <CustomerDetail id={page.params.id} />
-      case 'inquiry-detail':  return <InquiryDetail id={page.params.id} />
-      case 'users':           return user.role === 'manager' ? <Users /> : <Dashboard />
-      case 'import':          return user.role === 'manager' ? <ImportData /> : <Dashboard />
+      case 'dashboard':       return home()
+      case 'leads':           return isCrm ? <InquiryList type="lead" title="Leads" /> : home()
+      case 'repeat':          return isCrm ? <InquiryList type="repeat" title="Repeat Inquiries" /> : home()
+      case 'orders':          return isCrm ? <InquiryList type="online_order" title="Online Orders" /> : home()
+      case 'customers':       return isCrm ? <Customers /> : home()
+      case 'customer-detail': return isCrm ? <CustomerDetail id={page.params.id} /> : home()
+      case 'inquiry-detail':  return isCrm ? <InquiryDetail id={page.params.id} /> : home()
+      case 'users':           return user.role === 'manager' ? <Users /> : home()
+      case 'import':          return user.role === 'manager' ? <ImportData /> : home()
       case 'notifications':   return <Notifications />
-      case 'operations':      return user.role === 'manager' ? <Operations /> : <Dashboard />
-      case 'purchasing':      return <PurchasingManagerView />
-      default:                return <Dashboard />
+      case 'operations':      return user.role === 'manager' ? <Operations /> : home()
+      case 'purchasing':      return ['purchasing_manager', 'manager'].includes(user.role) ? <PurchasingManagerView /> : home()
+      default:                return home()
     }
   }
 
