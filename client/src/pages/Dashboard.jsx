@@ -665,7 +665,14 @@ function RepeatTab({ filters, onDrilldown }) {
 
 // ── Orders Tab ──────────────────────────────────────────────────
 function OrdersTab({ filters, onDrilldown }) {
+  const { navigate } = useNav()
   const { data, loading } = useModuleData('online_order', filters)
+  const [unassigned, setUnassigned] = useState([])
+  useEffect(() => {
+    api.getInquiries('online_order', {})
+      .then(list => setUnassigned((list || []).filter(o => !o.assigned_to && !['Processed', 'Cancelled'].includes(o.disposition))))
+      .catch(() => {})
+  }, [])
   if (loading) return <Loader />
   if (!data) return null
   const t = data.today; const p = data.period
@@ -693,9 +700,27 @@ function OrdersTab({ filters, onDrilldown }) {
       </div>
       <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:20, marginBottom:20 }}>
         <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
-          <SectionTitle>Processed vs Cancelled Trend</SectionTitle>
-          {!data.trend?.length ? <div style={{ height:160, display:'flex', alignItems:'center', justifyContent:'center', color:'#94a3b8' }}>No data</div> : (
-            <ResponsiveContainer width="100%" height={180}><BarChart data={data.trend.map(t => ({ ...t, date: t.date?.slice(5) }))} barSize={8}><XAxis dataKey="date" tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} /><Tooltip content={<Tip />} /><Bar dataKey="processed" name="Processed" fill="#10b981" radius={[3,3,0,0]} /><Bar dataKey="cancelled" name="Cancelled" fill="#ef4444" radius={[3,3,0,0]} /></BarChart></ResponsiveContainer>
+          <SectionTitle>New Unassigned Orders{unassigned.length > 0 && <span style={{ marginLeft:8, minWidth:20, height:20, padding:'0 6px', borderRadius:100, background:'#dc2626', color:'#fff', fontSize:11, fontWeight:800, display:'inline-flex', alignItems:'center', justifyContent:'center', verticalAlign:'middle' }}>{unassigned.length}</span>}</SectionTitle>
+          {unassigned.length === 0 ? (
+            <div style={{ height:160, display:'flex', alignItems:'center', justifyContent:'center', color:'#94a3b8', fontSize:13 }}>No unassigned orders — all caught up</div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:300, overflowY:'auto' }}>
+              {unassigned.map(o => (
+                <div key={o.id} onClick={() => navigate('inquiry-detail', { id: o.id })}
+                  style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 12px', border:'1px solid #f1f5f9', borderRadius:10, cursor:'pointer', transition:'all 0.12s' }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = BRAND; e.currentTarget.style.background = `${BRAND}08` }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = '#f1f5f9'; e.currentTarget.style.background = '#fff' }}>
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontWeight:600, color:'#0f172a', fontSize:13, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{o.customer_name || '—'}</div>
+                    <div style={{ fontSize:11, color:'#94a3b8' }}>{[o.lead_source || o.source, formatDateShort(o.created_at)].filter(Boolean).join(' · ')}</div>
+                  </div>
+                  <div style={{ textAlign:'right', flexShrink:0, marginLeft:12 }}>
+                    {o.order_amount ? <div style={{ fontWeight:700, color:BRAND, fontSize:13 }}>${o.order_amount}</div> : null}
+                    <div style={{ fontSize:11, color:'#dc2626', fontWeight:700 }}>Assign →</div>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
         <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
@@ -750,11 +775,11 @@ export default function Dashboard() {
 
   useEffect(() => { api.getUsers().then(setUsers) }, [])
 
-  // New online orders awaiting attention (not yet Processed/Cancelled) — red badge on the Orders tab.
+  // Manager notification: new online orders that came in and are UNASSIGNED — red badge on the Orders tab.
   const [newOrders, setNewOrders] = useState(0)
   useEffect(() => {
     api.getInquiries('online_order', {})
-      .then(list => setNewOrders((list || []).filter(o => !['Processed', 'Cancelled'].includes(o.disposition)).length))
+      .then(list => setNewOrders((list || []).filter(o => !o.assigned_to && !['Processed', 'Cancelled'].includes(o.disposition)).length))
       .catch(() => {})
   }, [activeTab])
 
