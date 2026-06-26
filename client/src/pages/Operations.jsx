@@ -1705,6 +1705,12 @@ function RMATab() {
     catch(e) { toast(e.message || 'Could not delete RMA', 'error') }
   }
 
+  const rmaTotals = rmas.reduce((a, r) => ({
+    ret:     a.ret     + (Number(r.return_amount) || 0),
+    refund:  a.refund  + (Number(r.refund_issued) || 0),
+    restock: a.restock + (Number(r.restocking_fee) || 0),
+  }), { ret: 0, refund: 0, restock: 0 })
+
   return (
     <div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1723,8 +1729,8 @@ function RMATab() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr className="table-header">
-                {['RMA #', 'Order', 'Return Item', 'Qty', 'Unit Price', 'Return Amount', 'Customer', 'Reason', 'Status', 'Refund', 'Restocking', 'Issue Date', 'QB Memo', ''].map(h => (
-                  <th key={h} className="table-cell" style={{ whiteSpace: 'nowrap' }}>{h}</th>
+                {[{h:'RMA #'},{h:'Order'},{h:'Return Item'},{h:'Qty',num:1},{h:'Unit Price',num:1},{h:'Return Amount',num:1},{h:'Customer'},{h:'Reason'},{h:'Status'},{h:'Refund',num:1},{h:'Restocking',num:1},{h:'Issue Date'},{h:'QB Memo'},{h:''}].map(c => (
+                  <th key={c.h} className="table-cell" style={{ whiteSpace: 'nowrap', textAlign: c.num ? 'right' : 'left' }}>{c.h}</th>
                 ))}
               </tr>
             </thead>
@@ -1734,14 +1740,14 @@ function RMATab() {
                   <td className="table-cell" style={{ fontWeight: 700, color: '#dc2626' }}>{r.rma_number}</td>
                   <td className="table-cell" style={{ color: BRAND, fontWeight: 600 }}>{r.order_number || '—'}</td>
                   <td className="table-cell" style={{ color: '#475569' }}>{r.return_item_part ? `${r.return_item_part}${r.return_item_desc ? ` — ${r.return_item_desc}` : ''}` : '—'}</td>
-                  <td className="table-cell">{r.return_quantity}</td>
-                  <td className="table-cell">{fmt(r.unit_selling_price)}</td>
-                  <td className="table-cell" style={{ fontWeight: 700, color: '#10b981' }}>{fmt(r.return_amount)}</td>
+                  <td className="table-cell" style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.return_quantity}</td>
+                  <td className="table-cell" style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(r.unit_selling_price)}</td>
+                  <td className="table-cell" style={{ fontWeight: 700, color: '#10b981', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(r.return_amount)}</td>
                   <td className="table-cell">{r.customer_name || r.email || '—'}</td>
                   <td className="table-cell" style={{ color: '#64748b', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.return_reason || '—'}</td>
                   <td className="table-cell"><StatusBadge status={r.rma_status} styleMap={RMA_STATUS_STYLE} /></td>
-                  <td className="table-cell" style={{ color: '#dc2626', fontWeight: 600 }}>{fmt(r.refund_issued)}</td>
-                  <td className="table-cell" style={{ color: '#64748b' }}>{fmt(r.restocking_fee)}</td>
+                  <td className="table-cell" style={{ color: '#dc2626', fontWeight: 600, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(r.refund_issued)}</td>
+                  <td className="table-cell" style={{ color: '#64748b', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(r.restocking_fee)}</td>
                   <td className="table-cell" style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{fmtDate(r.rma_issue_date)}</td>
                   <td className="table-cell" style={{ color: '#64748b' }}>{r.qb_credit_memo || '—'}</td>
                   <td className="table-cell">
@@ -1753,6 +1759,16 @@ function RMATab() {
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr style={{ background: '#f8fafc', borderTop: '2px solid #e2e8f0' }}>
+                <td className="table-cell" colSpan={5} style={{ fontWeight: 700, color: '#475569' }}>{rmas.length} RMA{rmas.length === 1 ? '' : 's'}</td>
+                <td className="table-cell" style={{ textAlign: 'right', fontWeight: 700, color: '#10b981', fontVariantNumeric: 'tabular-nums' }}>{fmt(rmaTotals.ret)}</td>
+                <td className="table-cell" colSpan={3} />
+                <td className="table-cell" style={{ textAlign: 'right', fontWeight: 700, color: '#dc2626', fontVariantNumeric: 'tabular-nums' }}>{fmt(rmaTotals.refund)}</td>
+                <td className="table-cell" style={{ textAlign: 'right', fontWeight: 700, color: '#475569', fontVariantNumeric: 'tabular-nums' }}>{fmt(rmaTotals.restock)}</td>
+                <td className="table-cell" colSpan={3} />
+              </tr>
+            </tfoot>
           </table>
         </div>
       )}
