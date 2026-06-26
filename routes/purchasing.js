@@ -10,6 +10,17 @@ const canManage = (req, res, next) => {
   return res.status(403).json({ error: 'Purchasing managers only' });
 };
 
+const isMgr = (role) => ['purchasing_manager','manager'].includes(role);
+
+// Load an assignment plus its inquiry's AE id, for per-record authorization.
+function getAssignmentCtx(db, assignmentId) {
+  return db.prepare(`SELECT pa.id, pa.purchaser_id, i.assigned_to as ae_id
+    FROM purchase_assignments pa
+    JOIN requirements r ON pa.requirement_id = r.id
+    JOIN inquiries i ON r.inquiry_id = i.id
+    WHERE pa.id = ?`).get(assignmentId);
+}
+
 const PAGE_SIZE = 30;
 const pageOffset = (p) => (parseInt(p || 1) - 1) * PAGE_SIZE;
 
@@ -178,10 +189,16 @@ router.delete('/assign/:reqId', canManage, (req, res) => {
 router.patch('/assignment/:id', (req, res) => {
   const { urgency, pm_notes, purchaser_notes, not_in_stock } = req.body;
   const db = getDB();
+  const ctx = getAssignmentCtx(db, req.params.id);
+  if (!ctx) return res.status(404).json({ error: 'Assignment not found' });
+  const mgr = isMgr(req.user.role);
+  if (!mgr && ctx.purchaser_id !== req.user.id) return res.status(403).json({ error: 'Not your assignment' });
+
   const updates = [];
   const params = [];
-  if (urgency !== undefined) { updates.push('urgency=?'); params.push(urgency); }
-  if (pm_notes !== undefined) { updates.push('pm_notes=?'); params.push(pm_notes); }
+  // urgency + pm_notes are manager-only fields; purchasers may only touch their own notes / stock flag.
+  if (mgr && urgency !== undefined) { updates.push('urgency=?'); params.push(urgency); }
+  if (mgr && pm_notes !== undefined) { updates.push('pm_notes=?'); params.push(pm_notes); }
   if (purchaser_notes !== undefined) { updates.push('purchaser_notes=?'); params.push(purchaser_notes); }
   if (not_in_stock !== undefined) { updates.push('not_in_stock=?'); params.push(not_in_stock ? 1 : 0); }
   if (!updates.length) return res.json({ success: true });
@@ -231,12 +248,14 @@ router.get('/part/:assignmentId', (req, res) => {
   try {
     const part = db.prepare(`${PART_SELECT} WHERE pa.id=?`).get(req.params.assignmentId);
     if (!part) return res.status(404).json({ error: 'Not found' });
+    if (!isMgr(req.user.role) && part.purchaser_id !== req.user.id && part.ae_id !== req.user.id)
+      return res.status(403).json({ error: 'Not authorized for this part' });
     const comments = db.prepare('SELECT * FROM part_comments WHERE assignment_id=? ORDER BY created_at ASC').all(req.params.assignmentId);
     const followups = db.prepare('SELECT * FROM purchaser_followups WHERE assignment_id=? ORDER BY follow_up_date ASC, id ASC').all(req.params.assignmentId);
     res.json({
       ...part,
-      working_days_pending: part.assignment_status === 'pending' ? workingDaysSince(part.assigned_at) : 0,
-      is_delayed: part.assignment_status === 'pending' ? workingDaysSince(part.assigned_at) >= 4 : false,
+      working_days_pending: part.assignment_status === 'pending' && !part.not_in_stock ? workingDaysSince(part.assigned_at) : 0,
+      is_delayed: part.assignment_status === 'pending' && !part.not_in_stock ? workingDaysSince(part.assigned_at) >= 4 : false,
       is_over_selling: part.quote_id && part.selling_price && part.inquiry_type === 'online_order'
         ? parseFloat(String(part.price).replace(/[$,]/g,'')) > parseFloat(String(part.selling_price).replace(/[$,]/g,''))
         : false,
@@ -257,6 +276,7 @@ router.post('/quote', (req, res) => {
   try {
     const a = db.prepare(`SELECT pa.*, r.part_number, i.assigned_to as ae_id, i.type as inquiry_type, i.order_amount as selling_price, c.name as customer_name FROM purchase_assignments pa JOIN requirements r ON pa.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id JOIN customers c ON i.customer_id=c.id WHERE pa.id=?`).get(assignment_id);
     if (!a) return res.status(404).json({ error: 'Assignment not found' });
+    if (!isMgr(req.user.role) && a.purchaser_id !== req.user.id) return res.status(403).json({ error: 'Not your assignment' });
 
     const existing = db.prepare('SELECT id FROM purchase_quotes WHERE assignment_id=?').get(assignment_id);
     if (existing) {
@@ -289,6 +309,10 @@ router.post('/comment/:assignmentId', (req, res) => {
   if (!comment?.trim()) return res.status(400).json({ error: 'Comment required' });
   const db = getDB();
   try {
+    const ctx = getAssignmentCtx(db, req.params.assignmentId);
+    if (!ctx) return res.status(404).json({ error: 'Assignment not found' });
+    if (!isMgr(req.user.role) && ctx.purchaser_id !== req.user.id && ctx.ae_id !== req.user.id)
+      return res.status(403).json({ error: 'Not authorized for this part' });
     const result = db.prepare('INSERT INTO part_comments (assignment_id, user_id, user_name, user_role, comment) VALUES (?,?,?,?,?)').run(req.params.assignmentId, req.user.id, req.user.name, req.user.role, comment);
     res.json({ id: result.lastInsertRowid });
   } catch (err) {
@@ -302,6 +326,9 @@ router.post('/followup/:assignmentId', (req, res) => {
   if (!note?.trim()) return res.status(400).json({ error: 'Note required' });
   const db = getDB();
   try {
+    const ctx = getAssignmentCtx(db, req.params.assignmentId);
+    if (!ctx) return res.status(404).json({ error: 'Assignment not found' });
+    if (!isMgr(req.user.role) && ctx.purchaser_id !== req.user.id) return res.status(403).json({ error: 'Not your assignment' });
     const result = db.prepare('INSERT INTO purchaser_followups (assignment_id, purchaser_id, note, follow_up_date) VALUES (?,?,?,?)').run(req.params.assignmentId, req.user.id, note, follow_up_date || null);
     res.json({ id: result.lastInsertRowid });
   } catch (err) {
@@ -311,7 +338,11 @@ router.post('/followup/:assignmentId', (req, res) => {
 
 router.patch('/followup/:id/complete', (req, res) => {
   try {
-    getDB().prepare('UPDATE purchaser_followups SET completed=1 WHERE id=?').run(req.params.id);
+    const db = getDB();
+    const fu = db.prepare('SELECT purchaser_id FROM purchaser_followups WHERE id=?').get(req.params.id);
+    if (!fu) return res.status(404).json({ error: 'Follow-up not found' });
+    if (!isMgr(req.user.role) && fu.purchaser_id !== req.user.id) return res.status(403).json({ error: 'Not your follow-up' });
+    db.prepare('UPDATE purchaser_followups SET completed=1 WHERE id=?').run(req.params.id);
     res.json({ success: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -377,8 +408,9 @@ router.get('/stats', (req, res) => {
       const quotedToday   = db.prepare("SELECT COUNT(*) as c FROM purchase_quotes WHERE date(updated_at)=?").get(today).c;
       const newToday      = db.prepare("SELECT COUNT(*) as c FROM requirements r JOIN inquiries i ON r.inquiry_id=i.id WHERE date(i.created_at)=? AND r.part_number!=''").get(today).c;
 
-      // Delayed: assigned pending > 4 working days (approx 6 calendar days)
-      const delayed = db.prepare("SELECT COUNT(*) as c FROM purchase_assignments WHERE status='pending' AND not_in_stock=0 AND assigned_at < datetime('now','-6 days')").get().c;
+      // Delayed: pending > 4 working days — counted in JS so the KPI matches the per-card ⚠️ badge exactly.
+      const delayed = db.prepare("SELECT assigned_at FROM purchase_assignments WHERE status='pending' AND not_in_stock=0").all()
+        .filter(r => workingDaysSince(r.assigned_at) >= 4).length;
 
       // Financial
       const allQuotes = db.prepare("SELECT pq.price, i.order_amount as selling_price, i.type FROM purchase_quotes pq JOIN purchase_assignments pa ON pq.assignment_id=pa.id JOIN requirements r ON pa.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id").all();
@@ -405,7 +437,8 @@ router.get('/stats', (req, res) => {
       const myQuoted    = db.prepare("SELECT COUNT(*) as c FROM purchase_assignments WHERE purchaser_id=? AND status='quoted'").get(userId).c;
       const myToday     = db.prepare("SELECT COUNT(*) as c FROM purchase_quotes WHERE purchaser_id=? AND date(updated_at)=?").get(userId, today).c;
       const myWeek      = db.prepare("SELECT COUNT(*) as c FROM purchase_quotes WHERE purchaser_id=? AND updated_at>=datetime('now','-7 days')").get(userId).c;
-      const myDelayed   = db.prepare("SELECT COUNT(*) as c FROM purchase_assignments WHERE purchaser_id=? AND status='pending' AND not_in_stock=0 AND assigned_at<datetime('now','-6 days')").get(userId).c;
+      const myDelayed   = db.prepare("SELECT assigned_at FROM purchase_assignments WHERE purchaser_id=? AND status='pending' AND not_in_stock=0").all(userId)
+        .filter(r => workingDaysSince(r.assigned_at) >= 4).length;
       const myNotInStock= db.prepare("SELECT COUNT(*) as c FROM purchase_assignments WHERE purchaser_id=? AND not_in_stock=1").get(userId).c;
 
       // Avg quoting time (hours)

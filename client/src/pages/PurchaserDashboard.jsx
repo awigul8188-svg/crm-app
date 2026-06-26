@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { purchasingApi } from '../api'
+import { purchasingApi, api } from '../api'
 import { useAuth } from '../App'
 import { formatDate, formatDateShort, timeAgo } from '../components/Badges'
 
@@ -10,6 +10,13 @@ const URGENCY = { critical:{ label:'Critical', color:'#ef4444', bg:'#fef2f2', bo
 const CONDITIONS = ['New','Used','Refurbished','For Parts','Other']
 const inp = { width:'100%', boxSizing:'border-box', background:'#fff', border:'1px solid #e2e8f0', borderRadius:'12px', padding:'10px 14px', fontSize:'13px', color:'#0f172a', fontFamily:'"Plus Jakarta Sans",sans-serif', outline:'none', transition:'border 0.15s' }
 const inpF = { border:`1px solid ${BRAND}`, boxShadow:`0 0 0 3px rgba(0,212,200,0.12)` }
+
+// Render a price stored as a raw string ("250", "$250", "1,200") as a single clean "$250" — avoids "$$250".
+const money = (v) => {
+  if (v === null || v === undefined || v === '') return '—'
+  const s = String(v).replace(/[$,]/g,'').trim()
+  return /^\d/.test(s) ? `$${s}` : (s || '—')
+}
 
 const PRESETS = [{ label:'Today',v:'today' },{ label:'Week',v:'week' },{ label:'Month',v:'month' },{ label:'All',v:'all' },{ label:'Custom',v:'custom' }]
 function getDateRange(preset, from, to) {
@@ -21,9 +28,9 @@ function getDateRange(preset, from, to) {
   return { from:'', to:'' }
 }
 
-function SInput({ value, onChange, placeholder, type='text' }) {
+function SInput({ value, onChange, placeholder, type='text', onKeyDown }) {
   const [f,setF] = useState(false)
-  return <input type={type} value={value} onChange={onChange} placeholder={placeholder} style={{ ...inp, ...(f?inpF:{}) }} onFocus={()=>setF(true)} onBlur={()=>setF(false)} />
+  return <input type={type} value={value} onChange={onChange} onKeyDown={onKeyDown} placeholder={placeholder} style={{ ...inp, ...(f?inpF:{}) }} onFocus={()=>setF(true)} onBlur={()=>setF(false)} />
 }
 function STextarea({ value, onChange, placeholder }) {
   const [f,setF] = useState(false)
@@ -52,54 +59,81 @@ function PartDetailModal({ assignmentId, onClose, onSaved }) {
   const [comment, setComment] = useState(''); const [sendingComment, setSendingComment] = useState(false)
   const [followupNote, setFollowupNote] = useState(''); const [followupDate, setFollowupDate] = useState(''); const [savingFollowup, setSavingFollowup] = useState(false)
   const [saving, setSaving] = useState(false); const [error, setError] = useState('')
+  const [flash, setFlash] = useState(null); const [dirty, setDirty] = useState(false)
+  const showFlash = (type, msg) => { setFlash({ type, msg }); setTimeout(() => setFlash(null), 2500) }
+  const authHeaders = { Authorization:`Bearer ${localStorage.getItem('crm_token')}`, 'Content-Type':'application/json' }
 
   const load = () => {
     fetch(`/api/purchasing/part/${assignmentId}`, { headers:{ Authorization:`Bearer ${localStorage.getItem('crm_token')}` } })
       .then(r=>r.json()).then(d => {
-        setPart(d); setPrice(d.price||''); setCondition(d.condition||''); setLeadTime(d.lead_time||''); setSupplier(d.supplier_name||''); setQuoteNotes(d.quote_notes||''); setPurchaserNotes(d.purchaser_notes||'')
+        setPart(d); setPrice(d.price||''); setCondition(d.condition||''); setLeadTime(d.lead_time||''); setSupplier(d.supplier_name||''); setQuoteNotes(d.quote_notes||''); setPurchaserNotes(d.purchaser_notes||''); setDirty(false)
       })
+      .catch(() => showFlash('err','Could not load part'))
   }
   useEffect(() => { load() }, [assignmentId])
+
+  // Backdrop / × close — warn if there are unsaved quote or notes edits.
+  const attemptClose = () => { if (dirty && !window.confirm('Discard unsaved changes?')) return; onClose() }
 
   const handleQuoteSubmit = async () => {
     if (!price) return setError('Price is required')
     if (!condition) return setError('Select a condition')
     const finalCond = condition==='Other' ? customCond : condition
     setSaving(true); setError('')
-    const res = await purchasingApi.submitQuote({ assignment_id: assignmentId, price, condition:finalCond, lead_time:leadTime, supplier_name:supplier, notes:quoteNotes })
-    if (res.error) setError(res.error)
-    else { load(); onSaved() }
+    try {
+      const res = await purchasingApi.submitQuote({ assignment_id: assignmentId, price, condition:finalCond, lead_time:leadTime, supplier_name:supplier, notes:quoteNotes })
+      if (res.error) setError(res.error)
+      else { showFlash('ok','Quote saved'); load(); onSaved() }
+    } catch(e) { setError(e.message || 'Could not save quote') }
     setSaving(false)
   }
 
   const handleSaveNotes = async () => {
     setSavingNotes(true)
-    await fetch(`/api/purchasing/assignment/${assignmentId}`, { method:'PATCH', headers:{ Authorization:`Bearer ${localStorage.getItem('crm_token')}`, 'Content-Type':'application/json' }, body:JSON.stringify({ purchaser_notes: purchaserNotes }) })
+    try {
+      const r = await fetch(`/api/purchasing/assignment/${assignmentId}`, { method:'PATCH', headers:authHeaders, body:JSON.stringify({ purchaser_notes: purchaserNotes }) })
+      if (!r.ok) throw new Error('Save failed')
+      setDirty(false); showFlash('ok','Notes saved')
+    } catch(e) { showFlash('err', e.message || 'Could not save notes') }
     setSavingNotes(false)
   }
 
   const handleMarkNotInStock = async () => {
-    await fetch(`/api/purchasing/assignment/${assignmentId}`, { method:'PATCH', headers:{ Authorization:`Bearer ${localStorage.getItem('crm_token')}`, 'Content-Type':'application/json' }, body:JSON.stringify({ not_in_stock: !part.not_in_stock }) })
-    load(); onSaved()
+    try {
+      const r = await fetch(`/api/purchasing/assignment/${assignmentId}`, { method:'PATCH', headers:authHeaders, body:JSON.stringify({ not_in_stock: !part.not_in_stock }) })
+      if (!r.ok) throw new Error('Update failed')
+      load(); onSaved()
+    } catch(e) { showFlash('err', e.message || 'Could not update stock status') }
   }
 
   const handleComment = async () => {
     if (!comment.trim()) return
     setSendingComment(true)
-    await fetch(`/api/purchasing/comment/${assignmentId}`, { method:'POST', headers:{ Authorization:`Bearer ${localStorage.getItem('crm_token')}`, 'Content-Type':'application/json' }, body:JSON.stringify({ comment }) })
-    setComment(''); setSendingComment(false); load()
+    try {
+      const r = await fetch(`/api/purchasing/comment/${assignmentId}`, { method:'POST', headers:authHeaders, body:JSON.stringify({ comment }) })
+      if (!r.ok) throw new Error('Send failed')
+      setComment(''); load()
+    } catch(e) { showFlash('err', e.message || 'Could not send message') }
+    setSendingComment(false)
   }
 
   const handleFollowup = async () => {
     if (!followupNote.trim()) return
     setSavingFollowup(true)
-    await fetch(`/api/purchasing/followup/${assignmentId}`, { method:'POST', headers:{ Authorization:`Bearer ${localStorage.getItem('crm_token')}`, 'Content-Type':'application/json' }, body:JSON.stringify({ note:followupNote, follow_up_date:followupDate }) })
-    setFollowupNote(''); setFollowupDate(''); setSavingFollowup(false); load()
+    try {
+      const r = await fetch(`/api/purchasing/followup/${assignmentId}`, { method:'POST', headers:authHeaders, body:JSON.stringify({ note:followupNote, follow_up_date:followupDate }) })
+      if (!r.ok) throw new Error('Save failed')
+      setFollowupNote(''); setFollowupDate(''); load()
+    } catch(e) { showFlash('err', e.message || 'Could not add follow-up') }
+    setSavingFollowup(false)
   }
 
   const completeFollowup = async (id) => {
-    await fetch(`/api/purchasing/followup/${id}/complete`, { method:'PATCH', headers:{ Authorization:`Bearer ${localStorage.getItem('crm_token')}` } })
-    load()
+    try {
+      const r = await fetch(`/api/purchasing/followup/${id}/complete`, { method:'PATCH', headers:{ Authorization:`Bearer ${localStorage.getItem('crm_token')}` } })
+      if (!r.ok) throw new Error('Update failed')
+      load(); onSaved()
+    } catch(e) { showFlash('err', e.message || 'Could not complete follow-up') }
   }
 
   if (!part) return createPortal(
@@ -113,7 +147,7 @@ function PartDetailModal({ assignmentId, onClose, onSaved }) {
   const isOver = part.is_over_selling
 
   return createPortal(
-    <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:99999, background:'rgba(0,0,0,0.55)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+    <div onClick={attemptClose} style={{ position:'fixed', inset:0, zIndex:99999, background:'rgba(0,0,0,0.55)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
       <div onClick={e=>e.stopPropagation()} style={{ background:'#fff', borderRadius:20, boxShadow:'0 24px 80px rgba(0,0,0,0.25)', width:'100%', maxWidth:640, maxHeight:'92vh', display:'flex', flexDirection:'column', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>
         <style>{`@keyframes modalIn{from{opacity:0;transform:scale(0.96) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
@@ -132,12 +166,12 @@ function PartDetailModal({ assignmentId, onClose, onSaved }) {
               <div style={{ fontSize:11, color:'#94a3b8', marginTop:2 }}>AE: {part.ae_name||'—'} · Assigned {timeAgo(part.assigned_at)}</div>
               {part.inquiry_type==='online_order' && part.selling_price && (
                 <div style={{ fontSize:12, fontWeight:700, color:isOver?'#dc2626':'#10b981', marginTop:3 }}>
-                  {isOver?`⚠️ Selling price: $${part.selling_price} — your quote is OVER`:`Selling price: $${part.selling_price}`}
+                  {isOver?`⚠️ Selling price: ${money(part.selling_price)} — your quote is OVER`:`Selling price: ${money(part.selling_price)}`}
                 </div>
               )}
               {part.pm_notes && (
                 <div style={{ marginTop:6, background:'#fef9c3', border:'1px solid #fde047', borderRadius:8, padding:'6px 10px', fontSize:12, color:'#713f12' }}>
-                  <span style={{ fontWeight:700 }}>?? PM Note: </span>{part.pm_notes}
+                  <span style={{ fontWeight:700 }}>📌 PM Note: </span>{part.pm_notes}
                 </div>
               )}
             </div>
@@ -146,19 +180,19 @@ function PartDetailModal({ assignmentId, onClose, onSaved }) {
                 style={{ padding:'6px 12px', borderRadius:10, border:`1px solid ${part.not_in_stock?'#10b981':'#ef4444'}`, background:part.not_in_stock?'#f0fdf4':'#fef2f2', color:part.not_in_stock?'#10b981':'#ef4444', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', whiteSpace:'nowrap' }}>
                 {part.not_in_stock?'✓ Mark In Stock':'❌ Not In Stock'}
               </button>
-              <button onClick={onClose} style={{ width:32, height:32, borderRadius:10, border:'none', background:'#f1f5f9', cursor:'pointer', fontSize:18, color:'#64748b', display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
+              <button onClick={attemptClose} style={{ width:32, height:32, borderRadius:10, border:'none', background:'#f1f5f9', cursor:'pointer', fontSize:18, color:'#64748b', display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
             </div>
           </div>
         </div>
 
         {/* Tabs */}
         <div style={{ display:'flex', gap:1, borderBottom:'1px solid #f1f5f9', flexShrink:0 }}>
-          {[['quote','?? Quote'],['notes','?? My Notes'],['comments',`?? AE Chat (${part.comments?.length||0})`],['followups',`?? Follow-ups (${part.followups?.filter(f=>!f.completed).length||0})`]].map(([k,l]) => (
+          {[['quote','💰 Quote'],['notes','📝 My Notes'],['comments',`💬 AE Chat (${part.comments?.length||0})`],['followups',`📅 Follow-ups (${part.followups?.filter(f=>!f.completed).length||0})`]].map(([k,l]) => (
             <button key={k} onClick={()=>setTab(k)} style={{ flex:1, padding:'10px 0', border:'none', background:'transparent', color:tab===k?'#0f172a':'#64748b', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', borderBottom:`2px solid ${tab===k?BRAND:'transparent'}`, transition:'all 0.15s' }}>{l}</button>
           ))}
         </div>
 
-        <div style={{ overflowY:'auto', flex:1, padding:'18px 22px' }}>
+        <div onInput={()=>setDirty(true)} style={{ overflowY:'auto', flex:1, padding:'18px 22px' }}>
           {/* Quote tab */}
           {tab==='quote' && (
             <div>
@@ -184,7 +218,7 @@ function PartDetailModal({ assignmentId, onClose, onSaved }) {
               </button>
               {part.quote_id && (
                 <div style={{ marginTop:12, background:'#f0fdf4', borderRadius:10, padding:'10px 14px', border:'1px solid #bbf7d0', fontSize:12, color:'#16a34a' }}>
-                  ✓ Last quoted: ${part.price} · {part.condition} · {part.lead_time||'—'} · {timeAgo(part.quoted_at)}
+                  ✓ Last quoted: {money(part.price)} · {part.condition} · {part.lead_time||'—'} · {timeAgo(part.quoted_at)}
                 </div>
               )}
             </div>
@@ -207,7 +241,7 @@ function PartDetailModal({ assignmentId, onClose, onSaved }) {
           {tab==='comments' && (
             <div>
               <div style={{ display:'flex', gap:8, marginBottom:16 }}>
-                <SInput value={comment} onChange={e=>setComment(e.target.value)} placeholder="Write to the AE..." />
+                <SInput value={comment} onChange={e=>setComment(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter' && comment.trim()){ e.preventDefault(); handleComment() } }} placeholder="Write to the AE..." />
                 <button onClick={handleComment} disabled={sendingComment||!comment.trim()} style={{ padding:'10px 16px', borderRadius:12, border:'none', background:BRAND, color:'#0d0d0d', fontWeight:700, fontSize:13, cursor:'pointer', flexShrink:0, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>
                   {sendingComment?'...':'Send'}
                 </button>
@@ -253,7 +287,7 @@ function PartDetailModal({ assignmentId, onClose, onSaved }) {
                       </button>
                       <div style={{ flex:1 }}>
                         <div style={{ fontSize:13, fontWeight:500, color:'#0f172a', textDecoration:fu.completed?'line-through':'' }}>{fu.note}</div>
-                        {fu.follow_up_date && <div style={{ fontSize:11, color: new Date(fu.follow_up_date)<new Date()&&!fu.completed?'#ef4444':BRAND, fontWeight:600, marginTop:2 }}>?? {formatDate(fu.follow_up_date)}</div>}
+                        {fu.follow_up_date && <div style={{ fontSize:11, color: new Date(fu.follow_up_date)<new Date()&&!fu.completed?'#ef4444':BRAND, fontWeight:600, marginTop:2 }}>📅 {formatDate(fu.follow_up_date)}</div>}
                       </div>
                     </div>
                   ))}
@@ -263,6 +297,11 @@ function PartDetailModal({ assignmentId, onClose, onSaved }) {
           )}
         </div>
       </div>
+      {flash && (
+        <div style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', zIndex:100000, background:flash.type==='ok'?'#0f172a':'#dc2626', color:'#fff', padding:'10px 18px', borderRadius:10, fontSize:13, fontWeight:600, boxShadow:'0 8px 24px rgba(0,0,0,0.25)' }}>
+          {flash.type==='ok'?'✓ ':'⚠ '}{flash.msg}
+        </div>
+      )}
     </div>,
     document.body
   )
@@ -285,18 +324,18 @@ function PartCard({ part, onClick }) {
         </div>
         <div style={{ fontSize:12, color:'#64748b' }}>Qty: {part.quantity||'—'} · {part.customer_name}{part.customer_company?` · ${part.customer_company}`:''}</div>
         <div style={{ fontSize:11, color:'#94a3b8', marginTop:2 }}>AE: {part.ae_name||'—'} · Assigned {timeAgo(part.assigned_at)}</div>
-        {part.pm_notes && <div style={{ fontSize:11, color:'#92400e', background:'#fef9c3', padding:'3px 8px', borderRadius:6, marginTop:4, display:'inline-block' }}>?? {part.pm_notes}</div>}
+        {part.pm_notes && <div style={{ fontSize:11, color:'#92400e', background:'#fef9c3', padding:'3px 8px', borderRadius:6, marginTop:4, display:'inline-block' }}>📌 {part.pm_notes}</div>}
       </div>
       {part.inquiry_type==='online_order' && part.selling_price && (
         <div style={{ textAlign:'center', flexShrink:0 }}>
           <div style={{ fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase' }}>Selling</div>
-          <div style={{ fontSize:16, fontWeight:800, color:'#10b981', fontFamily:'"Bricolage Grotesque",sans-serif' }}>${part.selling_price}</div>
+          <div style={{ fontSize:16, fontWeight:800, color:'#10b981', fontFamily:'"Bricolage Grotesque",sans-serif' }}>{money(part.selling_price)}</div>
         </div>
       )}
       {part.quote_id ? (
         <div style={{ background:'#f0fdf4', borderRadius:10, padding:'8px 12px', border:'1px solid #bbf7d0', flexShrink:0, textAlign:'center' }}>
           <div style={{ fontSize:10, fontWeight:700, color:'#16a34a', textTransform:'uppercase', marginBottom:3 }}>Quoted</div>
-          <div style={{ fontWeight:800, fontSize:15, color:'#16a34a', fontFamily:'"Bricolage Grotesque",sans-serif' }}>${part.price}</div>
+          <div style={{ fontWeight:800, fontSize:15, color:'#16a34a', fontFamily:'"Bricolage Grotesque",sans-serif' }}>{money(part.price)}</div>
           <div style={{ fontSize:10, color:'#64748b' }}>{part.condition}</div>
         </div>
       ) : (
@@ -314,10 +353,20 @@ export default function PurchaserDashboard() {
   const [preset, setPreset] = useState('all'); const [customFrom, setCustomFrom] = useState(''); const [customTo, setCustomTo] = useState('')
   const [openPartId, setOpenPartId] = useState(null)
   const [partsResult, setPartsResult] = useState(null); const [partsLoading, setPartsLoading] = useState(false)
-  const [page, setPage] = useState(1); const [statusFilter, setStatusFilter] = useState(''); const [typeFilter, setTypeFilter] = useState('')
+  const [page, setPage] = useState(1); const [statusFilter, setStatusFilter] = useState('')
 
   const dateRange = getDateRange(preset, customFrom, customTo)
-  const loadStats = () => purchasingApi.getStats().then(setStats)
+  const loadStats = () => purchasingApi.getStats().then(setStats).catch(() => {})
+
+  // Mark notifications read — optimistically update local stats so the tab badge clears.
+  const markNotifRead = (id) => {
+    api.markNotificationRead(id).catch(() => {})
+    setStats(s => s ? { ...s, myNotifications: s.myNotifications.map(n => n.id === id ? { ...n, read: 1 } : n) } : s)
+  }
+  const markAllNotifsRead = async () => {
+    await api.markAllRead().catch(() => {})
+    setStats(s => s ? { ...s, myNotifications: s.myNotifications.map(n => ({ ...n, read: 1 })) } : s)
+  }
 
   const loadParts = () => {
     if (!['lead','repeat','online_order','all_parts'].includes(activeTab)) return
@@ -334,12 +383,12 @@ export default function PurchaserDashboard() {
   const getTypeStats = (t) => stats?.byType?.find(x=>x.type===t)||{ total:0, pending_count:0, quoted_count:0 }
 
   const tabs = [
-    { key:'dashboard', label:'?? Dashboard' },
+    { key:'dashboard', label:'📊 Dashboard' },
     { key:'lead',      label:`◎ Leads (${getTypeStats('lead').total})` },
     { key:'repeat',    label:`↻ Repeat (${getTypeStats('repeat').total})` },
     { key:'online_order', label:`◈ Orders (${getTypeStats('online_order').total})` },
-    { key:'followups', label:`?? Follow-ups${stats?.followups?.overdue?.length>0?` (${stats.followups.overdue.length}⚠️)`:''}`},
-    { key:'notifications', label:`?? Notifications${stats?.myNotifications?.filter(n=>!n.read).length>0?` (${stats.myNotifications.filter(n=>!n.read).length})`:''}`},
+    { key:'followups', label:`📅 Follow-ups${stats?.followups?.overdue?.length>0?` (${stats.followups.overdue.length}⚠️)`:''}`},
+    { key:'notifications', label:`🔔 Notifications${stats?.myNotifications?.filter(n=>!n.read).length>0?` (${stats.myNotifications.filter(n=>!n.read).length})`:''}`},
   ]
 
   return (
@@ -348,12 +397,13 @@ export default function PurchaserDashboard() {
 
       <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:20, flexWrap:'wrap', gap:12 }}>
         <div>
-          <h1 style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:800, fontSize:24, color:'#0f172a', margin:0 }}>{greeting()}, {user.name} ??</h1>
+          <h1 style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:800, fontSize:24, color:'#0f172a', margin:0 }}>{greeting()}, {user.name} 👋</h1>
           <p style={{ color:'#94a3b8', fontSize:13, marginTop:3 }}>Your assigned parts and quoting dashboard</p>
         </div>
       </div>
 
-      {/* Date filter */}
+      {/* Date filter — only on the parts-list tabs, where it actually filters the list (it does not affect dashboard stats) */}
+      {['lead','repeat','online_order'].includes(activeTab) && (
       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:16, flexWrap:'wrap' }}>
         <div style={{ display:'flex', background:'#fff', border:'1px solid #e2e8f0', borderRadius:10, padding:3, gap:2 }}>
           {PRESETS.map(r => <button key={r.v} onClick={()=>setPreset(r.v)} style={{ padding:'5px 12px', borderRadius:7, border:'none', background:preset===r.v?BRAND:'transparent', color:preset===r.v?'#0d0d0d':'#64748b', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', transition:'all 0.15s' }}>{r.label}</button>)}
@@ -371,6 +421,7 @@ export default function PurchaserDashboard() {
           </div>
         )}
       </div>
+      )}
 
       {/* Tabs */}
       <div style={{ display:'flex', gap:2, background:'#f1f5f9', borderRadius:12, padding:3, marginBottom:20, flexWrap:'wrap' }}>
@@ -380,8 +431,8 @@ export default function PurchaserDashboard() {
       {/* Dashboard */}
       {activeTab==='dashboard' && (
         <div>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:12, marginBottom:20 }}>
-            {[['Assigned',stats?.myAssigned,'#6366f1','??'],['Pending',stats?.myPending,'#f59e0b','⏳'],['Quoted',stats?.myQuoted,'#10b981','✅'],['Today',stats?.myToday,BRAND,'⚡'],['This Week',stats?.myWeek,'#3b82f6','??'],['Delayed',stats?.myDelayed,'#dc2626','⚠️'],['Not In Stock',stats?.myNotInStock,'#94a3b8','❌']].map(([l,v,c,ic]) => (
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))', gap:12, marginBottom:20 }}>
+            {[['Assigned',stats?.myAssigned,'#6366f1'],['Pending',stats?.myPending,'#f59e0b'],['Quoted',stats?.myQuoted,'#10b981'],['Today',stats?.myToday,BRAND],['This Week',stats?.myWeek,'#3b82f6'],['Delayed',stats?.myDelayed,'#dc2626'],['Not In Stock',stats?.myNotInStock,'#94a3b8']].map(([l,v,c]) => (
               <div key={l} style={{ background:l==='Delayed'&&v>0?'#fff5f5':'#fff', borderRadius:12, border:`1px solid ${l==='Delayed'&&v>0?'#fecaca':'#f1f5f9'}`, padding:'12px 14px', position:'relative', overflow:'hidden' }}>
                 <div style={{ position:'absolute', top:0, left:0, width:3, height:'100%', background:c, borderRadius:'12px 0 0 12px' }} />
                 <div style={{ fontSize:9, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:4 }}>{l}</div>
@@ -427,7 +478,7 @@ export default function PurchaserDashboard() {
 
             {/* Follow-ups */}
             <div style={{ background:'#fff', borderRadius:14, border:'1px solid #f1f5f9', padding:20 }}>
-              <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:700, fontSize:14, color:'#0f172a', marginBottom:14 }}>?? My Follow-ups</div>
+              <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:700, fontSize:14, color:'#0f172a', marginBottom:14 }}>📅 My Follow-ups</div>
               {stats?.followups?.overdue?.length===0 && stats?.followups?.today?.length===0 && stats?.followups?.upcoming?.length===0
                 ? <div style={{ textAlign:'center', color:'#94a3b8', padding:24, fontSize:13 }}>✅ All caught up!</div>
                 : (
@@ -470,7 +521,7 @@ export default function PurchaserDashboard() {
       {/* Follow-ups tab */}
       {activeTab==='followups' && (
         <div>
-          {[{ label:'⚠️ Overdue', items:stats?.followups?.overdue||[], color:'#ef4444' }, { label:'?? Today', items:stats?.followups?.today||[], color:'#f59e0b' }, { label:'?? This Week', items:stats?.followups?.upcoming||[], color:BRAND }].map(section => (
+          {[{ label:'⚠️ Overdue', items:stats?.followups?.overdue||[], color:'#ef4444' }, { label:'📆 Today', items:stats?.followups?.today||[], color:'#f59e0b' }, { label:'🗓️ This Week', items:stats?.followups?.upcoming||[], color:BRAND }].map(section => (
             section.items.length > 0 && (
               <div key={section.label} style={{ marginBottom:24 }}>
                 <div style={{ fontSize:11, fontWeight:700, color:section.color, textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:10 }}>{section.label} — {section.items.length}</div>
@@ -500,11 +551,16 @@ export default function PurchaserDashboard() {
       {/* Notifications tab */}
       {activeTab==='notifications' && (
         <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+          {stats?.myNotifications?.some(n=>!n.read) && (
+            <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:2 }}>
+              <button onClick={markAllNotifsRead} style={{ fontSize:12, color:BRAND, background:'none', border:'none', cursor:'pointer', fontWeight:600, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>Mark all read</button>
+            </div>
+          )}
           {!stats?.myNotifications?.length ? <div style={{ background:'#fff', borderRadius:14, border:'1px solid #f1f5f9', padding:48, textAlign:'center', color:'#94a3b8' }}>No notifications yet</div> :
             stats.myNotifications.map(n => (
-              <div key={n.id} style={{ background:n.read?'#fff':'rgba(0,212,200,0.04)', border:`1px solid ${n.read?'#f1f5f9':'rgba(0,212,200,0.2)'}`, borderRadius:14, padding:'14px 16px', display:'flex', gap:12, alignItems:'flex-start' }}>
+              <div key={n.id} onClick={() => { if(!n.read) markNotifRead(n.id) }} style={{ background:n.read?'#fff':'rgba(0,212,200,0.04)', border:`1px solid ${n.read?'#f1f5f9':'rgba(0,212,200,0.2)'}`, borderRadius:14, padding:'14px 16px', display:'flex', gap:12, alignItems:'flex-start', cursor:n.read?'default':'pointer' }}>
                 <div style={{ width:36, height:36, borderRadius:10, background:n.inquiry_type==='part_assigned'?`${BRAND}20`:n.inquiry_type==='part_reassigned'?'#fef2f2':'#f0fdf4', color:n.inquiry_type==='part_assigned'?BRAND:n.inquiry_type==='part_reassigned'?'#dc2626':'#16a34a', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>
-                  {n.inquiry_type==='part_assigned'?'??':n.inquiry_type==='part_reassigned'?'↩':'✅'}
+                  {n.inquiry_type==='part_assigned'?'📦':n.inquiry_type==='part_reassigned'?'↩':'✅'}
                 </div>
                 <div style={{ flex:1 }}>
                   <div style={{ fontWeight:700, fontSize:13, color:'#0f172a', marginBottom:2 }}>{n.action}</div>
