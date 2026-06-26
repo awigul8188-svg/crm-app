@@ -166,7 +166,9 @@ function PartDetailModal({ assignmentId, onClose, onSaved }) {
               <div style={{ fontSize:11, color:'#94a3b8', marginTop:2 }}>AE: {part.ae_name||'—'} · Assigned {timeAgo(part.assigned_at)}</div>
               {part.inquiry_type==='online_order' && part.selling_price && (
                 <div style={{ fontSize:12, fontWeight:700, color:isOver?'#dc2626':'#10b981', marginTop:3 }}>
-                  {isOver?`⚠️ Selling price: ${money(part.selling_price)} — your quote is OVER`:`Selling price: ${money(part.selling_price)}`}
+                  {isOver
+                    ? `⚠️ OVER — buying ${money(part.price)}${part.quantity>1?` × ${part.quantity}`:''} exceeds selling ${money(part.selling_price)}`
+                    : `Selling price: ${money(part.selling_price)}`}
                 </div>
               )}
               {part.pm_notes && (

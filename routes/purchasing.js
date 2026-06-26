@@ -39,6 +39,19 @@ function workingDaysSince(dateStr) {
   return count;
 }
 
+// Underwater check for online orders: purchaser's BUYING cost (per-unit price × qty)
+// exceeds the website selling price the customer already paid (inquiries.order_amount).
+// NOTE: order_amount is the whole-order total, so for multi-part orders this only fires when a
+// single line's cost exceeds the entire order — conservative (no false positives, may under-flag).
+// A fully accurate check needs per-part selling prices or an order-level cost rollup.
+const num = (v) => parseFloat(String(v ?? '').replace(/[$,]/g, ''));
+function isOverSelling(price, quantity, selling_price, type) {
+  if (type !== 'online_order' || !selling_price) return false;
+  const cost = num(price) * (parseInt(quantity) || 1);
+  const sp = num(selling_price);
+  return !isNaN(cost) && !isNaN(sp) && cost > sp;
+}
+
 const PART_SELECT = `
   SELECT r.id as requirement_id, r.part_number, r.quantity,
     i.id as inquiry_id, i.type as inquiry_type, i.order_amount as selling_price,
@@ -86,9 +99,7 @@ router.get('/parts', canManage, (req, res) => {
         ? workingDaysSince(p.assigned_at) : 0,
       is_delayed: p.assignment_id && p.assignment_status === 'pending'
         ? workingDaysSince(p.assigned_at) >= 4 : false,
-      is_over_selling: p.quote_id && p.selling_price && p.inquiry_type === 'online_order'
-        ? parseFloat(String(p.price).replace(/[$,]/g,'')) > parseFloat(String(p.selling_price).replace(/[$,]/g,''))
-        : false,
+      is_over_selling: p.quote_id ? isOverSelling(p.price, p.quantity, p.selling_price, p.inquiry_type) : false,
     }));
 
     res.json({ parts: enriched, total, pages: Math.ceil(total / PAGE_SIZE), page: parseInt(page) });
@@ -256,9 +267,7 @@ router.get('/part/:assignmentId', (req, res) => {
       ...part,
       working_days_pending: part.assignment_status === 'pending' && !part.not_in_stock ? workingDaysSince(part.assigned_at) : 0,
       is_delayed: part.assignment_status === 'pending' && !part.not_in_stock ? workingDaysSince(part.assigned_at) >= 4 : false,
-      is_over_selling: part.quote_id && part.selling_price && part.inquiry_type === 'online_order'
-        ? parseFloat(String(part.price).replace(/[$,]/g,'')) > parseFloat(String(part.selling_price).replace(/[$,]/g,''))
-        : false,
+      is_over_selling: part.quote_id ? isOverSelling(part.price, part.quantity, part.selling_price, part.inquiry_type) : false,
       comments,
       followups,
     });
@@ -274,7 +283,7 @@ router.post('/quote', (req, res) => {
   const db = getDB();
 
   try {
-    const a = db.prepare(`SELECT pa.*, r.part_number, i.assigned_to as ae_id, i.type as inquiry_type, i.order_amount as selling_price, c.name as customer_name FROM purchase_assignments pa JOIN requirements r ON pa.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id JOIN customers c ON i.customer_id=c.id WHERE pa.id=?`).get(assignment_id);
+    const a = db.prepare(`SELECT pa.*, r.part_number, r.quantity, i.assigned_to as ae_id, i.type as inquiry_type, i.order_amount as selling_price, c.name as customer_name FROM purchase_assignments pa JOIN requirements r ON pa.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id JOIN customers c ON i.customer_id=c.id WHERE pa.id=?`).get(assignment_id);
     if (!a) return res.status(404).json({ error: 'Assignment not found' });
     if (!isMgr(req.user.role) && a.purchaser_id !== req.user.id) return res.status(403).json({ error: 'Not your assignment' });
 
@@ -288,8 +297,8 @@ router.post('/quote', (req, res) => {
     }
     db.prepare("UPDATE purchase_assignments SET status='quoted' WHERE id=?").run(assignment_id);
 
-    // Flag if over selling price
-    const isOver = a.selling_price && parseFloat(String(price).replace(/[$,]/g,'')) > parseFloat(String(a.selling_price).replace(/[$,]/g,''));
+    // Flag if buying cost (per-unit price × qty) is over the website selling price
+    const isOver = isOverSelling(price, a.quantity, a.selling_price, a.inquiry_type);
     const overMsg = isOver ? ` ⚠️ OVER selling price ($${a.selling_price})` : '';
     const msg = `${a.part_number} — ${condition ? condition+', ' : ''}$${price}${lead_time ? ', '+lead_time : ''}${overMsg}`;
 
@@ -380,9 +389,7 @@ router.get('/quotes', canManage, (req, res) => {
 
     const enriched = quotes.map(q => ({
       ...q,
-      is_over_selling: q.selling_price && q.inquiry_type === 'online_order'
-        ? parseFloat(String(q.price).replace(/[$,]/g,'')) > parseFloat(String(q.selling_price).replace(/[$,]/g,''))
-        : false,
+      is_over_selling: isOverSelling(q.price, q.quantity, q.selling_price, q.inquiry_type),
     }));
 
     res.json({ quotes: enriched, total, pages: Math.ceil(total / PAGE_SIZE), page: parseInt(page) });
@@ -413,15 +420,12 @@ router.get('/stats', (req, res) => {
         .filter(r => workingDaysSince(r.assigned_at) >= 4).length;
 
       // Financial
-      const allQuotes = db.prepare("SELECT pq.price, i.order_amount as selling_price, i.type FROM purchase_quotes pq JOIN purchase_assignments pa ON pq.assignment_id=pa.id JOIN requirements r ON pa.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id").all();
+      const allQuotes = db.prepare("SELECT pq.price, r.quantity, i.order_amount as selling_price, i.type FROM purchase_quotes pq JOIN purchase_assignments pa ON pq.assignment_id=pa.id JOIN requirements r ON pa.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id").all();
       let totalQuotedValue = 0, overSellingCount = 0;
       allQuotes.forEach(q => {
-        const p = parseFloat(String(q.price || '0').replace(/[$,]/g,''));
+        const p = num(q.price);
         if (!isNaN(p)) totalQuotedValue += p;
-        if (q.selling_price && q.type === 'online_order') {
-          const sp = parseFloat(String(q.selling_price).replace(/[$,]/g,''));
-          if (!isNaN(sp) && p > sp) overSellingCount++;
-        }
+        if (isOverSelling(q.price, q.quantity, q.selling_price, q.type)) overSellingCount++;
       });
       const avgQuotePrice = allQuotes.length > 0 ? (totalQuotedValue / allQuotes.length).toFixed(2) : 0;
 
