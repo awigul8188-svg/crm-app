@@ -8,14 +8,9 @@ router.use(authenticate);
 // Get all notifications for current user
 router.get('/', (req, res) => {
   const db = getDB();
-  // Purchasing managers get their own notification feed (e.g. "added parts" alerts) as `activity`.
-  if (req.user.role === 'purchasing_manager') {
-    const activity = db.prepare('SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 100').all(req.user.id);
-    const unread = activity.filter(n => !n.read).length;
-    return res.json({ followups: { overdue: [], today: [], upcoming: [] }, activity, total: unread, unreadActivity: unread });
-  }
-  // Other non-sales roles (purchaser) have no CRM follow-ups/activity here.
-  if (!['manager', 'ae'].includes(req.user.role)) {
+  // purchaser has no CRM follow-ups/activity here (they use /purchasing/stats). Everyone else
+  // (manager, purchasing_manager, ae) gets the CRM feed below.
+  if (req.user.role === 'purchaser') {
     return res.json({ followups: { overdue: [], today: [], upcoming: [] }, activity: [], total: 0, unreadActivity: 0 });
   }
   const userId = req.user.role === 'ae' ? req.user.id : null;
@@ -41,10 +36,10 @@ router.get('/', (req, res) => {
     const dueToday = db.prepare(`${base} AND f.follow_up_date = ? ORDER BY f.id ASC LIMIT 50`).all(...params, today);
     const upcoming = db.prepare(`${base} AND f.follow_up_date > ? AND f.follow_up_date <= ? ORDER BY f.follow_up_date ASC LIMIT 50`).all(...params, today, in7days);
 
-    // Activity notifications — only for managers
+    // Activity notifications — manager-level (manager + purchasing_manager)
     let activity = [];
     let unreadActivity = 0;
-    if (req.user.role === 'manager') {
+    if (['manager', 'purchasing_manager'].includes(req.user.role)) {
       activity = db.prepare(`
         SELECT n.*, 
           CASE n.inquiry_type 

@@ -93,7 +93,7 @@ export default function InquiryDetail({ id }) {
             </div>
           </div>
           <div className="flex gap-2 ml-4 flex-shrink-0">
-            {user.role === 'manager' && !editMode && (
+            {['manager', 'purchasing_manager'].includes(user.role) && !editMode && (
               <button onClick={handleDelete} disabled={deleting} className="btn-danger btn-sm">{deleting ? '...' : '🗑 Delete'}</button>
             )}
             {editMode
@@ -205,7 +205,7 @@ export default function InquiryDetail({ id }) {
                             <span>by {fu.created_by_name} · {timeAgo(fu.created_at)}</span>
                           </div>
                         </div>
-                        {user.role === 'manager' && (
+                        {['manager', 'purchasing_manager'].includes(user.role) && (
                           <button onClick={() => api.deleteFollowup(fu.id).then(load)} className="text-red-400 hover:text-red-500 text-xs flex-shrink-0">🗑</button>
                         )}
                       </div>

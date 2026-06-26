@@ -12,7 +12,7 @@ export default function ImportData() {
   const [dragging, setDragging] = useState(false)
   const inputRef = useRef()
 
-  if (user.role !== 'manager') return (
+  if (!['manager', 'purchasing_manager'].includes(user.role)) return (
     <div className="page-wrap text-center">
       <Lock size={36} className="mx-auto mb-3 text-ink-300" />
       <div className="font-semibold text-ink-500">Managers only</div>

@@ -149,22 +149,11 @@ export default function Users() {
     action: async () => { await doReset(type) },
   })
 
-  // Determine what roles this user can manage
-  const canManageRole = (targetRole) => {
-    if (user.role === 'manager') return true
-    if (user.role === 'purchasing_manager') return targetRole === 'purchaser'
-    return false
-  }
-
-  const canCreateRole = (role) => {
-    if (user.role === 'manager') return true
-    if (user.role === 'purchasing_manager') return role === 'purchaser'
-    return false
-  }
-
-  const availableRoles = user.role === 'manager'
-    ? ['ae','manager','purchasing_manager','purchaser']
-    : ['purchaser']
+  // purchasing_manager is a full manager → can manage every role.
+  const isMgr = ['manager', 'purchasing_manager'].includes(user.role)
+  const canManageRole = () => isMgr
+  const canCreateRole = () => isMgr
+  const availableRoles = ['ae','manager','purchasing_manager','purchaser']
 
   const visibleSections = SECTIONS.filter(s =>
     users.some(u => u.role === s.role) || (s.role === 'ae' || canManageRole(s.role))
@@ -172,7 +161,7 @@ export default function Users() {
 
   const headerActions = (
     <div className="flex items-center gap-2 flex-wrap">
-      {user.role === 'manager' && (
+      {isMgr && (
         <>
           <button onClick={() => askReset('ae')} disabled={resetting}
             className="btn btn-sm text-red-600 bg-red-50 border border-red-100 hover:bg-red-100">
@@ -188,12 +177,6 @@ export default function Users() {
           </button>
         </>
       )}
-      {user.role === 'purchasing_manager' && (
-        <button onClick={() => askReset('purchaser')} disabled={resetting}
-          className="btn btn-sm text-amber-600 bg-amber-50 border border-amber-100 hover:bg-amber-100">
-          <KeyRound size={13} /> Reset Purchaser Passwords
-        </button>
-      )}
       <button onClick={() => { reset(); setShowNew(true) }} className="btn-primary">+ New User</button>
     </div>
   )
@@ -203,7 +186,7 @@ export default function Users() {
       <PageHeader
         icon={<UserCog size={18} />}
         title="Users"
-        subtitle={user.role === 'manager' ? 'Manage all team members' : 'Manage your purchasers'}
+        subtitle="Manage all team members"
         action={headerActions}
       />
 
@@ -334,7 +317,7 @@ export default function Users() {
               <input style={inp} value={form.username} onChange={e => setF('username', e.target.value)} />
               <div style={{ fontSize:11, color:'#94a3b8', marginTop:4 }}>Change this to update their login username</div>
             </div>
-            {user.role === 'manager' && (
+            {isMgr && (
               <div>
                 <div style={{ fontSize:11, fontWeight:700, color:'#64748b', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Role</div>
                 <select style={{ ...inp, cursor:'pointer' }} value={form.role} onChange={e => setF('role', e.target.value)}>

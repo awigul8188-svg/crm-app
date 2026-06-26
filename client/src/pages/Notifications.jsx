@@ -287,13 +287,13 @@ function CrmNotifications() {
   const unreadActivity = localActivity.filter(n => !n.read).length
 
   const tabs = [
-    ...(user.role === 'manager' ? [{ key: 'activity', label: 'Activity', count: unreadActivity }] : []),
+    ...(['manager', 'purchasing_manager'].includes(user.role) ? [{ key: 'activity', label: 'Activity', count: unreadActivity }] : []),
     { key: 'followups', label: 'Follow-ups', count: followupTotal },
   ]
 
   const headerActions = (
     <div className="flex items-center gap-2">
-      {user.role === 'manager' && unreadActivity > 0 && (
+      {['manager', 'purchasing_manager'].includes(user.role) && unreadActivity > 0 && (
         <button onClick={handleMarkAllRead}
           className="btn btn-sm border text-brand-600 hover:bg-brand-50"
           style={{ borderColor: `${BRAND}40`, background: `${BRAND}08` }}>
@@ -311,7 +311,7 @@ function CrmNotifications() {
       <PageHeader
         icon={<Bell size={18} />}
         title="Notifications"
-        subtitle={user.role === 'manager' ? 'Team activity and follow-up reminders' : 'Your follow-up reminders'}
+        subtitle={['manager', 'purchasing_manager'].includes(user.role) ? 'Team activity and follow-up reminders' : 'Your follow-up reminders'}
         action={headerActions}
       />
 
@@ -342,7 +342,7 @@ function CrmNotifications() {
       ) : (
         <>
           {/* Activity tab */}
-          {activeTab === 'activity' && user.role === 'manager' && (
+          {activeTab === 'activity' && ['manager', 'purchasing_manager'].includes(user.role) && (
             localActivity.length === 0 ? (
               <div className="card p-16 text-center">
                 <Bell size={40} className="mx-auto mb-3 text-ink-200" />

@@ -86,7 +86,7 @@ export default function Customers() {
                 <th className="text-left px-4 py-3">Lead Source</th>
                 <th className="text-left px-4 py-3">Assigned To</th>
                 <th className="text-left px-4 py-3">Inquiries</th>
-                {user.role === 'manager' && <th className="px-4 py-3 w-12" />}
+                {['manager', 'purchasing_manager'].includes(user.role) && <th className="px-4 py-3 w-12" />}
               </tr>
             </thead>
             <tbody>
@@ -106,7 +106,7 @@ export default function Customers() {
                   <td className="table-cell">{c.lead_source ? <span className="badge bg-teal-50 text-teal-700 border-teal-200">{c.lead_source}</span> : <span className="text-ink-300 text-sm">—</span>}</td>
                   <td className="table-cell font-medium text-ink-700 text-sm">{c.assigned_name||'—'}</td>
                   <td className="table-cell"><span className="badge bg-surface-100 text-ink-600 border-ink-200">{c.inquiry_count}</span></td>
-                  {user.role === 'manager' && (
+                  {['manager', 'purchasing_manager'].includes(user.role) && (
                     <td className="table-cell" onClick={e => e.stopPropagation()}>
                       <button onClick={e => handleDelete(e, c.id, c.name)} disabled={deleting===c.id}
                         className="btn-icon btn-sm text-red-400 hover:text-red-600 hover:bg-red-50">

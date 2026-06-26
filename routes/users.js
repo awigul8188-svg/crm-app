@@ -42,12 +42,8 @@ router.get('/', (req, res) => {
   }
 });
 
-router.post('/', (req, res) => {
+router.post('/', requireManager, (req, res) => {
   const { username, password, name, role } = req.body;
-  // Managers create any role; purchasing managers may create purchasers only.
-  if (req.user.role !== 'manager' && !(req.user.role === 'purchasing_manager' && (role || 'ae') === 'purchaser')) {
-    return res.status(403).json({ error: 'Not authorized to create this user' });
-  }
   if (!username || !password || !name) return res.status(400).json({ error: 'username, password, and name are required' });
   const db = getDB();
   const hash = bcrypt.hashSync(password, 10);

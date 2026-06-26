@@ -138,11 +138,11 @@ export default function NewInquiryModal({ defaultType = 'lead', customerId, onCl
           </Field>
 
           {/* Date + Assign row */}
-          <div style={{ display: 'grid', gridTemplateColumns: user.role === 'manager' ? '1fr 1fr' : '1fr', gap: '12px', marginBottom: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: ['manager', 'purchasing_manager'].includes(user.role) ? '1fr 1fr' : '1fr', gap: '12px', marginBottom: '14px' }}>
             <Field label="Date">
               <SInput type="date" value={customDate} onChange={e => setCustomDate(e.target.value)} />
             </Field>
-            {user.role === 'manager' && (
+            {['manager', 'purchasing_manager'].includes(user.role) && (
               <Field label="Assign to">
                 <SSelect value={assignedTo} onChange={e => setAssignedTo(e.target.value)}>
                   {users.map(u => <option key={u.id} value={String(u.id)}>{u.name}</option>)}

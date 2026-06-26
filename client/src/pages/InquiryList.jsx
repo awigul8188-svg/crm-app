@@ -181,7 +181,7 @@ export default function InquiryList({ type, title }) {
           selected={filterSources}
           onChange={setFilterSources}
         />
-        {user.role === 'manager' && (
+        {['manager', 'purchasing_manager'].includes(user.role) && (
           <MultiSelect
             placeholder="All Team Members"
             options={users.map(u => ({ value: String(u.id), label: u.name }))}
@@ -324,7 +324,7 @@ export default function InquiryList({ type, title }) {
 
                       {/* Delete — managers only */}
                       <td className="table-cell w-10" onClick={e => e.stopPropagation()}>
-                        {user.role === 'manager' && (
+                        {['manager', 'purchasing_manager'].includes(user.role) && (
                           <button
                             onClick={e => handleDelete(e, inq.id)}
                             disabled={deleting === inq.id}

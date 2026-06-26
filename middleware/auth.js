@@ -20,17 +20,19 @@ function authenticate(req, res, next) {
   }
 }
 
+// Manager-level roles. purchasing_manager is treated as a full manager (same access as manager).
+const MANAGER_ROLES = ['manager', 'purchasing_manager'];
 function requireManager(req, res, next) {
-  if (req.user?.role !== 'manager') return res.status(403).json({ error: 'Managers only' });
+  if (!MANAGER_ROLES.includes(req.user?.role)) return res.status(403).json({ error: 'Managers only' });
   next();
 }
 
-// CRM data (customers, inquiries/leads/repeat/online-orders, analytics) is sales-side only.
-// Whitelist (not blacklist) so any future role is denied by default — purchasing roles must never read it.
-const CRM_ROLES = ['manager', 'ae'];
+// CRM data (customers, inquiries/leads/repeat/online-orders, analytics). Manager-level + AE.
+// Whitelist (not blacklist) so any future role is denied by default.
+const CRM_ROLES = ['manager', 'purchasing_manager', 'ae'];
 function requireCrmAccess(req, res, next) {
   if (CRM_ROLES.includes(req.user?.role)) return next();
   return res.status(403).json({ error: 'Not authorized for CRM data' });
 }
 
-module.exports = { authenticate, requireManager, requireCrmAccess, CRM_ROLES, JWT_SECRET };
+module.exports = { authenticate, requireManager, requireCrmAccess, CRM_ROLES, MANAGER_ROLES, JWT_SECRET };

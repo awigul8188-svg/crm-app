@@ -28,7 +28,7 @@ router.get('/', (req, res) => {
   const filters = []; const params = [];
 
   if (userId) { filters.push('i.assigned_to = ?'); params.push(userId); }
-  if (req.user.role === 'manager' && assigned_to && assigned_to.includes(',')) {
+  if (['manager', 'purchasing_manager'].includes(req.user.role) && assigned_to && assigned_to.includes(',')) {
     const f = buildInFilter('i.assigned_to', assigned_to); if (f) { filters.push(f.sql); params.push(...f.params); }
   }
   if (from) { filters.push("date(i.created_at) >= ?"); params.push(from); }

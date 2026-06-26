@@ -119,16 +119,19 @@ export default function App() {
     )
   }
 
+  // purchasing_manager is treated as a full manager (same access). Their home is the manager Dashboard;
+  // the purchasing dashboard is reachable via the Purchasing nav item.
+  const MANAGER_ROLES = ['manager', 'purchasing_manager']
+  const CRM_ROLES = ['manager', 'purchasing_manager', 'ae']
+  const isCrm = CRM_ROLES.includes(user.role)
+  const isManager = MANAGER_ROLES.includes(user.role)
+
   // Role-appropriate home/dashboard — also the fallback when a role hits a page it may not see.
   const home = () => {
     if (user.role === 'ae') return <AEDashboard />
     if (user.role === 'purchaser') return <PurchaserDashboard />
-    if (user.role === 'purchasing_manager') return <PurchasingManagerView />
     return <Dashboard />
   }
-  // CRM (sales-side) pages — purchasing roles are redirected home. Mirrors the backend requireCrmAccess gate.
-  const CRM_ROLES = ['manager', 'ae']
-  const isCrm = CRM_ROLES.includes(user.role)
 
   const renderPage = () => {
     switch (page.name) {
@@ -139,11 +142,11 @@ export default function App() {
       case 'customers':       return isCrm ? <Customers /> : home()
       case 'customer-detail': return isCrm ? <CustomerDetail id={page.params.id} /> : home()
       case 'inquiry-detail':  return isCrm ? <InquiryDetail id={page.params.id} /> : home()
-      case 'users':           return user.role === 'manager' ? <Users /> : home()
-      case 'import':          return user.role === 'manager' ? <ImportData /> : home()
+      case 'users':           return isManager ? <Users /> : home()
+      case 'import':          return isManager ? <ImportData /> : home()
       case 'notifications':   return <Notifications />
-      case 'operations':      return user.role === 'manager' ? <Operations /> : home()
-      case 'purchasing':      return ['purchasing_manager', 'manager'].includes(user.role) ? <PurchasingManagerView /> : home()
+      case 'operations':      return isManager ? <Operations /> : home()
+      case 'purchasing':      return isManager ? <PurchasingManagerView /> : home()
       case 'my-parts':        return user.role === 'purchaser' ? <PurchaserParts /> : home()
       default:                return home()
     }

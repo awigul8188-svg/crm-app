@@ -26,12 +26,15 @@ const CRM_NAV = [
   { name: 'orders',    label: 'Online Orders',    Icon: ShoppingBag },
   { name: 'customers', label: 'Customers',        Icon: Users },
 ]
-const CRM_ROLES = ['manager', 'ae']
+// purchasing_manager is treated as a full manager.
+const MANAGER_ROLES = ['manager', 'purchasing_manager']
+const CRM_ROLES = ['manager', 'purchasing_manager', 'ae']
 // Purchasers get a dedicated assigned-parts list.
 const PURCHASER_NAV = [{ name: 'my-parts', label: 'Assigned Parts', Icon: Package }]
 
 const ADMIN_NAV = [
-  { name: 'operations', label: 'Operations', Icon: Settings2 },
+  { name: 'operations', label: 'Operations',  Icon: Settings2 },
+  { name: 'purchasing', label: 'Purchasing',  Icon: Package },
   { name: 'import',     label: 'Import Data', Icon: Upload },
   { name: 'users',      label: 'Users',       Icon: UserCog },
 ]
@@ -140,8 +143,8 @@ export default function Layout({ children }) {
             )}
           </button>
 
-          {/* Admin section — managers only */}
-          {user.role === 'manager' && (
+          {/* Admin section — manager-level (manager + purchasing_manager) */}
+          {MANAGER_ROLES.includes(user.role) && (
             <>
               <div className="px-3 mt-5 mb-2"
                 style={{ color: 'rgba(255,255,255,0.2)', fontSize: '9px', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
