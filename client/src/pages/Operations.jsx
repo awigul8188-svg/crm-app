@@ -1237,7 +1237,7 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
 }
 
 // ── Orders Tab ────────────────────────────────────────────────────────────────
-function OrdersTab({ jumpOrderId, onJumpHandled, initialStatus, initialLeadSource, initialPaymentStatus, initialRep, initialPeriod, onInitialFiltersHandled, resetToken }) {
+function OrdersTab({ jumpOrderId, onJumpHandled, initialStatus, initialLeadSource, initialPaymentStatus, initialRep, initialPeriod, onInitialFiltersHandled, resetToken, onSummary }) {
   const [orders, setOrders]       = useState([])
   const [customers, setCustomers] = useState([])
   const [suppliers, setSuppliers] = useState([])
@@ -1311,6 +1311,11 @@ function OrdersTab({ jumpOrderId, onJumpHandled, initialStatus, initialLeadSourc
     gp:  a.gp  + (Number(o.gp) || 0),
     rem: a.rem + (Number(o.remaining) || 0),
   }), { amt: 0, val: 0, gp: 0, rem: 0 })
+
+  // Report the filtered-list summary up so the page header mirrors exactly what's shown below.
+  useEffect(() => {
+    if (onSummary) onSummary({ count: orders.length, ...orderTotals })
+  }, [orders])
 
   return (
     <div>
@@ -2548,6 +2553,7 @@ export default function Operations() {
   const [showPending, setShowPending] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [ordersResetToken, setOrdersResetToken] = useState(0)
+  const [ordersSummary, setOrdersSummary] = useState(null)
   const [dashNavStatus, setDashNavStatus] = useState(undefined)
   const [dashNavLeadSource, setDashNavLeadSource] = useState(undefined)
   const [dashNavPayment, setDashNavPayment] = useState(undefined)
@@ -2641,12 +2647,21 @@ export default function Operations() {
                 </div>
               </button>
             )}
-            {[
-              { label: 'Total Orders', value: stats.total_orders, color: '#0f172a' },
-              { label: 'In Process',   value: stats.in_process,   color: '#f59e0b' },
-              { label: 'Open RMA',     value: stats.open_rma,     color: '#ef4444' },
-              { label: 'Total GP',     value: fmt(stats.total_gp), color: '#10b981' },
-            ].map(s => (
+            {(tab === 'orders' && ordersSummary
+              ? [
+                  { label: 'Orders',      value: ordersSummary.count,      color: '#0f172a' },
+                  { label: 'Order Amt',   value: fmt(ordersSummary.amt),   color: '#64748b' },
+                  { label: 'Total Value', value: fmt(ordersSummary.val),   color: '#0f172a' },
+                  { label: 'GP',          value: fmt(ordersSummary.gp),    color: ordersSummary.gp >= 0 ? '#10b981' : '#ef4444' },
+                  { label: 'Remaining',   value: fmt(ordersSummary.rem),   color: ordersSummary.rem > 0 ? '#f59e0b' : '#10b981' },
+                ]
+              : [
+                  { label: 'Total Orders', value: stats.total_orders, color: '#0f172a' },
+                  { label: 'In Process',   value: stats.in_process,   color: '#f59e0b' },
+                  { label: 'Open RMA',     value: stats.open_rma,     color: '#ef4444' },
+                  { label: 'Total GP',     value: fmt(stats.total_gp), color: '#10b981' },
+                ]
+            ).map(s => (
               <div key={s.label} style={{ background: '#fff', border: '1px solid #f1f5f9', borderRadius: 14, padding: '10px 16px', textAlign: 'right', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{s.label}</div>
                 <div style={{ fontSize: 20, fontWeight: 800, color: s.color, fontVariantNumeric: 'tabular-nums', fontFamily: '"Bricolage Grotesque", sans-serif' }}>{s.value}</div>
@@ -2686,6 +2701,7 @@ export default function Operations() {
           initialRep={dashNavRep} initialPeriod={dashNavPeriod}
           onInitialFiltersHandled={() => { setDashNavStatus(undefined); setDashNavLeadSource(undefined); setDashNavPayment(undefined); setDashNavRep(undefined); setDashNavPeriod(undefined) }}
           resetToken={ordersResetToken}
+          onSummary={setOrdersSummary}
         />}
         {tab === 'order-items' && <OrderItemsTab onOpenOrder={handleOpenOrderFromItems} />}
         {tab === 'dashboard' && <DashboardTab onNavigateOrders={handleNavigateOrders}
