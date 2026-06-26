@@ -33,7 +33,12 @@ router.get('/', (req, res) => {
       ORDER BY u.role DESC, u.name
     `).all());
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    // Resilient fallback if created_by/avatar columns aren't present yet — never blank the page.
+    try {
+      res.json(db.prepare('SELECT id, username, name, role, created_at FROM users ORDER BY role DESC, name').all());
+    } catch (e2) {
+      res.status(500).json({ error: e2.message });
+    }
   }
 });
 
@@ -42,9 +47,17 @@ router.post('/', requireManager, (req, res) => {
   if (!username || !password || !name) return res.status(400).json({ error: 'username, password, and name are required' });
   const db = getDB();
   const hash = bcrypt.hashSync(password, 10);
+  const uname = username.toLowerCase().trim();
   try {
-    const result = db.prepare("INSERT INTO users (username, password, name, role, created_by) VALUES (?, ?, ?, ?, ?)").run(username.toLowerCase().trim(), hash, name.trim(), role || 'ae', req.user.id);
-    res.json({ id: result.lastInsertRowid, username: username.toLowerCase(), name, role: role || 'ae' });
+    let result;
+    try {
+      result = db.prepare("INSERT INTO users (username, password, name, role, created_by) VALUES (?, ?, ?, ?, ?)").run(uname, hash, name.trim(), role || 'ae', req.user.id);
+    } catch (e) {
+      if (/created_by|no column/i.test(e.message)) {
+        result = db.prepare("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, ?)").run(uname, hash, name.trim(), role || 'ae');
+      } else throw e;
+    }
+    res.json({ id: result.lastInsertRowid, username: uname, name, role: role || 'ae' });
   } catch (err) {
     if (err.message && err.message.includes('UNIQUE')) {
       res.status(400).json({ error: 'Username already taken' });
