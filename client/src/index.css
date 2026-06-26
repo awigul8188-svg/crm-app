@@ -47,6 +47,38 @@
   .search-wrap .search-icon { @apply absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-ink-300; }
   .search-wrap .input { @apply pl-9; }
 
+  /* Search pill — rounded search field with inline icon (Galaxy: kind-treefrog → brand) */
+  .search-pill { @apply inline-flex items-center gap-2 bg-white border border-ink-200 w-full; border-radius: 999px; padding: 8px 16px; transition: border-color 0.15s ease, box-shadow 0.22s cubic-bezier(0.34,1.56,0.64,1); }
+  .search-pill:focus-within { border-color: #00D4C8; box-shadow: 0 0 0 4px rgba(0,212,200,0.14); }
+  .search-pill input { @apply flex-1 bg-transparent border-0 outline-none text-sm text-ink-900 placeholder-ink-300; }
+  .search-pill .search-icon { @apply text-ink-300 shrink-0; }
+
+  /* ── Toggle switch (pill) — Galaxy: giant-swan → brand ── */
+  .toggle { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle .track { position: absolute; inset: 0; background: #cbd5e1; border-radius: 999px; cursor: pointer; transition: background 0.22s ease; }
+  .toggle .track::before { content: ""; position: absolute; height: 18px; width: 18px; left: 3px; top: 3px; background: #fff; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.2); transition: transform 0.22s cubic-bezier(0.34,1.56,0.64,1); }
+  .toggle input:checked + .track { background: #00D4C8; }
+  .toggle input:checked + .track::before { transform: translateX(20px); }
+  .toggle input:focus-visible + .track { box-shadow: 0 0 0 3px rgba(0,212,200,0.25); }
+  .toggle input:disabled + .track { opacity: 0.5; cursor: not-allowed; }
+
+  /* ── Dots loader — Galaxy: silent-quail → brand ──────── */
+  .dots-loader { display: inline-flex; gap: 5px; align-items: center; }
+  .dots-loader span { width: 7px; height: 7px; border-radius: 50%; background: #00D4C8; animation: dotBounce 1s infinite ease-in-out; }
+  .dots-loader span:nth-child(2) { animation-delay: 0.15s; }
+  .dots-loader span:nth-child(3) { animation-delay: 0.3s; }
+  .dots-loader.on-brand span { background: #0a0a0a; }
+
+  /* ── Skeleton shimmer — for tables while loading ─────── */
+  .skeleton { background: linear-gradient(90deg, #eef2f5 25%, #e2e8f0 50%, #eef2f5 75%); background-size: 200% 100%; animation: shimmer 1.3s infinite; border-radius: 6px; }
+
+  /* ── Financial / metric card: accent bar + hover-lift ── */
+  .fin-card { position: relative; background: #fff; border: 1px solid #f1f5f9; border-left: 3px solid #00D4C8; border-radius: 0 14px 14px 0; transition: transform 0.22s cubic-bezier(0.175,0.885,0.32,1.275), box-shadow 0.22s ease, border-color 0.15s ease; }
+  .fin-card.clickable { cursor: pointer; }
+  .fin-card.clickable:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0,212,200,0.13); }
+  .fin-card.clickable:active { transform: translateY(-1px) scale(0.99); transition-duration: 0.08s; }
+
   /* ── Cards ───────────────────────────────────────────── */
   .card { @apply bg-white rounded-2xl border border-slate-200 shadow-card; }
   .card-hover {
@@ -113,6 +145,9 @@
 /* ── Animations ──────────────────────────────────────────── */
 @keyframes spin { to { transform: rotate(360deg); } }
 .spinner { animation: spin 0.8s linear infinite; }
+
+@keyframes shimmer { to { background-position: -200% 0; } }
+@keyframes dotBounce { 0%, 80%, 100% { transform: scale(0.5); opacity: 0.5; } 40% { transform: scale(1); opacity: 1; } }
 
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px) scale(0.996); }

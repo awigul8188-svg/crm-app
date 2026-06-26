@@ -74,7 +74,7 @@ function SectionLabel({ children }) {
 
 function FinCard({ label, value, color }) {
   return (
-    <div style={{ background: '#f8fafc', borderRadius: 14, padding: '14px 16px', flex: 1, minWidth: 120 }}>
+    <div className="fin-card" style={{ borderLeftColor: color || BRAND, padding: '14px 16px', flex: 1, minWidth: 120 }}>
       <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>{label}</div>
       <div style={{ fontSize: 20, fontWeight: 800, color: color || '#0f172a', fontVariantNumeric: 'tabular-nums', fontFamily: '"Bricolage Grotesque", sans-serif' }}>{value}</div>
     </div>
@@ -83,6 +83,47 @@ function FinCard({ label, value, color }) {
 
 function Loader() {
   return <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}><div style={{ width: 28, height: 28, border: '3px solid #e2e8f0', borderTopColor: BRAND, borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} /></div>
+}
+
+// Pill switch for binary state (Galaxy: giant-swan → brand). on = checked.
+function Toggle({ checked, onChange, disabled }) {
+  return (
+    <label className="toggle">
+      <input type="checkbox" checked={!!checked} disabled={disabled}
+        onChange={e => onChange && onChange(e.target.checked)} />
+      <span className="track" />
+    </label>
+  )
+}
+
+// Bouncing-dots loader for inline / button busy states (Galaxy: silent-quail → brand).
+function Dots({ onBrand }) {
+  return <span className={`dots-loader${onBrand ? ' on-brand' : ''}`} role="status" aria-label="Loading"><span /><span /><span /></span>
+}
+
+// Shimmering placeholder rows shown while a table tab is fetching.
+function SkeletonRows({ rows = 7, cols = 5 }) {
+  return (
+    <div style={{ padding: '6px 0' }} aria-hidden="true">
+      {Array.from({ length: rows }).map((_, r) => (
+        <div key={r} style={{ display: 'flex', gap: 16, padding: '13px 16px', alignItems: 'center', borderBottom: '1px solid #f8fafc' }}>
+          {Array.from({ length: cols }).map((_, c) => (
+            <div key={c} className="skeleton" style={{ height: 12, flex: c === 0 ? 2.2 : 1, opacity: 1 - r * 0.07 }} />
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// Rounded search field with inline icon (Galaxy: kind-treefrog → brand).
+function SearchPill({ value, onChange, placeholder, style }) {
+  return (
+    <div className="search-pill" style={style}>
+      <Search size={15} className="search-icon" />
+      <input value={value} onChange={onChange} placeholder={placeholder} />
+    </div>
+  )
 }
 
 function EmptyState({ icon: Icon, label, action }) {
@@ -225,7 +266,7 @@ function OrderForm({ order, customers: customersProp, onSave, onClose, isPending
                   <input className="input" placeholder="Email" value={newCust.email} onChange={e => setNewCust(p => ({...p, email: e.target.value}))} />
                   <input className="input" placeholder="Phone" value={newCust.phone} onChange={e => setNewCust(p => ({...p, phone: e.target.value}))} />
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="btn-primary" style={{ flex: 1, padding: '6px 0', fontSize: 12 }} onClick={handleAddCustomer} disabled={custSaving || !newCust.name.trim()}>{custSaving ? 'Saving…' : 'Add Customer'}</button>
+                    <button className="btn-primary" style={{ flex: 1, padding: '6px 0', fontSize: 12 }} onClick={handleAddCustomer} disabled={custSaving || !newCust.name.trim()}>{custSaving ? <Dots onBrand /> : 'Add Customer'}</button>
                     <button className="btn-secondary" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => setAddingCustomer(false)}>Cancel</button>
                   </div>
                 </div>
@@ -333,7 +374,7 @@ function OrderForm({ order, customers: customersProp, onSave, onClose, isPending
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
         <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : order ? 'Save Changes' : 'Create Order'}</button>
+        <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? <Dots onBrand /> :order ? 'Save Changes' : 'Create Order'}</button>
       </div>
     </Modal>
   )
@@ -393,18 +434,12 @@ function ItemForm({ item, orderId, orderDate, suppliers: suppliersProp, onSave, 
     <Modal title={item ? 'Edit Line Item' : 'Add Line Item'} onClose={onClose} wide>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
         <FF label="Line Status">
-          <div style={{ display: 'flex', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden', width: 'fit-content' }}>
-            {['processed', 'pending'].map(st => {
-              const active = (form.line_status || 'processed') === st
-              return (
-                <button key={st} type="button" onClick={() => set('line_status', st)}
-                  style={{ padding: '8px 22px', fontSize: 13, fontWeight: 700, border: 'none', cursor: 'pointer', textTransform: 'capitalize',
-                    background: active ? (st === 'pending' ? '#f59e0b' : '#10b981') : '#fff',
-                    color: active ? '#fff' : '#64748b' }}>
-                  {st}
-                </button>
-              )
-            })}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Toggle checked={(form.line_status || 'processed') === 'processed'}
+              onChange={on => set('line_status', on ? 'processed' : 'pending')} />
+            <span style={{ fontSize: 13, fontWeight: 700, color: (form.line_status || 'processed') === 'processed' ? '#10b981' : '#f59e0b' }}>
+              {(form.line_status || 'processed') === 'processed' ? 'Processed' : 'Pending'}
+            </span>
           </div>
           <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 5 }}>Pending lines are excluded from dashboard revenue &amp; GP until set to Processed.</div>
         </FF>
@@ -421,7 +456,7 @@ function ItemForm({ item, orderId, orderDate, suppliers: suppliersProp, onSave, 
               <input className="input" placeholder="Email" value={newSup.email} onChange={e => setNewSup(p => ({...p, email: e.target.value}))} />
               <input className="input" placeholder="Phone" value={newSup.phone} onChange={e => setNewSup(p => ({...p, phone: e.target.value}))} />
               <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn-primary" style={{ flex: 1, padding: '6px 0', fontSize: 12 }} onClick={handleAddSupplier} disabled={supSaving || !newSup.company.trim()}>{supSaving ? 'Saving…' : 'Add Supplier'}</button>
+                <button className="btn-primary" style={{ flex: 1, padding: '6px 0', fontSize: 12 }} onClick={handleAddSupplier} disabled={supSaving || !newSup.company.trim()}>{supSaving ? <Dots onBrand /> : 'Add Supplier'}</button>
                 <button className="btn-secondary" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => setAddingSupplier(false)}>Cancel</button>
               </div>
             </div>
@@ -494,7 +529,7 @@ function ItemForm({ item, orderId, orderDate, suppliers: suppliersProp, onSave, 
       {err && <div style={{ background: '#fee2e2', color: '#dc2626', borderRadius: 10, padding: '10px 14px', fontSize: 13, marginTop: 12 }}>{err}</div>}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
         <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : item ? 'Save Changes' : 'Add Item'}</button>
+        <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? <Dots onBrand /> :item ? 'Save Changes' : 'Add Item'}</button>
       </div>
     </Modal>
   )
@@ -632,7 +667,7 @@ function RMAForm({ rma, presetOrder, orderItems, customers, orders, onSave, onCl
       {err && <div style={{ background: '#fee2e2', color: '#dc2626', borderRadius: 10, padding: '10px 14px', fontSize: 13, marginTop: 12 }}>{err}</div>}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
         <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : rma ? 'Save Changes' : 'Create RMA'}</button>
+        <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? <Dots onBrand /> :rma ? 'Save Changes' : 'Create RMA'}</button>
       </div>
     </Modal>
   )
@@ -672,7 +707,7 @@ function PaymentForm({ orderId, payment, onSaved, onClose }) {
       {err && <div style={{ background: '#fee2e2', color: '#dc2626', borderRadius: 10, padding: '10px 14px', fontSize: 13, marginTop: 12 }}>{err}</div>}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
         <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : payment ? 'Save Changes' : 'Record Payment'}</button>
+        <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? <Dots onBrand /> :payment ? 'Save Changes' : 'Record Payment'}</button>
       </div>
     </Modal>
   )
@@ -1258,7 +1293,7 @@ function OrdersTab({ jumpOrderId, onJumpHandled, initialStatus, initialLeadSourc
         )}
       </div>
 
-      {loading ? <Loader /> : orders.length === 0 ? (
+      {loading ? <SkeletonRows cols={6} /> : orders.length === 0 ? (
         <EmptyState icon={Package} label="Orders" action={<button className="btn btn-primary" onClick={() => setShowForm(true)}><Plus size={14} /> New Order</button>} />
       ) : (
         <div style={{ overflowX: 'auto' }}>
@@ -1348,14 +1383,11 @@ function EntityTab({ icon: Icon, label, fields, fetchFn, createFn, updateFn, del
   return (
     <div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, alignItems: 'center' }}>
-        <div className="search-wrap" style={{ flex: 1, minWidth: 200 }}>
-          <Search size={14} className="search-icon" />
-          <input className="input" placeholder={`Search ${label.toLowerCase()}…`} value={search} onChange={e => setSearch(e.target.value)} />
-        </div>
+        <SearchPill style={{ flex: 1, minWidth: 200 }} placeholder={`Search ${label.toLowerCase()}…`} value={search} onChange={e => setSearch(e.target.value)} />
         <button className="btn btn-primary" onClick={blankForm}><Plus size={15} /> Add {label.slice(0,-1)}</button>
       </div>
 
-      {loading ? <Loader /> : rows.length === 0 ? (
+      {loading ? <SkeletonRows cols={6} /> : rows.length === 0 ? (
         <EmptyState icon={Icon} label={label} action={<button className="btn btn-primary" onClick={blankForm}><Plus size={14} /> Add {label.slice(0,-1)}</button>} />
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -1468,14 +1500,11 @@ function OrderItemsTab({ onOpenOrder }) {
   return (
     <div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, alignItems: 'center' }}>
-        <div className="search-wrap" style={{ flex: 1 }}>
-          <Search size={14} className="search-icon" />
-          <input className="input" placeholder="Search by part #, description, order #, supplier…" value={search} onChange={e => setSearch(e.target.value)} />
-        </div>
+        <SearchPill style={{ flex: 1 }} placeholder="Search by part #, description, order #, supplier…" value={search} onChange={e => setSearch(e.target.value)} />
         <span style={{ fontSize: 12, color: '#94a3b8', whiteSpace: 'nowrap' }}>{rows.length} items</span>
       </div>
 
-      {loading ? <Loader /> : rows.length === 0 ? (
+      {loading ? <SkeletonRows cols={6} /> : rows.length === 0 ? (
         <EmptyState icon={List} label="Order Items" action={null} />
       ) : (
         <div style={{ overflowX: 'auto' }}>
@@ -1554,10 +1583,7 @@ function RMATab() {
   return (
     <div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div className="search-wrap" style={{ flex: 1, minWidth: 200 }}>
-          <Search size={14} className="search-icon" />
-          <input className="input" placeholder="Search RMA #, customer, order…" value={search} onChange={e => setSearch(e.target.value)} />
-        </div>
+        <SearchPill style={{ flex: 1, minWidth: 200 }} placeholder="Search RMA #, customer, order…" value={search} onChange={e => setSearch(e.target.value)} />
         <select className="input" style={{ width: 180 }} value={statusFilter} onChange={e => setStatus(e.target.value)}>
           <option value="">All Statuses</option>
           {RMA_STATUSES.map(s => <option key={s}>{s}</option>)}
@@ -1565,7 +1591,7 @@ function RMATab() {
         <button className="btn btn-primary" onClick={() => setFormRMA({})}><Plus size={15} /> New RMA</button>
       </div>
 
-      {loading ? <Loader /> : rmas.length === 0 ? (
+      {loading ? <SkeletonRows cols={6} /> : rmas.length === 0 ? (
         <EmptyState icon={RotateCcw} label="RMAs" action={<button className="btn btn-primary" onClick={() => setFormRMA({})}><Plus size={14} /> New RMA</button>} />
       ) : (
         <div style={{ overflowX: 'auto' }}>
@@ -1659,15 +1685,10 @@ function BarChart({ data, valueKey, labelKey, color, fmtFn, height = 140, isMont
 
 function DashboardCard({ label, value, sub, color, onClick, icon }) {
   return (
-    <div onClick={onClick} style={{
-      background: '#fff', border: '1px solid #f1f5f9', borderRadius: 16,
-      padding: '18px 20px', cursor: onClick ? 'pointer' : 'default',
-      transition: 'all 0.15s', boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+    <div onClick={onClick} className={`fin-card${onClick ? ' clickable' : ''}`} style={{
+      borderLeftColor: color || BRAND, padding: '18px 20px',
       display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 140
-    }}
-    onMouseEnter={e => onClick && (e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,212,200,0.15)', e.currentTarget.style.borderColor = BRAND)}
-    onMouseLeave={e => onClick && (e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.04)', e.currentTarget.style.borderColor = '#f1f5f9')}
-    >
+    }}>
       <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</div>
       <div style={{ fontSize: 24, fontWeight: 800, color: color || '#0f172a', fontFamily: '"Bricolage Grotesque", sans-serif', lineHeight: 1.1 }}>{value}</div>
       {sub && <div style={{ fontSize: 11, color: '#94a3b8' }}>{sub}</div>}
@@ -2153,7 +2174,7 @@ function PendingOrdersPanel({ onClose, onOpenOrder }) {
 
   return (
     <Modal title="Pending Orders from CRM" onClose={onClose} wide>
-      {loading ? <Loader /> : orders.length === 0 ? (
+      {loading ? <SkeletonRows cols={6} /> : orders.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '40px 24px', color: '#94a3b8' }}>
           <div style={{ fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>No pending orders</div>
           <div style={{ fontSize: 13 }}>All Closed Won leads have been processed.</div>
