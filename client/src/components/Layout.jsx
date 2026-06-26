@@ -4,7 +4,7 @@ import { useNav } from '../App'
 import { api, purchasingApi } from '../api'
 import {
   LayoutDashboard, Target, RotateCcw, ShoppingBag, Users,
-  Bell, Upload, UserCog, LogOut, Settings2,
+  Bell, Upload, UserCog, LogOut, Settings2, Package,
 } from 'lucide-react'
 
 function TALogo({ size = 36 }) {
@@ -27,6 +27,8 @@ const CRM_NAV = [
   { name: 'customers', label: 'Customers',        Icon: Users },
 ]
 const CRM_ROLES = ['manager', 'ae']
+// Purchasers get a dedicated assigned-parts list.
+const PURCHASER_NAV = [{ name: 'my-parts', label: 'Assigned Parts', Icon: Package }]
 
 const ADMIN_NAV = [
   { name: 'operations', label: 'Operations', Icon: Settings2 },
@@ -114,7 +116,7 @@ export default function Layout({ children }) {
             Main Menu
           </div>
 
-          {[DASHBOARD_NAV, ...(CRM_ROLES.includes(user.role) ? CRM_NAV : [])].map(({ name, label, Icon }) => (
+          {[DASHBOARD_NAV, ...(CRM_ROLES.includes(user.role) ? CRM_NAV : []), ...(user.role === 'purchaser' ? PURCHASER_NAV : [])].map(({ name, label, Icon }) => (
             <button key={name} onClick={() => navigate(name)}
               className={`nav-item ${page.name === name ? 'nav-active' : 'nav-inactive'}`}>
               <Icon size={15} className="flex-shrink-0" />

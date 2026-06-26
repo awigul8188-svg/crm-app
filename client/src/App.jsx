@@ -12,7 +12,7 @@ import ImportData from './pages/ImportData'
 import Notifications from './pages/Notifications'
 import AEDashboard from './pages/AEDashboard'
 import PurchasingManagerView from './pages/PurchasingManagerView'
-import PurchaserDashboard, { PartDetailModal } from './pages/PurchaserDashboard'
+import PurchaserDashboard, { PartDetailModal, PurchaserParts } from './pages/PurchaserDashboard'
 import Operations from './pages/Operations'
 
 export const AuthContext = createContext(null)
@@ -144,6 +144,7 @@ export default function App() {
       case 'notifications':   return <Notifications />
       case 'operations':      return user.role === 'manager' ? <Operations /> : home()
       case 'purchasing':      return ['purchasing_manager', 'manager'].includes(user.role) ? <PurchasingManagerView /> : home()
+      case 'my-parts':        return user.role === 'purchaser' ? <PurchaserParts /> : home()
       default:                return home()
     }
   }

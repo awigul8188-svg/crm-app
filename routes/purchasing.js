@@ -243,7 +243,9 @@ router.get('/my-parts', (req, res) => {
 
   try {
     const total = db.prepare(`SELECT COUNT(*) as c FROM purchase_assignments pa JOIN requirements r ON pa.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id WHERE ${where}`).get(...params).c;
-    const parts = db.prepare(`${PART_SELECT} WHERE ${where} ORDER BY CASE pa.urgency WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'normal' THEN 3 ELSE 4 END, pa.not_in_stock ASC, pa.assigned_at ASC LIMIT ${PAGE_SIZE} OFFSET ${pageOffset(page)}`).all(...params);
+    // `all=1` returns every assigned part (for the filterable list view); otherwise paginate.
+    const limitClause = req.query.all ? '' : `LIMIT ${PAGE_SIZE} OFFSET ${pageOffset(page)}`;
+    const parts = db.prepare(`${PART_SELECT} WHERE ${where} ORDER BY CASE pa.urgency WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'normal' THEN 3 ELSE 4 END, pa.not_in_stock ASC, pa.assigned_at ASC ${limitClause}`).all(...params);
 
     const enriched = parts.map(p => ({
       ...p,
@@ -445,13 +447,26 @@ router.get('/stats', (req, res) => {
       const myQuoted    = db.prepare("SELECT COUNT(*) as c FROM purchase_assignments WHERE purchaser_id=? AND status='quoted'").get(userId).c;
       const myToday     = db.prepare("SELECT COUNT(*) as c FROM purchase_quotes WHERE purchaser_id=? AND date(updated_at)=?").get(userId, today).c;
       const myWeek      = db.prepare("SELECT COUNT(*) as c FROM purchase_quotes WHERE purchaser_id=? AND updated_at>=datetime('now','-7 days')").get(userId).c;
-      const myDelayed   = db.prepare("SELECT assigned_at FROM purchase_assignments WHERE purchaser_id=? AND status='pending' AND not_in_stock=0").all(userId)
-        .filter(r => workingDaysSince(r.assigned_at) >= 4).length;
+      const myMonth     = db.prepare("SELECT COUNT(*) as c FROM purchase_quotes WHERE purchaser_id=? AND date(updated_at)>=?").get(userId, today.slice(0,8) + '01').c;
       const myNotInStock= db.prepare("SELECT COUNT(*) as c FROM purchase_assignments WHERE purchaser_id=? AND not_in_stock=1").get(userId).c;
 
-      // Avg quoting time (hours)
+      // Pending parts (one query drives delayed count, oldest age, and the Needs-Attention list).
+      const pendingRows = db.prepare(`SELECT pa.id as assignment_id, pa.assigned_at, pa.urgency, r.part_number, c.name as customer_name
+        FROM purchase_assignments pa JOIN requirements r ON pa.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id JOIN customers c ON i.customer_id=c.id
+        WHERE pa.purchaser_id=? AND pa.status='pending' AND pa.not_in_stock=0`).all(userId);
+      const pendingAges = pendingRows.map(p => ({ ...p, days: workingDaysSince(p.assigned_at) }));
+      const myDelayed = pendingAges.filter(p => p.days >= 4).length;
+      const oldestPendingDays = pendingAges.reduce((m, p) => Math.max(m, p.days), 0);
+      const needsAttention = pendingAges.filter(p => p.days >= 4).sort((a, b) => b.days - a.days).slice(0, 8);
+
+      // Avg quoting time (hours) + on-time rate (quoted within 4 working days ≈ 96h)
       const quoteTimes = db.prepare(`SELECT (julianday(pq.created_at)-julianday(pa.assigned_at))*24 as hours FROM purchase_quotes pq JOIN purchase_assignments pa ON pq.assignment_id=pa.id WHERE pa.purchaser_id=?`).all(userId);
       const avgHours = quoteTimes.length > 0 ? (quoteTimes.reduce((s,q) => s+q.hours,0)/quoteTimes.length).toFixed(1) : null;
+      const onTimeRate = quoteTimes.length > 0 ? Math.round(quoteTimes.filter(q => q.hours <= 96).length / quoteTimes.length * 100) : null;
+
+      // Over-selling: this purchaser's quotes whose buying cost (price × qty) exceeds the website sell price
+      const myQuoteRows = db.prepare(`SELECT pq.price, r.quantity, i.order_amount as selling_price, i.type FROM purchase_quotes pq JOIN purchase_assignments pa ON pq.assignment_id=pa.id JOIN requirements r ON pa.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id WHERE pq.purchaser_id=?`).all(userId);
+      const myOverSelling = myQuoteRows.filter(q => isOverSelling(q.price, q.quantity, q.selling_price, q.type)).length;
 
       // My followups
       const overdueFollowups = db.prepare(`SELECT pf.*, r.part_number FROM purchaser_followups pf JOIN purchase_assignments pa ON pf.assignment_id=pa.id JOIN requirements r ON pa.requirement_id=r.id WHERE pf.purchaser_id=? AND pf.completed=0 AND pf.follow_up_date < ? ORDER BY pf.follow_up_date ASC LIMIT 10`).all(userId, today);
@@ -461,7 +476,9 @@ router.get('/stats', (req, res) => {
       const byType = db.prepare(`SELECT i.type, COUNT(*) as total, SUM(CASE WHEN pa.status='pending' THEN 1 ELSE 0 END) as pending_count, SUM(CASE WHEN pa.status='quoted' THEN 1 ELSE 0 END) as quoted_count FROM purchase_assignments pa JOIN requirements r ON pa.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id WHERE pa.purchaser_id=? GROUP BY i.type`).all(userId);
       const myNotifications = db.prepare("SELECT * FROM notifications WHERE user_id=? AND inquiry_type IN ('part_assigned','part_reassigned','quote') ORDER BY created_at DESC LIMIT 20").all(userId);
 
-      res.json({ isPM:false, myAssigned, myPending, myQuoted, myToday, myWeek, myDelayed, myNotInStock, avgHours, byType, followups:{ overdue:overdueFollowups, today:todayFollowups, upcoming:upcomingFollowups }, myNotifications });
+      res.json({ isPM:false, myAssigned, myPending, myQuoted, myToday, myWeek, myMonth, myDelayed, myNotInStock,
+        avgHours, onTimeRate, myOverSelling, oldestPendingDays, needsAttention,
+        byType, followups:{ overdue:overdueFollowups, today:todayFollowups, upcoming:upcomingFollowups }, myNotifications });
     }
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -474,6 +491,36 @@ router.get('/purchasers', canManage, (req, res) => {
     res.json(getDB().prepare("SELECT id, name, username FROM users WHERE role='purchaser' ORDER BY name").all());
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Suppliers (shared op_suppliers — purchasers pick + add while quoting) ───────
+router.get('/suppliers', (req, res) => {
+  const db = getDB();
+  const { search } = req.query;
+  try {
+    const rows = search
+      ? db.prepare("SELECT id, company, rep_name, email FROM op_suppliers WHERE company LIKE ? OR rep_name LIKE ? OR email LIKE ? ORDER BY company").all(`%${search}%`, `%${search}%`, `%${search}%`)
+      : db.prepare("SELECT id, company, rep_name, email FROM op_suppliers ORDER BY company").all();
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/suppliers', (req, res) => {
+  const { company, email, phone, rep_name } = req.body;
+  if (!company || !company.trim()) return res.status(400).json({ error: 'Company is required' });
+  const db = getDB();
+  try {
+    // Reuse a same-named supplier (case-insensitive) instead of creating a duplicate.
+    const existing = db.prepare("SELECT * FROM op_suppliers WHERE LOWER(company)=LOWER(?)").get(company.trim());
+    if (existing) return res.json(existing);
+    const result = db.prepare("INSERT INTO op_suppliers (company,email,phone,rep_name) VALUES (?,?,?,?)")
+      .run(company.trim(), email || null, phone || null, rep_name || null);
+    res.json(db.prepare("SELECT * FROM op_suppliers WHERE id=?").get(result.lastInsertRowid));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 

@@ -234,4 +234,6 @@ export const purchasingApi = {
     return req('GET', `/purchasing/quotes?${p}`);
   },
   submitQuote: (data) => req('POST', '/purchasing/quote', data),
+  getSuppliers: (search) => req('GET', `/purchasing/suppliers${search ? `?search=${encodeURIComponent(search)}` : ''}`),
+  createSupplier: (data) => req('POST', '/purchasing/suppliers', data),
 };

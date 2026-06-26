@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { purchasingApi } from '../api'
 import { useAuth } from '../App'
 import { formatDate, formatDateShort, timeAgo } from '../components/Badges'
+import SearchableSelect from '../components/SearchableSelect'
 
 const BRAND = '#00D4C8'
 const T = { lead:{ icon:'◎', label:'Lead', color:'#3b82f6' }, repeat:{ icon:'↻', label:'Repeat', color:'#6366f1' }, online_order:{ icon:'◈', label:'Order', color:'#f59e0b' } }
@@ -61,6 +62,8 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
   const [followupNote, setFollowupNote] = useState(''); const [followupDate, setFollowupDate] = useState(''); const [savingFollowup, setSavingFollowup] = useState(false)
   const [saving, setSaving] = useState(false); const [error, setError] = useState('')
   const [flash, setFlash] = useState(null); const [dirty, setDirty] = useState(false)
+  const [suppliers, setSuppliers] = useState([])
+  const [addingSupplier, setAddingSupplier] = useState(false); const [newSup, setNewSup] = useState({ company:'', rep_name:'', email:'' }); const [supSaving, setSupSaving] = useState(false)
   const showFlash = (type, msg) => { setFlash({ type, msg }); setTimeout(() => setFlash(null), 2500) }
   const authHeaders = { Authorization:`Bearer ${localStorage.getItem('crm_token')}`, 'Content-Type':'application/json' }
 
@@ -72,6 +75,19 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
       .catch(() => showFlash('err','Could not load part'))
   }
   useEffect(() => { load() }, [assignmentId])
+  useEffect(() => { purchasingApi.getSuppliers().then(setSuppliers).catch(() => {}) }, [])
+
+  const handleAddSupplier = async () => {
+    if (!newSup.company.trim()) return
+    setSupSaving(true)
+    try {
+      const created = await purchasingApi.createSupplier(newSup)
+      setSuppliers(prev => prev.some(s => s.id === created.id) ? prev : [...prev, created])
+      setSupplier(created.company); setDirty(true)
+      setAddingSupplier(false); setNewSup({ company:'', rep_name:'', email:'' })
+    } catch(e) { showFlash('err', e.message || 'Could not add supplier') }
+    setSupSaving(false)
+  }
 
   // Backdrop / × close — warn if there are unsaved quote or notes edits.
   const attemptClose = () => { if (dirty && !window.confirm('Discard unsaved changes?')) return; onClose() }
@@ -136,6 +152,14 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
       load(); onSaved()
     } catch(e) { showFlash('err', e.message || 'Could not complete follow-up') }
   }
+
+  // Supplier options for the searchable picker. If the saved supplier isn't a known op_supplier
+  // (legacy free-text quotes), surface it so the current value still shows selected.
+  const supplierItems = (() => {
+    const items = suppliers.map(s => ({ value: s.company, label: s.company, sub: s.rep_name || '' }))
+    if (supplier && !items.some(i => String(i.value) === String(supplier))) items.unshift({ value: supplier, label: supplier, sub: '(current)' })
+    return items
+  })()
 
   // Backdrop (dimmed overlay) vs full-page (plain white, fills the tab). Card adapts to match.
   const backdropStyle = fullPage
@@ -224,9 +248,31 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
                 </div>
                 {condition==='Other' && <SInput value={customCond} onChange={e=>setCustomCond(e.target.value)} placeholder="Specify condition..." />}
               </div>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
-                <div><div style={{ fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6 }}>Lead Time</div><SInput value={leadTime} onChange={e=>setLeadTime(e.target.value)} placeholder="e.g. 3-5 days" /></div>
-                <div><div style={{ fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6 }}>Supplier</div><SInput value={supplier} onChange={e=>setSupplier(e.target.value)} placeholder="e.g. ABC Electronics" /></div>
+              <div style={{ marginBottom:12 }}>
+                <div style={{ fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6 }}>Lead Time</div>
+                <SInput value={leadTime} onChange={e=>setLeadTime(e.target.value)} placeholder="e.g. 3-5 days" />
+              </div>
+              <div style={{ marginBottom:12 }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.08em' }}>Supplier</div>
+                  {!addingSupplier && <button type="button" onClick={()=>setAddingSupplier(true)} style={{ fontSize:11, fontWeight:700, color:BRAND, background:'none', border:'none', cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>+ New supplier</button>}
+                </div>
+                {addingSupplier ? (
+                  <div style={{ border:`1px solid ${BRAND}`, borderRadius:12, padding:'10px 12px', background:'#f0fffe', display:'flex', flexDirection:'column', gap:8 }}>
+                    <div style={{ fontSize:10, fontWeight:700, color:BRAND, textTransform:'uppercase', letterSpacing:'0.08em' }}>New Supplier</div>
+                    <input value={newSup.company} onChange={e=>setNewSup(p=>({...p, company:e.target.value}))} placeholder="Company *" autoFocus style={{ ...inp, padding:'8px 12px' }} />
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                      <input value={newSup.rep_name} onChange={e=>setNewSup(p=>({...p, rep_name:e.target.value}))} placeholder="Rep name" style={{ ...inp, padding:'8px 12px' }} />
+                      <input value={newSup.email} onChange={e=>setNewSup(p=>({...p, email:e.target.value}))} placeholder="Email" style={{ ...inp, padding:'8px 12px' }} />
+                    </div>
+                    <div style={{ display:'flex', gap:8 }}>
+                      <button type="button" onClick={handleAddSupplier} disabled={supSaving||!newSup.company.trim()} style={{ padding:'7px 14px', borderRadius:10, border:'none', background:newSup.company.trim()?BRAND:'#cbd5e1', color:'#0d0d0d', fontWeight:700, fontSize:12, cursor:newSup.company.trim()?'pointer':'not-allowed', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>{supSaving?'Saving…':'Add & select'}</button>
+                      <button type="button" onClick={()=>{ setAddingSupplier(false); setNewSup({ company:'', rep_name:'', email:'' }) }} style={{ padding:'7px 14px', borderRadius:10, border:'1px solid #e2e8f0', background:'#fff', color:'#64748b', fontWeight:600, fontSize:12, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <SearchableSelect items={supplierItems} value={supplier} onChange={(v)=>{ setSupplier(v||''); setDirty(true) }} placeholder="Search suppliers…" emptyText="No suppliers — add one above" />
+                )}
               </div>
               <div style={{ marginBottom:16 }}><div style={{ fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6 }}>Quote Notes</div><STextarea value={quoteNotes} onChange={e=>setQuoteNotes(e.target.value)} placeholder="Additional notes about this quote..." /></div>
               {error && <div style={{ background:'#fef2f2', border:'1px solid #fecaca', borderRadius:10, padding:'10px 14px', fontSize:13, color:'#dc2626', marginBottom:12 }}>⚠ {error}</div>}
@@ -364,6 +410,100 @@ function PartCard({ part, onClick }) {
   )
 }
 
+// ── Assigned Parts: full filterable/sortable table (sidebar destination) ──────
+const STATUS_META = {
+  pending:      { label:'Pending',      color:'#b45309', bg:'#fffbeb' },
+  quoted:       { label:'Quoted',       color:'#16a34a', bg:'#f0fdf4' },
+  not_in_stock: { label:'Not In Stock', color:'#dc2626', bg:'#fef2f2' },
+}
+const statusOf = (p) => p.not_in_stock ? 'not_in_stock' : (p.quote_id ? 'quoted' : 'pending')
+
+export function PurchaserParts() {
+  const [parts, setParts] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [openPartId, setOpenPartId] = useState(null)
+  const [f, setF] = useState({ part:'', customer:'', type:'', urgency:'', status:'' })
+  const [sort, setSort] = useState({ key:'', dir:1 })
+
+  const load = () => { setLoading(true); purchasingApi.getMyParts({ all:1 }).then(d => { setParts(d.parts||[]); setLoading(false) }).catch(()=>setLoading(false)) }
+  useEffect(() => { load() }, [])
+
+  const setFilter = (k,v) => setF(p => ({ ...p, [k]:v }))
+
+  let rows = parts.filter(p =>
+    (!f.part || (p.part_number||'').toLowerCase().includes(f.part.toLowerCase())) &&
+    (!f.customer || (p.customer_name||'').toLowerCase().includes(f.customer.toLowerCase())) &&
+    (!f.type || p.inquiry_type === f.type) &&
+    (!f.urgency || (p.urgency||'normal') === f.urgency) &&
+    (!f.status || statusOf(p) === f.status)
+  )
+  if (sort.key) {
+    rows = [...rows].sort((a,b) => {
+      let av=a[sort.key], bv=b[sort.key]
+      if (sort.key==='price'||sort.key==='quantity') { av=Number(String(av).replace(/[$,]/g,''))||0; bv=Number(String(bv).replace(/[$,]/g,''))||0 }
+      else { av=String(av||'').toLowerCase(); bv=String(bv||'').toLowerCase() }
+      return av<bv ? -sort.dir : av>bv ? sort.dir : 0
+    })
+  }
+  const toggleSort = (key) => setSort(s => s.key===key ? { key, dir:-s.dir } : { key, dir:1 })
+
+  const th = (label, key, num) => (
+    <th onClick={key?()=>toggleSort(key):undefined} style={{ textAlign:num?'right':'left', padding:'10px 12px', fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.05em', cursor:key?'pointer':'default', whiteSpace:'nowrap', position:'sticky', top:0, background:'#f8fafc', borderBottom:'1px solid #e2e8f0', zIndex:1 }}>
+      {label}{sort.key===key?(sort.dir>0?' ▲':' ▼'):''}
+    </th>
+  )
+  const fStyle = { padding:'6px 8px', border:'1px solid #e2e8f0', borderRadius:8, fontSize:12, outline:'none', width:'100%', boxSizing:'border-box', background:'#fff', fontFamily:'"Plus Jakarta Sans",sans-serif' }
+
+  return (
+    <div style={{ padding:28, maxWidth:1200, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>
+      <h1 style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:800, fontSize:24, color:'#0f172a', margin:'0 0 4px' }}>📦 Assigned Parts</h1>
+      <p style={{ color:'#94a3b8', fontSize:13, margin:'0 0 18px' }}>All parts assigned to you · showing {rows.length} of {parts.length}</p>
+
+      <div style={{ background:'#fff', border:'1px solid #f1f5f9', borderRadius:14, overflow:'hidden' }}>
+        <div style={{ maxHeight:'calc(100vh - 230px)', overflow:'auto' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+            <thead>
+              <tr>{th('Part #','part_number')}{th('Customer','customer_name')}{th('Type','inquiry_type')}{th('Qty','quantity',true)}{th('Urgency','urgency')}{th('Status')}{th('Quote','price',true)}{th('Assigned','assigned_at')}</tr>
+              <tr style={{ background:'#fff', position:'sticky', top:39, zIndex:1 }}>
+                <td style={{ padding:'6px 8px' }}><input value={f.part} onChange={e=>setFilter('part',e.target.value)} placeholder="Search…" style={fStyle} /></td>
+                <td style={{ padding:'6px 8px' }}><input value={f.customer} onChange={e=>setFilter('customer',e.target.value)} placeholder="Search…" style={fStyle} /></td>
+                <td style={{ padding:'6px 8px' }}><select value={f.type} onChange={e=>setFilter('type',e.target.value)} style={fStyle}><option value="">All</option><option value="lead">Lead</option><option value="repeat">Repeat</option><option value="online_order">Order</option></select></td>
+                <td />
+                <td style={{ padding:'6px 8px' }}><select value={f.urgency} onChange={e=>setFilter('urgency',e.target.value)} style={fStyle}><option value="">All</option><option value="critical">Critical</option><option value="high">High</option><option value="normal">Normal</option><option value="low">Low</option></select></td>
+                <td style={{ padding:'6px 8px' }}><select value={f.status} onChange={e=>setFilter('status',e.target.value)} style={fStyle}><option value="">All</option><option value="pending">Pending</option><option value="quoted">Quoted</option><option value="not_in_stock">Not In Stock</option></select></td>
+                <td /><td />
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={8} style={{ padding:48, textAlign:'center', color:'#94a3b8' }}>Loading…</td></tr>
+              ) : rows.length===0 ? (
+                <tr><td colSpan={8} style={{ padding:48, textAlign:'center', color:'#94a3b8' }}>No parts match your filters</td></tr>
+              ) : rows.map(p => {
+                const st = STATUS_META[statusOf(p)]; const urg = URGENCY[p.urgency||'normal']; const ti = T[p.inquiry_type]
+                return (
+                  <tr key={p.assignment_id} onClick={()=>setOpenPartId(p.assignment_id)} style={{ cursor:'pointer', borderBottom:'1px solid #f1f5f9', background:p.is_delayed?'#fff8f8':'#fff' }}
+                    onMouseEnter={e=>e.currentTarget.style.background='#f8fafc'} onMouseLeave={e=>e.currentTarget.style.background=p.is_delayed?'#fff8f8':'#fff'}>
+                    <td style={{ padding:'10px 12px', fontFamily:'monospace', fontWeight:700, color:'#0f172a' }}>{p.part_number}{p.is_delayed && <span style={{ color:'#dc2626', fontSize:11, marginLeft:6 }}>⚠️{p.working_days_pending}d</span>}</td>
+                    <td style={{ padding:'10px 12px', color:'#0f172a' }}>{p.customer_name}{p.customer_company?<span style={{ color:'#94a3b8' }}> · {p.customer_company}</span>:''}</td>
+                    <td style={{ padding:'10px 12px' }}><span style={{ fontSize:12, color:ti?.color }}>{ti?.icon} {ti?.label}</span></td>
+                    <td style={{ padding:'10px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums' }}>{p.quantity||'—'}</td>
+                    <td style={{ padding:'10px 12px' }}><span style={{ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:12, background:urg.bg, color:urg.color, border:`1px solid ${urg.border}` }}>{urg.label}</span></td>
+                    <td style={{ padding:'10px 12px' }}><span style={{ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:12, background:st.bg, color:st.color }}>{st.label}</span></td>
+                    <td style={{ padding:'10px 12px', textAlign:'right', fontWeight:700, color:p.quote_id?'#16a34a':'#cbd5e1', fontVariantNumeric:'tabular-nums' }}>{p.quote_id?money(p.price):'—'}</td>
+                    <td style={{ padding:'10px 12px', color:'#64748b', whiteSpace:'nowrap' }}>{timeAgo(p.assigned_at)}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {openPartId && <PartDetailModal assignmentId={openPartId} onClose={()=>setOpenPartId(null)} onSaved={load} />}
+    </div>
+  )
+}
+
 export default function PurchaserDashboard() {
   const { user } = useAuth()
   const [stats, setStats] = useState(null); const [activeTab, setActiveTab] = useState('dashboard')
@@ -451,17 +591,19 @@ export default function PurchaserDashboard() {
             <div style={{ background:'#fff', borderRadius:14, border:'1px solid #f1f5f9', padding:20 }}>
               <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:700, fontSize:14, color:'#0f172a', marginBottom:14 }}>Performance Metrics</div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-                <div style={{ background:'#f8fafc', borderRadius:10, padding:'12px 14px', textAlign:'center' }}>
-                  <div style={{ fontSize:9, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', marginBottom:4 }}>Avg Quote Time</div>
-                  <div style={{ fontSize:20, fontWeight:800, color:BRAND, fontFamily:'"Bricolage Grotesque",sans-serif' }}>{stats?.avgHours ? `${stats.avgHours}h` : '—'}</div>
-                </div>
-                <div style={{ background:'#f8fafc', borderRadius:10, padding:'12px 14px', textAlign:'center' }}>
-                  <div style={{ fontSize:9, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', marginBottom:4 }}>Completion Rate</div>
-                  <div style={{ fontSize:20, fontWeight:800, color:'#10b981', fontFamily:'"Bricolage Grotesque",sans-serif' }}>
-                    {stats?.myAssigned>0 ? `${Math.round(stats.myQuoted/stats.myAssigned*100)}%` : '—'}
+                {[
+                  ['Avg Quote Time', stats?.avgHours ? `${stats.avgHours}h` : '—', BRAND],
+                  ['On-Time Rate', stats?.onTimeRate!=null ? `${stats.onTimeRate}%` : '—', (stats?.onTimeRate!=null && stats.onTimeRate<70) ? '#f59e0b' : '#10b981'],
+                  ['Completion Rate', stats?.myAssigned>0 ? `${Math.round(stats.myQuoted/stats.myAssigned*100)}%` : '—', '#10b981'],
+                  ['Quotes This Month', stats?.myMonth ?? '—', '#6366f1'],
+                ].map(([l,v,c]) => (
+                  <div key={l} style={{ background:'#f8fafc', borderRadius:10, padding:'12px 14px', textAlign:'center' }}>
+                    <div style={{ fontSize:9, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', marginBottom:4 }}>{l}</div>
+                    <div style={{ fontSize:20, fontWeight:800, color:c, fontFamily:'"Bricolage Grotesque",sans-serif' }}>{v}</div>
                   </div>
-                </div>
+                ))}
               </div>
+              <div style={{ fontSize:10, color:'#94a3b8', marginTop:8 }}>On-time = quoted within 4 working days of assignment.</div>
               <div style={{ marginTop:14 }}>
                 {['lead','repeat','online_order'].map(type => {
                   const d = getTypeStats(type); const tInfo = T[type]
@@ -501,6 +643,43 @@ export default function PurchaserDashboard() {
                   </div>
                 )}
             </div>
+          </div>
+
+          {/* Needs Attention — actionable areas to improve */}
+          <div style={{ background:'#fff', borderRadius:14, border:'1px solid #f1f5f9', padding:20, marginBottom:20 }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14, flexWrap:'wrap', gap:8 }}>
+              <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:700, fontSize:14, color:'#0f172a' }}>🎯 Needs Attention</div>
+              {stats?.oldestPendingDays>0 && <span style={{ fontSize:11, color:'#94a3b8' }}>Oldest pending: <b style={{ color:stats.oldestPendingDays>=4?'#dc2626':'#64748b' }}>{stats.oldestPendingDays} working day{stats.oldestPendingDays===1?'':'s'}</b></span>}
+            </div>
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:14 }}>
+              {[
+                ['Delayed', stats?.myDelayed||0, '#dc2626'],
+                ['Overdue follow-ups', stats?.followups?.overdue?.length||0, '#ef4444'],
+                ['Not in stock', stats?.myNotInStock||0, '#94a3b8'],
+                ['Quotes over selling', stats?.myOverSelling||0, '#f97316'],
+              ].map(([l,v,c]) => (
+                <div key={l} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 14px', borderRadius:10, background:v>0?`${c}10`:'#f8fafc', border:`1px solid ${v>0?`${c}33`:'#f1f5f9'}` }}>
+                  <span style={{ fontSize:18, fontWeight:800, color:v>0?c:'#cbd5e1', fontFamily:'"Bricolage Grotesque",sans-serif' }}>{v}</span>
+                  <span style={{ fontSize:11, color:'#64748b', fontWeight:600 }}>{l}</span>
+                </div>
+              ))}
+            </div>
+            {stats?.needsAttention?.length>0 ? (
+              <div>
+                <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>Delayed — quote these first</div>
+                {stats.needsAttention.map(p => (
+                  <div key={p.assignment_id} onClick={()=>setOpenPartId(p.assignment_id)} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', borderRadius:10, cursor:'pointer', border:'1px solid #fee2e2', background:'#fff8f8', marginBottom:6 }}
+                    onMouseEnter={e=>e.currentTarget.style.background='#fef2f2'} onMouseLeave={e=>e.currentTarget.style.background='#fff8f8'}>
+                    <span style={{ fontSize:11, fontWeight:700, color:'#dc2626', background:'#fef2f2', borderRadius:8, padding:'3px 8px', flexShrink:0 }}>⚠️ {p.days}d</span>
+                    <span style={{ fontFamily:'monospace', fontWeight:700, fontSize:13, color:'#0f172a' }}>{p.part_number}</span>
+                    <span style={{ fontSize:12, color:'#64748b', flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.customer_name}</span>
+                    <span style={{ fontSize:11, color:BRAND, fontWeight:700, flexShrink:0 }}>Quote →</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ textAlign:'center', color:'#94a3b8', padding:'12px 0', fontSize:13 }}>✅ Nothing overdue — you're on top of it!</div>
+            )}
           </div>
         </div>
       )}
