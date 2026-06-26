@@ -26,7 +26,12 @@ function generatePassword() {
 router.get('/', (req, res) => {
   const db = getDB();
   try {
-    res.json(db.prepare('SELECT id, username, name, role, created_at FROM users ORDER BY role DESC, name').all());
+    res.json(db.prepare(`
+      SELECT u.id, u.username, u.name, u.role, u.created_at, u.avatar AS avatar_url,
+        u.created_by, c.name AS created_by_name
+      FROM users u LEFT JOIN users c ON u.created_by = c.id
+      ORDER BY u.role DESC, u.name
+    `).all());
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -38,7 +43,7 @@ router.post('/', requireManager, (req, res) => {
   const db = getDB();
   const hash = bcrypt.hashSync(password, 10);
   try {
-    const result = db.prepare("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, ?)").run(username.toLowerCase().trim(), hash, name.trim(), role || 'ae');
+    const result = db.prepare("INSERT INTO users (username, password, name, role, created_by) VALUES (?, ?, ?, ?, ?)").run(username.toLowerCase().trim(), hash, name.trim(), role || 'ae', req.user.id);
     res.json({ id: result.lastInsertRowid, username: username.toLowerCase(), name, role: role || 'ae' });
   } catch (err) {
     if (err.message && err.message.includes('UNIQUE')) {
@@ -50,16 +55,20 @@ router.post('/', requireManager, (req, res) => {
 });
 
 router.put('/:id', requireManager, (req, res) => {
-  const { name, role, password } = req.body;
+  const { name, role, password, username } = req.body;
   const db = getDB();
+  const sets = [], params = [];
+  if (name !== undefined) { sets.push('name=?'); params.push(String(name).trim()); }
+  if (role !== undefined) { sets.push('role=?'); params.push(role); }
+  if (username !== undefined && username !== null && String(username).trim()) { sets.push('username=?'); params.push(String(username).toLowerCase().trim()); }
+  if (password) { sets.push('password=?'); params.push(bcrypt.hashSync(password, 10)); }
+  if (!sets.length) return res.json({ success: true });
+  params.push(req.params.id);
   try {
-    if (password) {
-      db.prepare('UPDATE users SET name=?, role=?, password=? WHERE id=?').run(name, role, bcrypt.hashSync(password, 10), req.params.id);
-    } else {
-      db.prepare('UPDATE users SET name=?, role=? WHERE id=?').run(name, role, req.params.id);
-    }
+    db.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id=?`).run(...params);
     res.json({ success: true });
   } catch (err) {
+    if (err.message && err.message.includes('UNIQUE')) return res.status(400).json({ error: 'Username already taken' });
     res.status(400).json({ error: err.message });
   }
 });
@@ -75,24 +84,34 @@ router.delete('/:id', requireManager, (req, res) => {
   }
 });
 
-// Reset all AE passwords to random — managers only
+// Reset every password for a role to a fresh random one; returns the plaintext list once.
+function resetPasswordsForRole(db, role) {
+  const targets = db.prepare("SELECT id, name, username FROM users WHERE role = ? ORDER BY name").all(role);
+  const results = [];
+  db.transaction(() => {
+    targets.forEach(t => {
+      const newPassword = generatePassword();
+      db.prepare('UPDATE users SET password=? WHERE id=?').run(bcrypt.hashSync(newPassword, 10), t.id);
+      results.push({ id: t.id, name: t.name, username: t.username, password: newPassword });
+    });
+  })();
+  return results;
+}
+
+// Reset all AE passwords — managers only
 router.post('/reset-ae-passwords', requireManager, (req, res) => {
-  const db = getDB();
   try {
-    const aes = db.prepare("SELECT id, name, username FROM users WHERE role = 'ae' ORDER BY name").all();
-    if (!aes.length) return res.json({ results: [] });
+    res.json({ results: resetPasswordsForRole(getDB(), 'ae') });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-    const results = [];
-    db.transaction(() => {
-      aes.forEach(ae => {
-        const newPassword = generatePassword();
-        const hash = bcrypt.hashSync(newPassword, 10);
-        db.prepare('UPDATE users SET password=? WHERE id=?').run(hash, ae.id);
-        results.push({ id: ae.id, name: ae.name, username: ae.username, password: newPassword });
-      });
-    })();
-
-    res.json({ results });
+// Reset all Purchaser passwords — managers and purchasing managers
+router.post('/reset-purchaser-passwords', (req, res) => {
+  if (!['manager', 'purchasing_manager'].includes(req.user.role)) return res.status(403).json({ error: 'Not authorized' });
+  try {
+    res.json({ results: resetPasswordsForRole(getDB(), 'purchaser') });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

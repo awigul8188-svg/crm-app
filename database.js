@@ -157,6 +157,9 @@ function runPurchasingV2Migrations() {
   // notifications can deep-link straight to the exact part. Older rows stay NULL.
   try { db.exec('ALTER TABLE notifications ADD COLUMN assignment_id INTEGER'); } catch(e) {}
 
+  // Track which user (manager) created each user account. Pre-existing users stay NULL.
+  try { db.exec('ALTER TABLE users ADD COLUMN created_by INTEGER REFERENCES users(id)'); } catch(e) {}
+
   // Backfill assignment_id for pre-existing 'part_assigned' notifications so older ones are also
   // clickable. Match on purchaser + part number + customer, taking the most recent assignment.
   // Only touches NULL rows, so it's cheap on every boot.

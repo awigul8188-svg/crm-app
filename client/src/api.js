@@ -26,6 +26,7 @@ export const api = {
   updateUser: (id, data) => req('PUT', `/users/${id}`, data),
   deleteUser: (id) => req('DELETE', `/users/${id}`),
   resetAePasswords: () => req('POST', '/users/reset-ae-passwords'),
+  resetPurchaserPasswords: () => req('POST', '/users/reset-purchaser-passwords'),
 
   getCustomers: (search) => req('GET', `/customers${search ? `?search=${encodeURIComponent(search)}` : ''}`),
   createCustomer: (data) => req('POST', '/customers', data),
@@ -208,7 +209,7 @@ export const purchasingApi = {
   assignBulk: (data) => req('POST', '/purchasing/assign-bulk', data),
   assign: (data) => req('POST', '/purchasing/assign', data),
   unassign: (requirementId) => req('DELETE', `/purchasing/assign/${requirementId}`),
-  resetPurchaserPasswords: () => req('POST', '/purchasing/reset-purchaser-passwords'),
+  resetPurchaserPasswords: () => req('POST', '/users/reset-purchaser-passwords'),
   getParts: (params = {}) => {
     const p = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => {
