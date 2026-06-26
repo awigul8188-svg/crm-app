@@ -2092,11 +2092,25 @@ function ReceivablesTab({ onOpenOrder }) {
 
   if (loading) return <Loader />
 
+  const overdue = enriched.filter(r => r.od > 0)
+  const overdueAmt = overdue.reduce((a, r) => a + r.balance, 0)
+  const oldest = overdue.reduce((m, r) => Math.max(m, r.od), 0)
+
   const th = { padding: '10px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }
   const td = { padding: '9px 12px', fontSize: 13, whiteSpace: 'nowrap' }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Overdue alert banner */}
+      {overdue.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, padding: '12px 16px' }}>
+          <AlertCircle size={20} color="#dc2626" />
+          <div style={{ fontSize: 13, color: '#7f1d1d' }}>
+            <strong style={{ fontWeight: 800 }}>{overdue.length} order{overdue.length !== 1 ? 's' : ''} overdue</strong> for collection — <strong style={{ fontWeight: 800 }}>{fmt(overdueAmt)}</strong> outstanding{oldest > 0 ? `, oldest ${oldest} days past due` : ''}.
+          </div>
+        </div>
+      )}
+
       {/* Aging summary */}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         <DashboardCard label="Total Outstanding" value={fmt(totalOut)} color="#0f172a" sub={`${enriched.length} open orders`} />
@@ -2156,10 +2170,20 @@ export default function Operations() {
   const [dashNavStatus, setDashNavStatus] = useState(undefined)
   const [dashNavLeadSource, setDashNavLeadSource] = useState(undefined)
   const [dashNavPayment, setDashNavPayment] = useState(undefined)
+  const [overdueCount, setOverdueCount] = useState(0)
 
   useEffect(() => {
     operationsApi.getStats().then(s => { setStats(s); setPendingCount(s.pending_orders || 0) }).catch(() => {})
   }, [])
+
+  // Overdue receivables count for the Receivables tab badge. Refreshed when navigating tabs
+  // (so recording a payment elsewhere clears it on return).
+  useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10)
+    operationsApi.getReceivables()
+      .then(rows => setOverdueCount((rows || []).filter(r => r.due_date && r.due_date < today && (Number(r.charged) - Number(r.received)) > 0.005).length))
+      .catch(() => {})
+  }, [tab])
 
   const handleOpenOrderFromItems = (orderId) => {
     setJumpOrderId(orderId)
@@ -2258,6 +2282,9 @@ export default function Operations() {
           }}>
             <Icon size={14} />
             {label}
+            {key === 'receivables' && overdueCount > 0 && (
+              <span style={{ minWidth: 16, height: 16, padding: '0 5px', borderRadius: 100, background: '#dc2626', color: '#fff', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{overdueCount}</span>
+            )}
           </button>
         ))}
       </div>
