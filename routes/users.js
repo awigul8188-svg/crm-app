@@ -88,9 +88,25 @@ router.put('/:id', requireManager, (req, res) => {
 
 router.delete('/:id', requireManager, (req, res) => {
   const db = getDB();
-  if (parseInt(req.params.id) === req.user.id) return res.status(400).json({ error: "Can't delete yourself" });
+  const id = parseInt(req.params.id);
+  if (id === req.user.id) return res.status(400).json({ error: "Can't delete yourself" });
+  // foreign_keys is ON, so a referenced user can't be deleted directly. Clean up references first:
+  // unassign CRM records (preserve the business data) and remove this user's own purchasing-workflow rows.
+  const run = (sql) => { try { db.prepare(sql).run(id); } catch (e) { /* table may not exist in some envs */ } };
   try {
-    db.prepare('DELETE FROM users WHERE id=?').run(req.params.id);
+    db.transaction(() => {
+      run('UPDATE customers SET assigned_to=NULL WHERE assigned_to=?');
+      run('UPDATE inquiries SET assigned_to=NULL WHERE assigned_to=?');
+      run('UPDATE followups SET created_by=NULL WHERE created_by=?');
+      run('UPDATE users SET created_by=NULL WHERE created_by=?');
+      run('UPDATE op_rma SET closed_by=NULL WHERE closed_by=?');
+      run('UPDATE purchase_assignments SET assigned_by=NULL WHERE assigned_by=?');
+      run('DELETE FROM part_comments WHERE user_id=?');
+      run('DELETE FROM purchaser_followups WHERE purchaser_id=?');
+      run('DELETE FROM purchase_quotes WHERE purchaser_id=?');
+      run('DELETE FROM purchase_assignments WHERE purchaser_id=?'); // cascades any remaining quotes/comments/followups
+      db.prepare('DELETE FROM users WHERE id=?').run(id);
+    })();
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -31,6 +31,31 @@ function RoleBadge({ role }) {
   )
 }
 
+// In-app confirmation dialog (replaces window.confirm). Runs an async action with busy + error state.
+function ConfirmModal({ state, onClose }) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  if (!state) return null
+  const go = async () => {
+    setBusy(true); setErr('')
+    try { await state.action(); onClose() }
+    catch (e) { setErr(e.message || 'Something went wrong') }
+    finally { setBusy(false) }
+  }
+  return (
+    <Modal title={state.title} onClose={() => { if (!busy) onClose() }}>
+      <div style={{ fontSize:14, color:'#475569', lineHeight:1.6, marginBottom:16 }}>{state.message}</div>
+      {err && <div style={{ background:'#fef2f2', border:'1px solid #fecaca', borderRadius:10, padding:'10px 14px', fontSize:13, color:'#dc2626', marginBottom:12 }}>⚠ {err}</div>}
+      <div style={{ display:'flex', gap:10 }}>
+        <button onClick={onClose} disabled={busy} className="btn-secondary" style={{ flex:1 }}>Cancel</button>
+        <button onClick={go} disabled={busy} className={state.danger ? 'btn-danger' : 'btn-primary'} style={{ flex:1 }}>
+          {busy ? 'Working…' : (state.confirmLabel || 'Confirm')}
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
 export default function Users() {
   const { user } = useAuth()
   const [users, setUsers] = useState([])
@@ -44,7 +69,7 @@ export default function Users() {
   const [resetResults, setResetResults] = useState(null)
   const [resetType, setResetType] = useState('ae')
   const [copiedAll, setCopiedAll] = useState(false)
-  const [deletingId, setDeletingId] = useState(null)
+  const [confirmState, setConfirmState] = useState(null)
   const [showBuyers, setShowBuyers] = useState(false)
   const [buyerCandidates, setBuyerCandidates] = useState([])
   const [buyerLoading, setBuyerLoading] = useState(false)
@@ -78,13 +103,13 @@ export default function Users() {
     finally { setSaving(false) }
   }
 
-  const handleDelete = async (id, name) => {
-    if (!confirm(`Remove "${name}"? This cannot be undone.`)) return
-    setDeletingId(id)
-    try { await api.deleteUser(id); load() }
-    catch (e) { alert(e.message) }
-    finally { setDeletingId(null) }
-  }
+  const askDelete = (u) => setConfirmState({
+    title: 'Delete user?',
+    message: `Remove "${u.name}"? This permanently deletes their account. Customers and inquiries assigned to them are unassigned (not deleted), and their purchasing records are removed. This cannot be undone.`,
+    confirmLabel: 'Delete user',
+    danger: true,
+    action: async () => { await api.deleteUser(u.id); load() },
+  })
 
   const openBuyers = async () => {
     setShowBuyers(true); setBuyerLoading(true); setError('')
@@ -109,16 +134,20 @@ export default function Users() {
     finally { setCreatingBuyers(false) }
   }
 
-  const handleResetPasswords = async (type) => {
-    const label = type === 'ae' ? 'all Account Executives' : 'all Purchasers'
-    if (!confirm(`Generate new random passwords for ${label}?`)) return
+  const doReset = async (type) => {
     setResetting(true); setResetType(type)
     try {
       const data = type === 'ae' ? await api.resetAePasswords() : await api.resetPurchaserPasswords()
       setResetResults(data.results || [])
-    } catch (e) { alert(e.message) }
-    finally { setResetting(false) }
+    } finally { setResetting(false) }
   }
+  const askReset = (type) => setConfirmState({
+    title: type === 'ae' ? 'Reset AE passwords?' : 'Reset Purchaser passwords?',
+    message: `Generate new random passwords for ${type === 'ae' ? 'all Account Executives' : 'all Purchasers'}? You'll get a copyable list to hand out, and their old passwords stop working.`,
+    confirmLabel: 'Reset passwords',
+    danger: false,
+    action: async () => { await doReset(type) },
+  })
 
   // Determine what roles this user can manage
   const canManageRole = (targetRole) => {
@@ -145,11 +174,11 @@ export default function Users() {
     <div className="flex items-center gap-2 flex-wrap">
       {user.role === 'manager' && (
         <>
-          <button onClick={() => handleResetPasswords('ae')} disabled={resetting}
+          <button onClick={() => askReset('ae')} disabled={resetting}
             className="btn btn-sm text-red-600 bg-red-50 border border-red-100 hover:bg-red-100">
             <KeyRound size={13} /> Reset AE Passwords
           </button>
-          <button onClick={() => handleResetPasswords('purchaser')} disabled={resetting}
+          <button onClick={() => askReset('purchaser')} disabled={resetting}
             className="btn btn-sm text-amber-600 bg-amber-50 border border-amber-100 hover:bg-amber-100">
             <KeyRound size={13} /> Reset Purchaser Passwords
           </button>
@@ -160,7 +189,7 @@ export default function Users() {
         </>
       )}
       {user.role === 'purchasing_manager' && (
-        <button onClick={() => handleResetPasswords('purchaser')} disabled={resetting}
+        <button onClick={() => askReset('purchaser')} disabled={resetting}
           className="btn btn-sm text-amber-600 bg-amber-50 border border-amber-100 hover:bg-amber-100">
           <KeyRound size={13} /> Reset Purchaser Passwords
         </button>
@@ -242,12 +271,7 @@ export default function Users() {
                                     }}
                                     className="btn-secondary btn-sm">Edit</button>
                                   {u.id !== user.id && (
-                                    <button
-                                      onClick={() => handleDelete(u.id, u.name)}
-                                      disabled={deletingId === u.id}
-                                      className="btn-danger btn-sm">
-                                      {deletingId === u.id ? '...' : 'Delete'}
-                                    </button>
+                                    <button onClick={() => askDelete(u)} className="btn-danger btn-sm">Delete</button>
                                   )}
                                 </div>
                               ) : (
@@ -413,6 +437,8 @@ export default function Users() {
           </div>
         </Modal>
       )}
+
+      <ConfirmModal state={confirmState} onClose={() => setConfirmState(null)} />
     </div>
   )
 }
