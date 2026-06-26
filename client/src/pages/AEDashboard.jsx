@@ -26,8 +26,13 @@ const PRESETS = [
   { label:'Custom',  value:'custom'  },
 ]
 
+// Format a Date as YYYY-MM-DD in the browser's local timezone (the team works in one zone,
+// matching the server's BUSINESS_TZ) — NOT UTC, so "today" doesn't roll over in the evening.
+const fmtLocal = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+const todayLocal = () => fmtLocal(new Date())
+
 function getDateFilters(preset, customFrom, customTo) {
-  const fmt = d => d.toISOString().split('T')[0]
+  const fmt = fmtLocal
   const now = new Date(); const today = fmt(now)
   if (preset === 'today')   return { from: today, to: today }
   if (preset === 'week')    { const d = new Date(now); d.setDate(d.getDate()-7); return { from: fmt(d), to: today } }
@@ -99,8 +104,8 @@ function BentoTop({ summary }) {
             )
           })}
         </div>
-        {f.won > 0 && f.total > 0 && (() => {
-          const winPct = Math.round(f.won / f.total * 100)
+        {f.won > 0 && (f.won + (f.lost||0)) > 0 && (() => {
+          const winPct = Math.round(f.won / (f.won + (f.lost||0)) * 100)
           const r = 22; const circ = 2 * Math.PI * r
           return (
             <div style={{ marginTop:14, paddingTop:12, borderTop:'1px solid #f1f5f9', display:'flex', alignItems:'center', gap:16 }}>
@@ -443,8 +448,8 @@ function InquiryQuickEditModal({ id, onClose, onSaved }) {
 
             {/* Notes */}
             <div style={{ marginBottom:14 }}>
-              <div style={{ fontSize:11, fontWeight:700, color:'#64748b', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Comments</div>
-              <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Add comments..." style={{ ...inp, resize:'none' }} />
+              <div style={{ fontSize:11, fontWeight:700, color:'#64748b', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Notes</div>
+              <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Internal notes..." style={{ ...inp, resize:'none' }} />
             </div>
 
             {error && <div style={{ background:'#fef2f2', border:'1px solid #fecaca', borderRadius:12, padding:'10px 14px', fontSize:13, color:'#dc2626', marginBottom:14 }}>⚠ {error}</div>}
@@ -631,8 +636,8 @@ function AELeadsTab({ dateFilters, onDrilldown, newAssigned = [], onOpen, onRead
     <div>
       <SectionLabel>Today</SectionLabel>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:20 }}>
-        <MetricCard label="My Leads Today" value={data.today.total} color="#3b82f6" onClick={() => drill('My Leads Today', { from: new Date().toISOString().split('T')[0], to: new Date().toISOString().split('T')[0] })} />
-        <MetricCard label="Win Rate" value={`${p.win_rate}%`} color={BRAND} sub={`${p.closed_won} won of ${p.total}`} />
+        <MetricCard label="My Leads Today" value={data.today.total} color="#3b82f6" onClick={() => drill('My Leads Today', { from: todayLocal(), to: todayLocal() })} />
+        <MetricCard label="Win Rate" value={`${p.win_rate}%`} color={BRAND} sub={`${p.closed_won} won of ${p.closed_won + (p.closed_lost||0)} decided`} />
         <MetricCard label="In Progress" value={p.in_progress} color="#f59e0b" onClick={() => drill('My In Progress Leads')} />
       </div>
 
@@ -722,7 +727,7 @@ function AERepeatTab({ dateFilters, onDrilldown }) {
     <div>
       <SectionLabel>Today</SectionLabel>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:20 }}>
-        <MetricCard label="My Repeat Today" value={data.today.total} color="#6366f1" onClick={() => drill('My Repeat Today', { from: new Date().toISOString().split('T')[0], to: new Date().toISOString().split('T')[0] })} />
+        <MetricCard label="My Repeat Today" value={data.today.total} color="#6366f1" onClick={() => drill('My Repeat Today', { from: todayLocal(), to: todayLocal() })} />
         <MetricCard label="PPC (Period)" value={p.ppc} color="#3b82f6" onClick={() => drill('My PPC Inquiries')} />
         <MetricCard label="Outbound (Period)" value={p.outbound} color="#8b5cf6" onClick={() => drill('My Outbound Inquiries')} />
       </div>
@@ -775,13 +780,13 @@ function AEOrdersTab({ dateFilters, onDrilldown, newAssigned = [], onOpenOrder, 
     <div>
       <SectionLabel>Today</SectionLabel>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:12 }}>
-        <MetricCard label="Orders Today" value={t.total} color="#f59e0b" onClick={() => drill('My Orders Today', { from: new Date().toISOString().split('T')[0], to: new Date().toISOString().split('T')[0] })} />
+        <MetricCard label="Orders Today" value={t.total} color="#f59e0b" onClick={() => drill('My Orders Today', { from: todayLocal(), to: todayLocal() })} />
         <MetricCard label="Verified" value={t.verified} color="#10b981" />
         <MetricCard label="Not Verified" value={t.not_verified} color="#ef4444" />
       </div>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:20 }}>
         <MetricCard label="Value Today" value={t.value.toFixed(0)} color={BRAND} prefix="$" />
-        <MetricCard label="Processed" value={t.processed} color="#10b981" onClick={() => drill('My Processed Orders Today', { from: new Date().toISOString().split('T')[0], to: new Date().toISOString().split('T')[0], disposition:'Processed' })} />
+        <MetricCard label="Processed" value={t.processed} color="#10b981" onClick={() => drill('My Processed Orders Today', { from: todayLocal(), to: todayLocal(), disposition:'Processed' })} />
         <MetricCard label="Cancelled" value={t.cancelled} color="#ef4444" />
       </div>
 
@@ -843,7 +848,7 @@ function AEOverviewTab({ data, loading, dateFilters, onDrilldown, onNavigate }) 
   const summary = useSummary()
   if (loading) return <Loader />
   if (!data) return <div style={{ textAlign:'center', padding:'60px 0', color:'#94a3b8', fontSize:14 }}>Could not load overview — please refresh.</div>
-  const todayStr = new Date().toISOString().split('T')[0]
+  const todayStr = todayLocal()
 
   return (
     <div>
@@ -944,34 +949,38 @@ export default function AEDashboard() {
   }
   useEffect(() => { loadOverview() }, [])
 
-  // Newly assigned online orders — red badge on the Orders tab that clears as the AE opens each one.
-  // "Seen" order ids persist per-browser; opening an order marks it seen so the notification goes away.
-  const [assignedOrders, setAssignedOrders] = useState([])
-  const [seenOrders, setSeenOrders] = useState(() => { try { return new Set(JSON.parse(localStorage.getItem('ae_seen_orders') || '[]')) } catch { return new Set() } })
-  useEffect(() => {
-    fetch('/api/inquiries?type=online_order', { headers: { Authorization:`Bearer ${localStorage.getItem('crm_token')}` } })
-      .then(r => r.json())
-      .then(list => setAssignedOrders((Array.isArray(list) ? list : []).filter(o => o.assigned_to && !['Processed','Cancelled'].includes(o.disposition))))
-      .catch(() => {})
-  }, [activeTab])
-  const markSeen = (id) => setSeenOrders(s => { const n = new Set(s); n.add(id); try { localStorage.setItem('ae_seen_orders', JSON.stringify([...n])) } catch {}; return n })
-  const newAssigned = assignedOrders.filter(o => !seenOrders.has(o.id))
+  // Newly assigned online orders / leads — server-tracked "seen" state (inquiry_views), so the
+  // badge is consistent across browsers. `/inquiries/new` returns only the rep's active, unseen
+  // inquiries; opening one (or "Read all") marks it seen server-side.
+  const authHeaders = { Authorization:`Bearer ${localStorage.getItem('crm_token')}` }
+  const [newAssigned, setNewAssigned] = useState([])
+  const [newAssignedLeads, setNewAssignedLeads] = useState([])
+  const loadNew = () => {
+    fetch('/api/inquiries/new?type=online_order', { headers: authHeaders }).then(r => r.json())
+      .then(list => setNewAssigned(Array.isArray(list) ? list : [])).catch(() => {})
+    fetch('/api/inquiries/new?type=lead', { headers: authHeaders }).then(r => r.json())
+      .then(list => setNewAssignedLeads(Array.isArray(list) ? list : [])).catch(() => {})
+  }
+  useEffect(() => { loadNew() }, [activeTab])
   const newOrders = newAssigned.length
-  const readAllOrders = () => setSeenOrders(s => { const n = new Set(s); newAssigned.forEach(o => n.add(o.id)); try { localStorage.setItem('ae_seen_orders', JSON.stringify([...n])) } catch {}; return n })
-
-  // Newly assigned leads — same click-to-clear notification on the Leads tab.
-  const [assignedLeads, setAssignedLeads] = useState([])
-  const [seenLeads, setSeenLeads] = useState(() => { try { return new Set(JSON.parse(localStorage.getItem('ae_seen_leads') || '[]')) } catch { return new Set() } })
-  useEffect(() => {
-    fetch('/api/inquiries?type=lead', { headers: { Authorization:`Bearer ${localStorage.getItem('crm_token')}` } })
-      .then(r => r.json())
-      .then(list => setAssignedLeads((Array.isArray(list) ? list : []).filter(o => o.assigned_to && !LEAD_TERMINAL.includes(o.disposition))))
-      .catch(() => {})
-  }, [activeTab])
-  const markSeenLead = (id) => setSeenLeads(s => { const n = new Set(s); n.add(id); try { localStorage.setItem('ae_seen_leads', JSON.stringify([...n])) } catch {}; return n })
-  const newAssignedLeads = assignedLeads.filter(o => !seenLeads.has(o.id))
   const newLeads = newAssignedLeads.length
-  const readAllLeads = () => setSeenLeads(s => { const n = new Set(s); newAssignedLeads.forEach(o => n.add(o.id)); try { localStorage.setItem('ae_seen_leads', JSON.stringify([...n])) } catch {}; return n })
+
+  const markSeen = (id) => {
+    setNewAssigned(list => list.filter(o => o.id !== id))
+    fetch(`/api/inquiries/${id}/seen`, { method:'POST', headers: authHeaders }).catch(() => {})
+  }
+  const markSeenLead = (id) => {
+    setNewAssignedLeads(list => list.filter(o => o.id !== id))
+    fetch(`/api/inquiries/${id}/seen`, { method:'POST', headers: authHeaders }).catch(() => {})
+  }
+  const readAllOrders = () => {
+    setNewAssigned([])
+    fetch('/api/inquiries/seen-all', { method:'POST', headers: { ...authHeaders, 'Content-Type':'application/json' }, body: JSON.stringify({ type:'online_order' }) }).catch(() => {})
+  }
+  const readAllLeads = () => {
+    setNewAssignedLeads([])
+    fetch('/api/inquiries/seen-all', { method:'POST', headers: { ...authHeaders, 'Content-Type':'application/json' }, body: JSON.stringify({ type:'lead' }) }).catch(() => {})
+  }
 
   const greeting = () => { const h = new Date().getHours(); return h<12?'Good morning':h<17?'Good afternoon':'Good evening' }
 

@@ -1,6 +1,8 @@
 const express = require('express');
 const { getDB } = require('../database');
 const { authenticate, requireCrmAccess } = require('../middleware/auth');
+const { businessToday, localDate } = require('./businessTime');
+const LD = localDate('i.created_at'); // business-local calendar date of an inquiry, as SQL
 
 const router = express.Router();
 router.use(authenticate);
@@ -31,8 +33,8 @@ router.get('/', (req, res) => {
   if (['manager', 'purchasing_manager'].includes(req.user.role) && assigned_to && assigned_to.includes(',')) {
     const f = buildInFilter('i.assigned_to', assigned_to); if (f) { filters.push(f.sql); params.push(...f.params); }
   }
-  if (from) { filters.push("date(i.created_at) >= ?"); params.push(from); }
-  if (to) { filters.push("date(i.created_at) <= ?"); params.push(to); }
+  if (from) { filters.push(`${LD} >= ?`); params.push(from); }
+  if (to) { filters.push(`${LD} <= ?`); params.push(to); }
   if (disposition) { const f = buildInFilter('i.disposition', disposition); if (f) { filters.push(f.sql); params.push(...f.params); } }
   if (lead_source) { const f = buildInFilter('c.lead_source', lead_source); if (f) { filters.push(f.sql); params.push(...f.params); } }
   if (type) { const f = buildInFilter('i.type', type); if (f) { filters.push(f.sql); params.push(...f.params); } }
@@ -47,9 +49,9 @@ router.get('/', (req, res) => {
     const byPerson = db.prepare(`SELECT u.name as name, COUNT(*) as count ${base} GROUP BY i.assigned_to, u.name ORDER BY count DESC`).all(...params);
 
     const trendFilters = [...filters]; const trendParams = [...params];
-    if (!from && !to) trendFilters.push("date(i.created_at) >= date('now', '-30 days')");
+    if (!from && !to) trendFilters.push(`${LD} >= date('now', '-30 days')`);
     const trendWhere = trendFilters.length ? 'WHERE ' + trendFilters.join(' AND ') : '';
-    const trend = db.prepare(`SELECT date(i.created_at) as date, i.type, COUNT(*) as count FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id LEFT JOIN users u ON i.assigned_to = u.id ${trendWhere} GROUP BY date(i.created_at), i.type ORDER BY date ASC`).all(...trendParams);
+    const trend = db.prepare(`SELECT ${LD} as date, i.type, COUNT(*) as count FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id LEFT JOIN users u ON i.assigned_to = u.id ${trendWhere} GROUP BY ${LD}, i.type ORDER BY date ASC`).all(...trendParams);
 
     const totalCount = db.prepare(`SELECT COUNT(*) as c ${base}`).get(...params).c;
     const wonWhere = 'WHERE ' + [...filters, "i.disposition = 'Closed Won'"].join(' AND ');
@@ -75,14 +77,14 @@ router.get('/module', (req, res) => {
   if (!type) return res.status(400).json({ error: 'type required' });
 
   const userId = req.user.role === 'ae' ? req.user.id : (assigned_to || null);
-  const today = new Date().toISOString().split('T')[0];
+  const today = businessToday();
 
   const filters = [`i.type = ?`]; const params = [type];
   if (userId) { filters.push('i.assigned_to = ?'); params.push(userId); }
-  if (from) { filters.push("date(i.created_at) >= ?"); params.push(from); }
-  if (to) { filters.push("date(i.created_at) <= ?"); params.push(to); }
+  if (from) { filters.push(`${LD} >= ?`); params.push(from); }
+  if (to) { filters.push(`${LD} <= ?`); params.push(to); }
 
-  const todayFilters = [`i.type = ?`, `date(i.created_at) = ?`]; const todayParams = [type, today];
+  const todayFilters = [`i.type = ?`, `${LD} = ?`]; const todayParams = [type, today];
   if (userId) { todayFilters.push('i.assigned_to = ?'); todayParams.push(userId); }
 
   const where = 'WHERE ' + filters.join(' AND ');
@@ -114,7 +116,7 @@ router.get('/module', (req, res) => {
       const byPerson = db.prepare(`SELECT u.name, COUNT(*) as count, SUM(CASE WHEN i.disposition='Processed' THEN 1 ELSE 0 END) as processed ${base} ${where} GROUP BY i.assigned_to, u.name ORDER BY count DESC`).all(...params);
 
       // Trend
-      const trend = db.prepare(`SELECT date(i.created_at) as date, COUNT(*) as total, SUM(CASE WHEN i.disposition='Processed' THEN 1 ELSE 0 END) as processed, SUM(CASE WHEN i.disposition='Cancelled' THEN 1 ELSE 0 END) as cancelled ${base} ${where} GROUP BY date(i.created_at) ORDER BY date ASC`).all(...params);
+      const trend = db.prepare(`SELECT ${LD} as date, COUNT(*) as total, SUM(CASE WHEN i.disposition='Processed' THEN 1 ELSE 0 END) as processed, SUM(CASE WHEN i.disposition='Cancelled' THEN 1 ELSE 0 END) as cancelled ${base} ${where} GROUP BY ${LD} ORDER BY date ASC`).all(...params);
 
       res.json({ type, today: { total: todayTotal, verified: todayVerified, not_verified: todayNotVerified, value: todayValue, processed: todayProcessed, cancelled: todayCancelled }, period: { total: periodTotal, processed: periodProcessed, cancelled: periodCancelled, verified: periodVerified, not_verified: periodNotVerified, value: periodValue }, bySource, byPerson, trend });
 
@@ -125,10 +127,12 @@ router.get('/module', (req, res) => {
       const todayTotal = db.prepare(`SELECT COUNT(*) as c ${base} ${todayWhere}`).get(...todayParams).c;
       const byDisposition = db.prepare(`SELECT i.disposition, COUNT(*) as count ${base} ${where} GROUP BY i.disposition ORDER BY count DESC`).all(...params);
       const byPerson = db.prepare(`SELECT u.name, COUNT(*) as count ${base} ${where} GROUP BY i.assigned_to, u.name ORDER BY count DESC`).all(...params);
-      const trend = db.prepare(`SELECT date(i.created_at) as date, COUNT(*) as total ${base} ${where} GROUP BY date(i.created_at) ORDER BY date ASC`).all(...params);
+      const trend = db.prepare(`SELECT ${LD} as date, COUNT(*) as total ${base} ${where} GROUP BY ${LD} ORDER BY date ASC`).all(...params);
       const closedWon = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'Closed Won'`).get(...params).c;
+      const closedLostR = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'Closed Lost'`).get(...params).c;
+      const decidedR = closedWon + closedLostR;
 
-      res.json({ type, today: { total: todayTotal }, period: { total: periodTotal, ppc, outbound, closed_won: closedWon, win_rate: periodTotal > 0 ? Math.round(closedWon / periodTotal * 100) : 0 }, byDisposition, byPerson, trend });
+      res.json({ type, today: { total: todayTotal }, period: { total: periodTotal, ppc, outbound, closed_won: closedWon, closed_lost: closedLostR, win_rate: decidedR > 0 ? Math.round(closedWon / decidedR * 100) : 0 }, byDisposition, byPerson, trend });
 
     } else if (type === 'lead') {
       const periodTotal = db.prepare(`SELECT COUNT(*) as c ${base} ${where}`).get(...params).c;
@@ -138,7 +142,7 @@ router.get('/module', (req, res) => {
       const byDisposition = db.prepare(`SELECT i.disposition, COUNT(*) as count ${base} ${where} GROUP BY i.disposition ORDER BY count DESC`).all(...params);
       const bySource = db.prepare(`SELECT c.lead_source as source, COUNT(*) as count ${base} ${where} GROUP BY c.lead_source ORDER BY count DESC`).all(...params);
       const byPerson = db.prepare(`SELECT u.name, COUNT(*) as count ${base} ${where} GROUP BY i.assigned_to, u.name ORDER BY count DESC`).all(...params);
-      const trend = db.prepare(`SELECT date(i.created_at) as date, COUNT(*) as total, SUM(CASE WHEN i.disposition='Closed Won' THEN 1 ELSE 0 END) as won ${base} ${where} GROUP BY date(i.created_at) ORDER BY date ASC`).all(...params);
+      const trend = db.prepare(`SELECT ${LD} as date, COUNT(*) as total, SUM(CASE WHEN i.disposition='Closed Won' THEN 1 ELSE 0 END) as won ${base} ${where} GROUP BY ${LD} ORDER BY date ASC`).all(...params);
       const quoted = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'Quoted'`).get(...params).c;
       const bidding = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'Bidding'`).get(...params).c;
       const fake = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'Fake Lead'`).get(...params).c;
@@ -147,14 +151,13 @@ router.get('/module', (req, res) => {
       const inProgress = periodTotal - closedWon - closedLost;
 
       // Per-AE breakdown for the performance table (manager only)
-      const monthStart = new Date(); monthStart.setDate(1);
-      const ms = monthStart.toISOString().split('T')[0];
+      const ms = businessToday().slice(0, 8) + '01';
       const aeBase = `FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id JOIN users u ON i.assigned_to = u.id WHERE i.type = 'lead' AND u.role = 'ae'`;
       const aePerformance = db.prepare(`
         SELECT u.id, u.name,
           COUNT(*) as total,
-          SUM(CASE WHEN date(i.created_at) = ? THEN 1 ELSE 0 END) as today,
-          SUM(CASE WHEN date(i.created_at) >= ? THEN 1 ELSE 0 END) as this_month,
+          SUM(CASE WHEN ${LD} = ? THEN 1 ELSE 0 END) as today,
+          SUM(CASE WHEN ${LD} >= ? THEN 1 ELSE 0 END) as this_month,
           SUM(CASE WHEN i.disposition='Closed Won' THEN 1 ELSE 0 END) as won,
           SUM(CASE WHEN i.disposition='Closed Lost' THEN 1 ELSE 0 END) as lost,
           SUM(CASE WHEN i.disposition='Quoted' THEN 1 ELSE 0 END) as quoted,
@@ -171,10 +174,10 @@ router.get('/module', (req, res) => {
 
       const todayPerAE = db.prepare(`
         SELECT u.name, COUNT(*) as count
-        ${aeBase} AND date(i.created_at) = ?
+        ${aeBase} AND ${LD} = ?
         GROUP BY i.assigned_to, u.name ORDER BY count DESC`).all(today);
 
-      res.json({ type, today: { total: todayTotal, perAE: todayPerAE }, period: { total: periodTotal, closed_won: closedWon, closed_lost: closedLost, quoted, bidding, fake, no_response: noResponse, cold, in_progress: inProgress, win_rate: periodTotal > 0 ? Math.round(closedWon / periodTotal * 100) : 0 }, byDisposition, bySource, byPerson, trend, aePerformance, aeSourceBreakdown });
+      res.json({ type, today: { total: todayTotal, perAE: todayPerAE }, period: { total: periodTotal, closed_won: closedWon, closed_lost: closedLost, quoted, bidding, fake, no_response: noResponse, cold, in_progress: inProgress, win_rate: (closedWon + closedLost) > 0 ? Math.round(closedWon / (closedWon + closedLost) * 100) : 0 }, byDisposition, bySource, byPerson, trend, aePerformance, aeSourceBreakdown });
     }
   } catch (err) {
     console.error('Module analytics error:', err);
@@ -186,29 +189,31 @@ router.get('/module', (req, res) => {
 router.get('/ae', (req, res) => {
   const db = getDB();
   const uid = req.user.id;
-  const today = new Date().toISOString().split('T')[0];
+  const today = businessToday();
   const base = `FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id WHERE i.assigned_to = ?`;
 
   try {
     // Today counts
-    const todayLeads   = db.prepare(`SELECT COUNT(*) as c ${base} AND i.type='lead'         AND date(i.created_at)=?`).get(uid, today).c;
-    const todayRepeat  = db.prepare(`SELECT COUNT(*) as c ${base} AND i.type='repeat'        AND date(i.created_at)=?`).get(uid, today).c;
-    const todayOrders  = db.prepare(`SELECT COUNT(*) as c ${base} AND i.type='online_order'  AND date(i.created_at)=?`).get(uid, today).c;
+    const todayLeads   = db.prepare(`SELECT COUNT(*) as c ${base} AND i.type='lead'         AND ${LD}=?`).get(uid, today).c;
+    const todayRepeat  = db.prepare(`SELECT COUNT(*) as c ${base} AND i.type='repeat'        AND ${LD}=?`).get(uid, today).c;
+    const todayOrders  = db.prepare(`SELECT COUNT(*) as c ${base} AND i.type='online_order'  AND ${LD}=?`).get(uid, today).c;
 
     // Helper: won/total/rate for a date range (all types combined)
     function stats(from, to) {
-      let sql = `SELECT COUNT(*) as total, SUM(CASE WHEN i.disposition='Closed Won' THEN 1 ELSE 0 END) as won ${base}`;
+      let sql = `SELECT COUNT(*) as total, SUM(CASE WHEN i.disposition='Closed Won' THEN 1 ELSE 0 END) as won, SUM(CASE WHEN i.disposition='Closed Lost' THEN 1 ELSE 0 END) as lost ${base}`;
       const p = [uid];
-      if (from) { sql += ` AND date(i.created_at) >= ?`; p.push(from); }
-      if (to)   { sql += ` AND date(i.created_at) <= ?`; p.push(to); }
+      if (from) { sql += ` AND ${LD} >= ?`; p.push(from); }
+      if (to)   { sql += ` AND ${LD} <= ?`; p.push(to); }
       const r = db.prepare(sql).get(...p);
-      const total = r.total || 0; const won = r.won || 0;
-      return { total, won, win_rate: total > 0 ? Math.round(won / total * 100) : 0 };
+      const total = r.total || 0; const won = r.won || 0; const lost = r.lost || 0;
+      const decided = won + lost;
+      // Win rate = won of decided (won+lost); in-progress/fake/no-response don't count against it.
+      return { total, won, lost, decided, win_rate: decided > 0 ? Math.round(won / decided * 100) : 0 };
     }
 
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-    const yearStart  = `${now.getFullYear()}-01-01`;
+    const monthStart = businessToday().slice(0, 8) + '01';
+    const yearStart  = businessToday().slice(0, 4) + '-01-01';
 
     const month = stats(monthStart, today);
     const year  = stats(yearStart, today);
@@ -219,7 +224,7 @@ router.get('/ae', (req, res) => {
     for (let w = 7; w >= 0; w--) {
       const wEnd = new Date(now); wEnd.setDate(wEnd.getDate() - w * 7);
       const wStart = new Date(wEnd); wStart.setDate(wStart.getDate() - 6);
-      const r = db.prepare(`SELECT COUNT(*) as total, SUM(CASE WHEN i.disposition='Closed Won' THEN 1 ELSE 0 END) as won ${base} AND date(i.created_at) BETWEEN ? AND ?`).get(uid, wStart.toISOString().split('T')[0], wEnd.toISOString().split('T')[0]);
+      const r = db.prepare(`SELECT COUNT(*) as total, SUM(CASE WHEN i.disposition='Closed Won' THEN 1 ELSE 0 END) as won ${base} AND ${LD} BETWEEN ? AND ?`).get(uid, wStart.toISOString().split('T')[0], wEnd.toISOString().split('T')[0]);
       weeklyTrend.push({ total: r.total || 0, won: r.won || 0 });
     }
 
@@ -267,7 +272,7 @@ router.get('/summary', (req, res) => {
       )`;
     const untouchedCount = db.prepare(untouchedQ).get(...(isAE ? [uid] : [])).c;
 
-    const newCustomersToday = isAE ? null : db.prepare(`SELECT COUNT(*) as c FROM customers WHERE date(created_at)=date('now')`).get().c;
+    const newCustomersToday = isAE ? null : db.prepare(`SELECT COUNT(*) as c FROM customers WHERE ${localDate('created_at')}=?`).get(businessToday()).c;
     const totalCustomers    = isAE ? null : db.prepare(`SELECT COUNT(*) as c FROM customers`).get().c;
 
     const fb = isAE ? `FROM inquiries i WHERE i.type='lead' AND i.assigned_to=?` : `FROM inquiries i WHERE i.type='lead'`;
@@ -280,13 +285,12 @@ router.get('/summary', (req, res) => {
 
     let topAE = null;
     if (!isAE) {
-      const ms = new Date(); ms.setDate(1);
-      const monthStart = ms.toISOString().split('T')[0];
-      const today = new Date().toISOString().split('T')[0];
+      const monthStart = businessToday().slice(0, 8) + '01';
+      const today = businessToday();
       const ae = db.prepare(`
         SELECT u.name, COUNT(*) as total, SUM(CASE WHEN i.disposition='Closed Won' THEN 1 ELSE 0 END) as won
         FROM inquiries i JOIN users u ON i.assigned_to=u.id
-        WHERE u.role='ae' AND date(i.created_at) BETWEEN ? AND ?
+        WHERE u.role='ae' AND ${LD} BETWEEN ? AND ?
         GROUP BY i.assigned_to, u.name HAVING total>0
         ORDER BY CAST(won AS REAL)/total DESC LIMIT 1`).get(monthStart, today);
       if (ae) topAE = { name: ae.name, winRate: ae.total>0 ? Math.round(ae.won/ae.total*100) : 0, won: ae.won, total: ae.total };

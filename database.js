@@ -387,4 +387,27 @@ function runOperationsMigrations() {
   try { db.exec(`ALTER TABLE op_rma ADD COLUMN cost_recovered INTEGER DEFAULT 1`); } catch(e) {}
 }
 
-module.exports = { initializeDB, getDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations };
+// Per-user "seen" state for the AE "Newly Assigned" lead/order widgets (replaces per-browser
+// localStorage). A row means user has viewed that inquiry; absence = it's still "new" to them.
+function runInquiryViewsMigration() {
+  const db = getDB();
+  // Detect first creation so we backfill exactly once (otherwise a restart would re-mark
+  // genuinely-unseen inquiries as seen).
+  const existed = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='inquiry_views'").get();
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS inquiry_views (
+      user_id INTEGER NOT NULL,
+      inquiry_id INTEGER NOT NULL,
+      seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, inquiry_id)
+    );
+  `);
+  if (!existed) {
+    // Treat everything that already exists as seen by its current assignee, so the switch-over
+    // doesn't flag a rep's entire book. Only assignments made AFTER this will surface as new.
+    try { db.prepare("INSERT OR IGNORE INTO inquiry_views (user_id, inquiry_id) SELECT assigned_to, id FROM inquiries WHERE assigned_to IS NOT NULL").run(); }
+    catch(e) { console.log('inquiry_views backfill note:', e.message); }
+  }
+}
+
+module.exports = { initializeDB, getDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations, runInquiryViewsMigration };

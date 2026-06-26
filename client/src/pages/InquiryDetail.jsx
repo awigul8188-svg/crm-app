@@ -133,10 +133,10 @@ export default function InquiryDetail({ id }) {
 
           {/* Comments */}
           <div className="card p-5">
-            <h3 className="font-display font-bold text-sm text-ink-900 mb-2">Comments</h3>
+            <h3 className="font-display font-bold text-sm text-ink-900 mb-2">Notes</h3>
             {editMode
-              ? <textarea className="input resize-none" rows={3} value={editForm.notes} onChange={e => setEF('notes',e.target.value)} placeholder="Add comments..." />
-              : <p className="text-sm text-ink-600 leading-relaxed">{inquiry.notes || <span className="text-ink-300">No comments yet.</span>}</p>}
+              ? <textarea className="input resize-none" rows={3} value={editForm.notes} onChange={e => setEF('notes',e.target.value)} placeholder="Internal notes..." />
+              : <p className="text-sm text-ink-600 leading-relaxed">{inquiry.notes || <span className="text-ink-300">No notes yet.</span>}</p>}
           </div>
 
           {/* Activity / Followups */}

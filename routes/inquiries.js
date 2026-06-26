@@ -1,10 +1,16 @@
 const express = require('express');
 const { getDB } = require('../database');
 const { authenticate, requireManager, requireCrmAccess } = require('../middleware/auth');
+const { businessToday, localDate } = require('./businessTime');
 
 const router = express.Router();
 router.use(authenticate);
 router.use(requireCrmAccess); // sales-side only — purchasing roles get 403
+
+// Dispositions that take an inquiry out of the AE's "active" queue, per type.
+function terminalDispositions(type) {
+  return type === 'online_order' ? ['Processed', 'Cancelled'] : ['Closed Won', 'Closed Lost', 'Fake Lead', 'No response'];
+}
 
 function logActivity(db, entityId, user, action, comment = null) {
   db.prepare('INSERT INTO activity_log (entity_type, entity_id, user_id, user_name, action, comment) VALUES (?, ?, ?, ?, ?, ?)').run('inquiry', entityId, user.id, user.name, action, comment);
@@ -60,8 +66,8 @@ router.get('/', (req, res) => {
   if (type) { query += ' AND i.type = ?'; params.push(type); }
   if (disposition) { const f = buildInFilter('i.disposition', disposition); if (f) { query += ` AND ${f.sql}`; params.push(...f.params); } }
   if (lead_source) { const f = buildInFilter('c.lead_source', lead_source); if (f) { query += ` AND ${f.sql}`; params.push(...f.params); } }
-  if (from) { query += ' AND date(i.created_at) >= ?'; params.push(from); }
-  if (to)   { query += ' AND date(i.created_at) <= ?'; params.push(to); }
+  if (from) { query += ` AND ${localDate('i.created_at')} >= ?`; params.push(from); }
+  if (to)   { query += ` AND ${localDate('i.created_at')} <= ?`; params.push(to); }
   query += ' ORDER BY i.created_at DESC';
   
   try {
@@ -80,10 +86,51 @@ router.get('/stats', (req, res) => {
   
   try {
     const count = (type) => db.prepare(`SELECT COUNT(*) as c FROM inquiries WHERE type=? ${w}`).get(...p([type])).c;
-    const today = new Date().toISOString().split('T')[0];
+    const today = businessToday();
     const next7 = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
     const upcomingFollowups = db.prepare(`SELECT COUNT(*) as c FROM followups f JOIN inquiries i ON f.inquiry_id = i.id WHERE f.completed=0 AND f.follow_up_date BETWEEN ? AND ? ${userId ? 'AND i.assigned_to=?' : ''}`).get(...(userId ? [today, next7, userId] : [today, next7])).c;
     res.json({ leads: count('lead'), repeat: count('repeat'), orders: count('online_order'), upcomingFollowups });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// AE "Newly Assigned" widget: the rep's active inquiries of a type they haven't viewed yet.
+// Server-side "seen" state (inquiry_views) so it's consistent across browsers. Defined before
+// '/:id' so the literal path wins.
+router.get('/new', (req, res) => {
+  if (req.user.role !== 'ae') return res.json([]);
+  const { type } = req.query;
+  if (!type) return res.status(400).json({ error: 'type required' });
+  const db = getDB();
+  try {
+    const terminal = terminalDispositions(type);
+    const ph = terminal.map(() => '?').join(',');
+    const rows = db.prepare(`
+      SELECT i.id, i.type, i.disposition, i.order_amount, i.created_at, c.name as customer_name, c.lead_source
+      FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id
+      WHERE i.assigned_to = ? AND i.type = ? AND i.disposition NOT IN (${ph})
+        AND NOT EXISTS (SELECT 1 FROM inquiry_views v WHERE v.inquiry_id = i.id AND v.user_id = ?)
+      ORDER BY i.created_at DESC`).all(req.user.id, type, ...terminal, req.user.id);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Mark every currently-new inquiry of a type as seen ("Read all").
+router.post('/seen-all', (req, res) => {
+  const { type } = req.body;
+  if (!type) return res.status(400).json({ error: 'type required' });
+  const db = getDB();
+  try {
+    const terminal = terminalDispositions(type);
+    const ph = terminal.map(() => '?').join(',');
+    db.prepare(`
+      INSERT OR IGNORE INTO inquiry_views (user_id, inquiry_id)
+      SELECT ?, i.id FROM inquiries i
+      WHERE i.assigned_to = ? AND i.type = ? AND i.disposition NOT IN (${ph})`).run(req.user.id, req.user.id, type, ...terminal);
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -155,6 +202,10 @@ router.put('/:id', (req, res) => {
     const dispositionChanged = disposition !== inquiry.old_disposition;
 
     db.prepare(`UPDATE inquiries SET disposition=?, assigned_to=?, notes=?, ppc_or_outbound=?, order_amount=?, order_ref=?, created_at=COALESCE(?, created_at), updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(disposition, newAssignee, notes, ppc_or_outbound || null, order_amount || null, order_ref || null, createdAt, req.params.id);
+    // Reassigned to a different rep → clear seen state so it surfaces as "new" for the new owner.
+    if (String(newAssignee) !== String(inquiry.assigned_to)) {
+      db.prepare('DELETE FROM inquiry_views WHERE inquiry_id = ?').run(req.params.id);
+    }
     let addedParts = [];
     if (requirements !== undefined) {
       // Capture the existing part numbers so we only notify PMs about NEWLY added parts (not every edit).
@@ -182,6 +233,16 @@ router.put('/:id', (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// Mark a single inquiry as seen by the current user (clears it from "Newly Assigned").
+router.post('/:id/seen', (req, res) => {
+  try {
+    getDB().prepare('INSERT OR IGNORE INTO inquiry_views (user_id, inquiry_id) VALUES (?, ?)').run(req.user.id, req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
