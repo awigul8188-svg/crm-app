@@ -29,6 +29,37 @@ function getDateRange(preset, from, to) {
   return { from: '', to: '' }
 }
 
+// Render a raw price string ("250", "$250", "1,200") as a single clean "$250" — avoids "$$250".
+const money = (v) => {
+  if (v === null || v === undefined || v === '') return '—'
+  const s = String(v).replace(/[$,]/g, '').trim()
+  return /^\d/.test(s) ? `$${s}` : (s || '—')
+}
+const num = (v) => parseFloat(String(v ?? '').replace(/[$,]/g, '')) || 0
+
+// In-app confirmation dialog (replaces window.confirm). Runs an async action with busy + error state.
+function ConfirmModal({ state, onClose }) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  if (!state) return null
+  const go = async () => {
+    setBusy(true); setErr('')
+    try { await state.action(); onClose() }
+    catch (e) { setErr(e.message || 'Something went wrong') }
+    finally { setBusy(false) }
+  }
+  return (
+    <Modal title={state.title} onClose={() => { if (!busy) onClose() }}>
+      <div style={{ fontSize: 14, color: '#475569', lineHeight: 1.6, marginBottom: 16 }}>{state.message}</div>
+      {err && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#dc2626', marginBottom: 12 }}>⚠ {err}</div>}
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button onClick={onClose} disabled={busy} style={{ flex: 1, padding: 11, borderRadius: 12, border: '1px solid #e2e8f0', background: '#fff', color: '#475569', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: '"Plus Jakarta Sans",sans-serif' }}>Cancel</button>
+        <button onClick={go} disabled={busy} style={{ flex: 1, padding: 11, borderRadius: 12, border: 'none', background: state.danger ? '#dc2626' : BRAND, color: state.danger ? '#fff' : '#0d0d0d', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: '"Plus Jakarta Sans",sans-serif' }}>{busy ? 'Working…' : (state.confirmLabel || 'Confirm')}</button>
+      </div>
+    </Modal>
+  )
+}
+
 /* ── Animations ─────────────────────────────────── */
 const STYLES = `
 @keyframes fadeUp   { from { opacity:0; transform:translateY(16px) } to { opacity:1; transform:translateY(0) } }
@@ -124,9 +155,14 @@ function InquiryAssignModal({ inquiryId, onClose, onSaved }) {
   }, [inquiryId])
   const handleSave = async () => {
     setSaving(true)
-    const toAssign = Object.entries(assignments).filter(([, pid]) => pid).map(([rid, pid]) => ({ requirement_id: parseInt(rid), purchaser_id: pid, pm_notes: notes[rid] || null, urgency: urgencies[rid] || 'normal' }))
-    if (toAssign.length) await purchasingApi.assignBulk({ assignments: toAssign })
-    setSaving(false); onSaved(); onClose()
+    try {
+      const toAssign = Object.entries(assignments).filter(([, pid]) => pid).map(([rid, pid]) => ({ requirement_id: parseInt(rid), purchaser_id: pid, pm_notes: notes[rid] || null, urgency: urgencies[rid] || 'normal' }))
+      // Parts that had a purchaser but were cleared in this modal → unassign.
+      const toUnassign = (data?.parts || []).filter(p => p.purchaser_id && !assignments[p.requirement_id]).map(p => p.requirement_id)
+      if (toAssign.length) await purchasingApi.assignBulk({ assignments: toAssign })
+      for (const rid of toUnassign) await purchasingApi.unassign(rid)
+      onSaved(); onClose()
+    } finally { setSaving(false) }
   }
   if (!data) return createPortal(<div style={{ position: 'fixed', inset: 0, zIndex: 99999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ background: '#fff', borderRadius: 20, padding: 40, color: '#94a3b8' }}>Loading...</div></div>, document.body)
   const { inquiry, parts } = data; const tInfo = T[inquiry?.type]
@@ -149,9 +185,9 @@ function InquiryAssignModal({ inquiryId, onClose, onSaved }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
                 <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 14, color: '#0f172a' }}>{part.part_number}</span>
                 <span style={{ fontSize: 12, color: '#64748b' }}>Qty: {part.quantity || '—'}</span>
-                {part.selling_price && inquiry?.type === 'online_order' && <span style={{ fontWeight: 700, color: '#10b981', fontSize: 12 }}>Selling: ${part.selling_price}</span>}
+                {part.selling_price && inquiry?.type === 'online_order' && <span style={{ fontWeight: 700, color: '#10b981', fontSize: 12 }}>Selling: {money(part.selling_price)}</span>}
                 {part.is_delayed && <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 700 }}>⚠️ Delayed</span>}
-                {part.quote_id && <span style={{ fontSize: 11, color: '#10b981', fontWeight: 700 }}>✓ Quoted: ${part.price}</span>}
+                {part.quote_id && <span style={{ fontSize: 11, color: '#10b981', fontWeight: 700 }}>✓ Quoted: {money(part.price)}</span>}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div>
@@ -190,12 +226,15 @@ function PartsTable({ type, purchasers, dateRange, onRefresh }) {
   const [page, setPage] = useState(1); const [filterStatus, setFilterStatus] = useState(''); const [search, setSearch] = useState('')
   const load = () => {
     setLoading(true)
-    purchasingApi.getParts({ type, status: filterStatus, page, from: dateRange.from, to: dateRange.to }).then(d => { setResult(d); setLoading(false) })
+    purchasingApi.getParts({ type, status: filterStatus, page, search, from: dateRange.from, to: dateRange.to })
+      .then(d => { setResult(d); setLoading(false) })
+      .catch(() => setLoading(false))
   }
-  useEffect(() => { setPage(1) }, [type, filterStatus, JSON.stringify(dateRange)])
-  useEffect(() => { load() }, [type, filterStatus, page, JSON.stringify(dateRange)])
-  const handleAssign = async (reqId, purchaserId) => { if (purchaserId) await purchasingApi.assign({ requirement_id: reqId, purchaser_id: purchaserId }); load(); onRefresh() }
-  const filtered = (result?.parts || []).filter(p => !search || p.part_number?.toLowerCase().includes(search.toLowerCase()) || p.customer_name?.toLowerCase().includes(search.toLowerCase()))
+  useEffect(() => { setPage(1) }, [type, filterStatus, search, JSON.stringify(dateRange)])
+  // Server-side search (debounced) so it matches across all pages, not just the loaded one.
+  useEffect(() => { const t = setTimeout(load, search ? 300 : 0); return () => clearTimeout(t) }, [type, filterStatus, page, search, JSON.stringify(dateRange)])
+  const handleAssign = async (reqId, purchaserId) => { try { if (purchaserId) await purchasingApi.assign({ requirement_id: reqId, purchaser_id: purchaserId }) } catch (e) {} load(); onRefresh() }
+  const filtered = result?.parts || []
   return (
     <div className="fade-in">
       <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -234,7 +273,7 @@ function PartsTable({ type, purchasers, dateRange, onRefresh }) {
                     <td style={{ padding: '9px 12px', color: '#475569' }}>{p.quantity || '—'}</td>
                     <td style={{ padding: '9px 12px', fontWeight: 500, whiteSpace: 'nowrap' }}>{p.customer_name}<div style={{ fontSize: 11, color: '#94a3b8' }}>{p.customer_company}</div></td>
                     <td style={{ padding: '9px 12px', color: '#64748b', whiteSpace: 'nowrap' }}>{p.ae_name || '—'}</td>
-                    {type === 'online_order' && <td style={{ padding: '9px 12px', fontWeight: 700, color: p.is_over_selling ? '#dc2626' : '#10b981' }}>{p.selling_price ? `$${p.selling_price}` : '—'}</td>}
+                    {type === 'online_order' && <td style={{ padding: '9px 12px', fontWeight: 700, color: p.is_over_selling ? '#dc2626' : '#10b981' }}>{p.selling_price ? money(p.selling_price) : '—'}</td>}
                     <td style={{ padding: '9px 12px', color: '#94a3b8', fontSize: 11, whiteSpace: 'nowrap' }}>{formatDateShort(p.inquiry_date)}</td>
                     <td style={{ padding: '9px 12px' }}><AssignCell part={p} purchasers={purchasers} onAssign={handleAssign} /></td>
                     <td style={{ padding: '9px 12px' }}>
@@ -246,7 +285,7 @@ function PartsTable({ type, purchasers, dateRange, onRefresh }) {
                     <td style={{ padding: '9px 12px', maxWidth: 160 }}>
                       {p.quote_id ? (
                         <div>
-                          <div style={{ fontWeight: 700, color: p.is_over_selling ? '#dc2626' : '#10b981', fontSize: 12 }}>${p.price} {p.is_over_selling && '⚠️'}</div>
+                          <div style={{ fontWeight: 700, color: p.is_over_selling ? '#dc2626' : '#10b981', fontSize: 12 }}>{money(p.price)} {p.is_over_selling && '⚠️'}</div>
                           <div style={{ fontSize: 11, color: '#64748b' }}>{p.condition}{p.lead_time ? ` · ${p.lead_time}` : ''}</div>
                           <div style={{ fontSize: 10, color: '#94a3b8' }}>{p.supplier_name}</div>
                         </div>
@@ -399,14 +438,15 @@ export default function PurchasingManagerView() {
   const [showNewUser, setShowNewUser] = useState(false); const [newUserForm, setNewUserForm] = useState({ name: '', username: '', password: '' })
   const [savingUser, setSavingUser] = useState(false); const [userError, setUserError] = useState('')
   const [resetting, setResetting] = useState(false); const [resetResults, setResetResults] = useState(null); const [copiedAll, setCopiedAll] = useState(false)
+  const [confirmState, setConfirmState] = useState(null)
 
   const token = localStorage.getItem('crm_token')
   const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
   const dateRange = getDateRange(preset, customFrom, customTo)
 
-  const loadStats = () => purchasingApi.getStats().then(setStats)
-  const loadPurchasers = () => purchasingApi.getPurchasers().then(setPurchasers)
-  const loadNotifications = () => api.getNotifications().then(n => setNotifications((n.activity || []).filter(x => x.inquiry_type?.endsWith('_parts'))))
+  const loadStats = () => purchasingApi.getStats().then(setStats).catch(() => {})
+  const loadPurchasers = () => purchasingApi.getPurchasers().then(setPurchasers).catch(() => {})
+  const loadNotifications = () => api.getNotifications().then(n => setNotifications((n.activity || []).filter(x => x.inquiry_type?.endsWith('_parts')))).catch(() => {})
 
   useEffect(() => { loadStats(); loadPurchasers(); loadNotifications() }, [])
 
@@ -419,11 +459,17 @@ export default function PurchasingManagerView() {
     } catch (e) { setUserError(e.message) } finally { setSavingUser(false) }
   }
 
-  const handleResetPasswords = async () => {
-    if (!confirm('Reset passwords for all purchasers?')) return
-    setResetting(true)
-    const data = await purchasingApi.resetPurchaserPasswords(); setResetResults(data.results); setResetting(false)
-  }
+  const askReset = () => setConfirmState({
+    title: 'Reset Purchaser passwords?',
+    message: "Generate new random passwords for all purchasers? You'll get a copyable list to hand out, and their old passwords stop working.",
+    confirmLabel: 'Reset passwords',
+    danger: false,
+    action: async () => {
+      setResetting(true)
+      try { const data = await purchasingApi.resetPurchaserPasswords(); setResetResults(data.results || []) }
+      finally { setResetting(false) }
+    },
+  })
 
   const ms = stats
   const unreadNotifs = notifications.filter(n => !n.read).length
@@ -447,12 +493,13 @@ export default function PurchasingManagerView() {
           <p style={{ color: '#94a3b8', fontSize: 13, marginTop: 3 }}>Manage part assignments, track quotes, monitor performance</p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button onClick={handleResetPasswords} disabled={resetting} style={{ padding: '7px 13px', borderRadius: 10, border: '1px solid #fecaca', background: '#fff5f5', color: '#dc2626', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: '"Plus Jakarta Sans",sans-serif' }}>🔑 Reset Passwords</button>
+          <button onClick={askReset} disabled={resetting} style={{ padding: '7px 13px', borderRadius: 10, border: '1px solid #fecaca', background: '#fff5f5', color: '#dc2626', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: '"Plus Jakarta Sans",sans-serif' }}>🔑 Reset Passwords</button>
           <button onClick={() => setShowNewUser(true)} style={{ padding: '7px 16px', borderRadius: 10, border: 'none', background: BRAND, color: '#0d0d0d', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: '"Plus Jakarta Sans",sans-serif' }}>+ Add Purchaser</button>
         </div>
       </div>
 
-      {/* Date filter */}
+      {/* Date filter — only on the parts/quotes tabs it actually filters (not the all-time dashboard) */}
+      {['leads', 'repeat', 'orders', 'quotes'].includes(activeTab) && (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: 3, gap: 2 }}>
           {PRESETS.map(r => <button key={r.v} onClick={() => setPreset(r.v)} style={{ padding: '5px 12px', borderRadius: 7, border: 'none', background: preset === r.v ? BRAND : 'transparent', color: preset === r.v ? '#0d0d0d' : '#64748b', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: '"Plus Jakarta Sans",sans-serif', transition: 'all 0.15s' }}>{r.label}</button>)}
@@ -463,6 +510,7 @@ export default function PurchasingManagerView() {
           <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} style={{ ...inp, width: 'auto' }} />
         </>}
       </div>
+      )}
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 2, background: '#f1f5f9', borderRadius: 12, padding: 3, marginBottom: 20, flexWrap: 'wrap' }}>
@@ -478,7 +526,7 @@ export default function PurchasingManagerView() {
       {activeTab === 'dashboard' && ms && (
         <div className="fade-in">
           {/* Stat cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 12, marginBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12, marginBottom: 20 }}>
             <StatCard label="Total Parts"  value={ms.totalParts}   color="#6366f1" icon="📦" delay={0} />
             <StatCard label="Unassigned"   value={ms.unassigned}   color="#ef4444" icon="📋" delay={50} />
             <StatCard label="Pending"      value={ms.pending}      color="#f59e0b" icon="⏳" delay={100} />
@@ -490,7 +538,7 @@ export default function PurchasingManagerView() {
           </div>
 
           {/* Financial summary */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 20 }}>
             <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #f1f5f9', padding: '16px 20px', animation: 'fadeUp 0.4s ease 0.2s both' }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Total Quoted Value</div>
               <div style={{ fontSize: 26, fontWeight: 800, color: '#10b981', fontFamily: '"Bricolage Grotesque",sans-serif' }}>${parseFloat(ms.totalQuotedValue || 0).toLocaleString()}</div>
@@ -550,7 +598,7 @@ export default function PurchasingManagerView() {
             <div style={{ fontFamily: '"Bricolage Grotesque",sans-serif', fontWeight: 700, fontSize: 14, color: '#0f172a', marginBottom: 14 }}>Recent Quotes</div>
             {!ms.recentQuotes?.length ? <div style={{ textAlign: 'center', color: '#94a3b8', padding: 24 }}>No quotes yet</div> :
               ms.recentQuotes.map((q, i) => {
-                const isOver = q.selling_price && parseFloat(String(q.price || '0').replace(/[$,]/g, '')) > parseFloat(String(q.selling_price).replace(/[$,]/g, ''))
+                const isOver = q.is_over_selling
                 return (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid #f8fafc', background: isOver ? '#fff5f5' : '', borderRadius: 8 }}>
                     <div style={{ width: 32, height: 32, borderRadius: 8, background: `${T[q.inquiry_type]?.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>
@@ -565,7 +613,7 @@ export default function PurchasingManagerView() {
                       <div style={{ fontSize: 11, color: '#94a3b8' }}>{q.purchaser_name} · {timeAgo(q.updated_at)}</div>
                     </div>
                     <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ fontWeight: 700, color: isOver ? '#dc2626' : '#10b981', fontSize: 13 }}>${q.price}</div>
+                      <div style={{ fontWeight: 700, color: isOver ? '#dc2626' : '#10b981', fontSize: 13 }}>{money(q.price)}</div>
                       <div style={{ fontSize: 11, color: '#64748b' }}>{q.condition}</div>
                     </div>
                   </div>
@@ -622,6 +670,9 @@ export default function PurchasingManagerView() {
       )}
 
       {assignInquiryId && <InquiryAssignModal inquiryId={assignInquiryId} onClose={() => setAssignInquiryId(null)} onSaved={() => { loadStats(); loadNotifications() }} />}
+
+      <ConfirmModal state={confirmState} onClose={() => setConfirmState(null)} />
+
 
       {/* Add purchaser modal */}
       {showNewUser && (
@@ -712,12 +763,12 @@ function QuotesTable({ dateRange }) {
                     <td style={{ padding: '9px 12px' }}><span style={{ color: T[q.inquiry_type]?.color, fontSize: 13 }}>{T[q.inquiry_type]?.icon}</span></td>
                     <td style={{ padding: '9px 12px', color: '#64748b' }}>{q.ae_name || '—'}</td>
                     <td style={{ padding: '9px 12px', fontWeight: 600, color: BRAND }}>{q.purchaser_name}</td>
-                    <td style={{ padding: '9px 12px', fontWeight: 700, color: q.is_over_selling ? '#dc2626' : '#10b981', fontSize: 13 }}>${q.price}</td>
-                    <td style={{ padding: '9px 12px', color: '#64748b' }}>{q.selling_price ? `$${q.selling_price}` : '—'}</td>
+                    <td style={{ padding: '9px 12px', fontWeight: 700, color: q.is_over_selling ? '#dc2626' : '#10b981', fontSize: 13 }}>{money(q.price)}</td>
+                    <td style={{ padding: '9px 12px', color: '#64748b' }}>{q.selling_price ? money(q.selling_price) : '—'}</td>
                     <td style={{ padding: '9px 12px' }}>
                       {q.selling_price && q.inquiry_type === 'online_order' ? (
                         <span style={{ fontSize: 11, fontWeight: 700, color: q.is_over_selling ? '#dc2626' : '#10b981' }}>
-                          {q.is_over_selling ? '⚠️ +' : '✓ '}${Math.abs(parseFloat(String(q.price || 0).replace(/[$,]/g, '')) - parseFloat(String(q.selling_price).replace(/[$,]/g, ''))).toFixed(2)}
+                          {q.is_over_selling ? '⚠️ +' : '✓ '}${Math.abs(num(q.price) * (parseInt(q.quantity) || 1) - num(q.selling_price)).toFixed(2)}
                         </span>
                       ) : '—'}
                     </td>

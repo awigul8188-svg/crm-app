@@ -75,11 +75,12 @@ const PART_SELECT = `
 // ── Parts list (PM, paginated) ─────────────────────────────────
 router.get('/parts', canManage, (req, res) => {
   const db = getDB();
-  const { type, status, purchaser_id, page = 1, from, to } = req.query;
+  const { type, status, purchaser_id, page = 1, from, to, search } = req.query;
   let where = "r.part_number != ''";
   const params = [];
 
   if (type) { where += ' AND i.type = ?'; params.push(type); }
+  if (search) { where += ' AND (r.part_number LIKE ? OR c.name LIKE ? OR c.company LIKE ?)'; const s = `%${search}%`; params.push(s, s, s); }
   if (status === 'unassigned') where += ' AND pa.id IS NULL';
   else if (status === 'pending') { where += ' AND pa.id IS NOT NULL AND pa.status = ?'; params.push('pending'); }
   else if (status === 'quoted') { where += ' AND pa.status = ?'; params.push('quoted'); }
@@ -89,7 +90,7 @@ router.get('/parts', canManage, (req, res) => {
   if (to) { where += ' AND date(i.created_at) <= ?'; params.push(to); }
 
   try {
-    const total = db.prepare(`SELECT COUNT(*) as c FROM requirements r JOIN inquiries i ON r.inquiry_id=i.id LEFT JOIN purchase_assignments pa ON pa.requirement_id=r.id WHERE ${where}`).get(...params).c;
+    const total = db.prepare(`SELECT COUNT(*) as c FROM requirements r JOIN inquiries i ON r.inquiry_id=i.id JOIN customers c ON i.customer_id=c.id LEFT JOIN purchase_assignments pa ON pa.requirement_id=r.id WHERE ${where}`).get(...params).c;
     const parts = db.prepare(`${PART_SELECT} WHERE ${where} ORDER BY CASE pa.urgency WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'normal' THEN 3 ELSE 4 END, r.id DESC LIMIT ${PAGE_SIZE} OFFSET ${pageOffset(page)}`).all(...params);
 
     // Flag delayed (>4 working days unquoted)
@@ -437,7 +438,8 @@ router.get('/stats', (req, res) => {
 
       const byType = db.prepare(`SELECT i.type, COUNT(*) as total, SUM(CASE WHEN pa.id IS NULL THEN 1 ELSE 0 END) as unassigned, SUM(CASE WHEN pa.status='pending' AND pa.not_in_stock=0 THEN 1 ELSE 0 END) as pending, SUM(CASE WHEN pa.status='quoted' THEN 1 ELSE 0 END) as quoted, SUM(CASE WHEN pa.not_in_stock=1 THEN 1 ELSE 0 END) as not_in_stock FROM requirements r JOIN inquiries i ON r.inquiry_id=i.id LEFT JOIN purchase_assignments pa ON pa.requirement_id=r.id WHERE r.part_number!='' GROUP BY i.type`).all();
       const byPurchaser = db.prepare(`SELECT u.id, u.name, COUNT(*) as assigned, SUM(CASE WHEN pa.status='quoted' THEN 1 ELSE 0 END) as quoted_count, SUM(CASE WHEN pa.status='pending' AND pa.not_in_stock=0 THEN 1 ELSE 0 END) as pending_count, SUM(CASE WHEN pa.not_in_stock=1 THEN 1 ELSE 0 END) as not_in_stock FROM purchase_assignments pa JOIN users u ON pa.purchaser_id=u.id GROUP BY pa.purchaser_id ORDER BY assigned DESC`).all();
-      const recentQuotes = db.prepare(`SELECT pq.price, pq.condition, pq.updated_at, r.part_number, pu.name as purchaser_name, c.name as customer_name, i.type as inquiry_type, i.order_amount as selling_price FROM purchase_quotes pq JOIN requirements r ON pq.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id JOIN customers c ON i.customer_id=c.id LEFT JOIN users pu ON pq.purchaser_id=pu.id ORDER BY pq.updated_at DESC LIMIT 10`).all();
+      const recentQuotes = db.prepare(`SELECT pq.price, pq.condition, pq.updated_at, r.part_number, r.quantity, pu.name as purchaser_name, c.name as customer_name, i.type as inquiry_type, i.order_amount as selling_price FROM purchase_quotes pq JOIN requirements r ON pq.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id JOIN customers c ON i.customer_id=c.id LEFT JOIN users pu ON pq.purchaser_id=pu.id ORDER BY pq.updated_at DESC LIMIT 10`)
+        .all().map(q => ({ ...q, is_over_selling: isOverSelling(q.price, q.quantity, q.selling_price, q.inquiry_type) }));
       const urgencyCounts = db.prepare("SELECT urgency, COUNT(*) as count FROM purchase_assignments WHERE status='pending' GROUP BY urgency").all();
 
       res.json({ isPM:true, totalParts, unassigned, pending, quoted, notInStock, quotedToday, newToday, delayed, totalQuotedValue: totalQuotedValue.toFixed(2), avgQuotePrice, overSellingCount, byType, byPurchaser, recentQuotes, urgencyCounts });

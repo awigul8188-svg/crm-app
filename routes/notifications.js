@@ -8,8 +8,13 @@ router.use(authenticate);
 // Get all notifications for current user
 router.get('/', (req, res) => {
   const db = getDB();
-  // CRM follow-ups + team activity are sales-side only. Purchasing roles have their own
-  // notifications (served by /purchasing/stats), so return an empty payload here for them.
+  // Purchasing managers get their own notification feed (e.g. "added parts" alerts) as `activity`.
+  if (req.user.role === 'purchasing_manager') {
+    const activity = db.prepare('SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 100').all(req.user.id);
+    const unread = activity.filter(n => !n.read).length;
+    return res.json({ followups: { overdue: [], today: [], upcoming: [] }, activity, total: unread, unreadActivity: unread });
+  }
+  // Other non-sales roles (purchaser) have no CRM follow-ups/activity here.
   if (!['manager', 'ae'].includes(req.user.role)) {
     return res.json({ followups: { overdue: [], today: [], upcoming: [] }, activity: [], total: 0, unreadActivity: 0 });
   }

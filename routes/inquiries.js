@@ -23,6 +23,21 @@ function notifyManagers(db, { inquiry_id, inquiry_type, customer_name, actor_nam
   }
 }
 
+// Notify purchasing managers when parts are added to an inquiry, so they can assign purchasers.
+// inquiry_type is suffixed '_parts' (e.g. 'lead_parts') — the PM "New Parts" tab filters on that.
+function notifyPurchasingManagers(db, { inquiry_id, type, customer_name, actor_name, partNumbers }) {
+  try {
+    if (!partNumbers || !partNumbers.length) return;
+    const pms = db.prepare("SELECT id FROM users WHERE role = 'purchasing_manager'").all();
+    if (!pms.length) return;
+    const comment = partNumbers.slice(0, 8).join(', ') + (partNumbers.length > 8 ? ` +${partNumbers.length - 8} more` : '');
+    const insert = db.prepare("INSERT INTO notifications (user_id, inquiry_id, inquiry_type, customer_name, actor_name, action, comment) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    pms.forEach(m => insert.run(m.id, inquiry_id, `${type}_parts`, customer_name, actor_name, 'added parts', comment));
+  } catch (err) {
+    console.error('Purchasing notification error:', err.message);
+  }
+}
+
 function buildInFilter(column, value) {
   if (!value) return null;
   const values = value.split(',').map(v => v.trim()).filter(Boolean);
@@ -84,14 +99,16 @@ router.post('/', (req, res) => {
     const result = db.prepare('INSERT INTO inquiries (customer_id, type, disposition, assigned_to, notes, ppc_or_outbound, order_amount, order_ref, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(customer_id, type, disposition || 'Initial Contact', assignee, notes || null, ppc_or_outbound || null, order_amount || null, order_ref || null, createdAt, createdAt);
     const inquiryId = result.lastInsertRowid;
 
+    const newParts = [];
     if (requirements?.length) {
       const ins = db.prepare('INSERT INTO requirements (inquiry_id, part_number, quantity) VALUES (?, ?, ?)');
-      requirements.forEach(r => { if (r.part_number?.trim()) ins.run(inquiryId, r.part_number, r.quantity); });
+      requirements.forEach(r => { if (r.part_number?.trim()) { ins.run(inquiryId, r.part_number, r.quantity); newParts.push(r.part_number.trim()); } });
     }
 
     logActivity(db, inquiryId, req.user, `${type} created`);
 
     const customer = db.prepare('SELECT name FROM customers WHERE id = ?').get(customer_id);
+    notifyPurchasingManagers(db, { inquiry_id: inquiryId, type, customer_name: customer?.name || 'Unknown', actor_name: req.user.name, partNumbers: newParts });
     notifyManagers(db, {
       inquiry_id: inquiryId, inquiry_type: type,
       customer_name: customer?.name || 'Unknown',
@@ -129,12 +146,17 @@ router.put('/:id', (req, res) => {
     const inquiry = db.prepare('SELECT i.type, c.name as customer_name FROM inquiries i JOIN customers c ON i.customer_id = c.id WHERE i.id = ?').get(req.params.id);
 
     db.prepare('UPDATE inquiries SET disposition=?, assigned_to=?, notes=?, ppc_or_outbound=?, order_amount=?, order_ref=?, updated_at=CURRENT_TIMESTAMP WHERE id=?').run(disposition, assigned_to, notes, ppc_or_outbound || null, order_amount || null, order_ref || null, req.params.id);
+    let addedParts = [];
     if (requirements !== undefined) {
+      // Capture the existing part numbers so we only notify PMs about NEWLY added parts (not every edit).
+      const oldParts = new Set(db.prepare('SELECT part_number FROM requirements WHERE inquiry_id = ?').all(req.params.id).map(r => (r.part_number || '').trim().toLowerCase()).filter(Boolean));
       db.prepare('DELETE FROM requirements WHERE inquiry_id = ?').run(req.params.id);
       if (requirements.length) { const ins = db.prepare('INSERT INTO requirements (inquiry_id, part_number, quantity) VALUES (?, ?, ?)'); requirements.forEach(r => { if (r.part_number?.trim()) ins.run(req.params.id, r.part_number, r.quantity); }); }
+      addedParts = (requirements || []).filter(r => r.part_number?.trim() && !oldParts.has(r.part_number.trim().toLowerCase())).map(r => r.part_number.trim());
     }
 
     logActivity(db, req.params.id, req.user, 'Inquiry updated');
+    if (addedParts.length) notifyPurchasingManagers(db, { inquiry_id: parseInt(req.params.id), type: inquiry?.type, customer_name: inquiry?.customer_name || 'Unknown', actor_name: req.user.name, partNumbers: addedParts });
 
     notifyManagers(db, {
       inquiry_id: parseInt(req.params.id),
