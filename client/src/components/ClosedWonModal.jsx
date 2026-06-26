@@ -24,6 +24,9 @@ const money = (n) => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFra
 // (customer charges + line items + selling). Buying/supplier/AP is left for ops/buyer.
 export default function ClosedWonModal({ inquiry, requirements = [], onClose, onCreated, z = 99999 }) {
   const repName = inquiry.assigned_name || ''
+  // Online orders: rep is "Online" (GP -> marketing, no human rep credited); the processing
+  // rep is recorded as the Online Order Rep (ppc_order_rep) instead.
+  const isOnline = inquiry.type === 'online_order'
 
   const [header, setHeader] = useState({
     payment_status: '', net: '', due_date: '', tax_charged: '', shipping_charged: '', cc_charges: '', notes: '',
@@ -58,7 +61,9 @@ export default function ClosedWonModal({ inquiry, requirements = [], onClose, on
     try {
       const res = await operationsApi.createFromCRM({
         customer_name: inquiry.customer_name, customer_email: inquiry.customer_email, customer_phone: inquiry.customer_phone,
-        lead_source: inquiry.lead_source, rep: repName, crm_inquiry_id: inquiry.id,
+        lead_source: inquiry.lead_source, crm_inquiry_id: inquiry.id,
+        rep: isOnline ? 'Online' : repName,
+        ppc_order_rep: isOnline ? repName : undefined,
         ...header,
         items: lines,
       })
@@ -91,12 +96,13 @@ export default function ClosedWonModal({ inquiry, requirements = [], onClose, on
   }
 
   return (
-    <Modal title="Closed Won — Create Order" onClose={onClose} wide zIndex={z}>
+    <Modal title={`${isOnline ? 'Online Order' : 'Closed Won'} — Create Order`} onClose={onClose} wide zIndex={z}>
       {/* CRM data summary — read only */}
       <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '14px 16px', marginBottom: 18 }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: '#065f46', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>Auto-filled from CRM</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 24px', fontSize: 13 }}>
-          {[['Customer', inquiry.customer_name], ['Email', inquiry.customer_email], ['Phone', inquiry.customer_phone], ['Lead Source', inquiry.lead_source], ['Rep', repName]].map(([k, v]) => v ? (
+          {[['Customer', inquiry.customer_name], ['Email', inquiry.customer_email], ['Phone', inquiry.customer_phone], ['Lead Source', inquiry.lead_source],
+            ...(isOnline ? [['Rep', 'Online'], ['Online Order Rep', repName]] : [['Rep', repName]])].map(([k, v]) => v ? (
             <div key={k}><span style={{ color: '#10b981', fontWeight: 600 }}>{k}: </span><span style={{ color: '#064e3b', fontWeight: 700 }}>{v}</span></div>
           ) : null)}
         </div>

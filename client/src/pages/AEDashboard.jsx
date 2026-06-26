@@ -347,7 +347,8 @@ function InquiryQuickEditModal({ id, onClose, onSaved }) {
                 <div style={{ fontSize:11, fontWeight:700, color:'#64748b', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>{inquiry?.type === 'online_order' ? 'Status' : 'Disposition'}</div>
                 <select value={disposition} onChange={e => {
                     const val = e.target.value
-                    if (val === 'Closed Won' && disposition !== 'Closed Won') {
+                    const conv = inquiry?.type === 'online_order' ? 'Processed' : 'Closed Won'
+                    if (val === conv && disposition !== conv) {
                       setCwPrevDisp(disposition); setCwCreated(false); setDisposition(val); setClosedWonOpen(true)
                     } else { setDisposition(val) }
                   }} style={{ ...inp, cursor:'pointer' }}>

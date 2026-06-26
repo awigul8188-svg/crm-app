@@ -226,9 +226,11 @@ export default function InquiryDetail({ id }) {
                 {editMode
                   ? <select className="input" value={editForm.disposition} onChange={e => {
                       const val = e.target.value
-                      // Marking Closed Won opens the order form; the order is created only on Save there.
-                      if (val === 'Closed Won' && editForm.disposition !== 'Closed Won') {
-                        setCwPrevDisp(editForm.disposition || 'Initial Contact')
+                      // Closed Won (lead/repeat) or Processed (online order) opens the order form;
+                      // the order is created only when saved there.
+                      const conv = inquiry.type === 'online_order' ? 'Processed' : 'Closed Won'
+                      if (val === conv && editForm.disposition !== conv) {
+                        setCwPrevDisp(editForm.disposition || '')
                         setCwCreated(false)
                         setEF('disposition', val)
                         setClosedWonOpen(true)
@@ -290,7 +292,7 @@ export default function InquiryDetail({ id }) {
           onCreated={() => setCwCreated(true)}
           onClose={() => {
             setClosedWonOpen(false)
-            if (!cwCreated) setEF('disposition', cwPrevDisp || 'Initial Contact')
+            if (!cwCreated) setEF('disposition', cwPrevDisp)
           }}
         />
       )}

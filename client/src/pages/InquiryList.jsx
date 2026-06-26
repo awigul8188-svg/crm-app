@@ -37,8 +37,10 @@ function InlineDispositionEdit({ inquiry, dispositions, onSave, onCancel, onClos
     const newDisp = e.target.value
     setValue(newDisp)
 
-    // Closed Won — open the Create Order form; nothing is saved/created until the rep saves it there.
-    if (newDisp === 'Closed Won') {
+    // Closed Won (lead/repeat) or Processed (online order) — open the Create Order form;
+    // nothing is saved/created until the rep saves it there.
+    const conv = inquiry.type === 'online_order' ? 'Processed' : 'Closed Won'
+    if (newDisp === conv) {
       onCancel()              // close the inline dropdown
       onClosedWon(inquiry)    // parent opens the order form
       return;
@@ -356,7 +358,7 @@ export default function InquiryList({ type, title }) {
           onCreated={async () => {
             try {
               await api.updateInquiry(cwInquiry.id, {
-                disposition: 'Closed Won', assigned_to: cwInquiry.assigned_to, notes: cwInquiry.notes,
+                disposition: cwInquiry.type === 'online_order' ? 'Processed' : 'Closed Won', assigned_to: cwInquiry.assigned_to, notes: cwInquiry.notes,
                 requirements: cwInquiry.requirements, ppc_or_outbound: cwInquiry.ppc_or_outbound,
                 order_amount: cwInquiry.order_amount, order_ref: cwInquiry.order_ref,
               })

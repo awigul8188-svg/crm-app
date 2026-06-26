@@ -587,7 +587,7 @@ router.get('/items', (req, res) => {
 router.post('/from-crm', authenticate, (req, res) => {
   try {
     const db = getDB();
-    const { customer_name, customer_email, customer_phone, lead_source, rep,
+    const { customer_name, customer_email, customer_phone, lead_source, rep, ppc_order_rep,
             crm_inquiry_id, buyer, payment_status, net, due_date,
             tax_charged, shipping_charged, cc_charges, notes,
             items, requirements = [] } = req.body;
@@ -608,10 +608,10 @@ router.post('/from-crm', authenticate, (req, res) => {
     const num = (v) => { const n = parseFloat(String(v ?? '').replace(/[$,\s]/g,'')); return isNaN(n) ? 0 : n; };
     const orderNum = `PENDING-${Date.now().toString().slice(-6)}`;
     const result = db.prepare(`
-      INSERT INTO op_orders (order_number, order_date, customer_id, email, lead_source, rep, buyer,
+      INSERT INTO op_orders (order_number, order_date, customer_id, email, lead_source, rep, ppc_order_rep, buyer,
         payment_status, net, due_date, tax_charged, shipping_charged, cc_charges, notes, order_status, pending, crm_inquiry_id)
-      VALUES (?, date('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Order placed', 1, ?)
-    `).run(orderNum, customer.id, customer_email||'', lead_source||'', rep||'', buyer||null,
+      VALUES (?, date('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Order placed', 1, ?)
+    `).run(orderNum, customer.id, customer_email||'', lead_source||'', rep||'', ppc_order_rep||null, buyer||null,
            payment_status||null, net||null, due_date||null, num(tax_charged), num(shipping_charged), num(cc_charges), notes||null,
            crm_inquiry_id||null);
     const orderId = result.lastInsertRowid;
