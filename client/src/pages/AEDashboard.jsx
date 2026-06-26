@@ -588,7 +588,7 @@ function useModuleData(type, dateFilters) {
 }
 
 // ── Leads Tab ───────────────────────────────────────────────────
-function AELeadsTab({ dateFilters, onDrilldown, newAssigned = [], onOpen }) {
+function AELeadsTab({ dateFilters, onDrilldown, newAssigned = [], onOpen, onReadAll }) {
   const { data, loading } = useModuleData('lead', dateFilters)
   if (loading) return <Loader />
   if (!data) return null
@@ -621,7 +621,7 @@ function AELeadsTab({ dateFilters, onDrilldown, newAssigned = [], onOpen }) {
 
       <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:20, marginBottom:20 }}>
         <div style={{ background:'#fff', borderRadius:14, border:'1px solid #f1f5f9', padding:18 }}>
-          <STitle>Newly Assigned Leads{newAssigned.length > 0 && <span style={{ marginLeft:8, minWidth:20, height:20, padding:'0 6px', borderRadius:100, background:'#dc2626', color:'#fff', fontSize:11, fontWeight:800, display:'inline-flex', alignItems:'center', justifyContent:'center', verticalAlign:'middle' }}>{newAssigned.length}</span>}</STitle>
+          <STitle right={newAssigned.length > 0 ? <button onClick={onReadAll} style={{ fontSize:12, fontWeight:600, color:'#64748b', background:'#f1f5f9', border:'none', borderRadius:8, padding:'5px 10px', cursor:'pointer', whiteSpace:'nowrap' }}>Read all</button> : null}><span style={{ display:'inline-flex', alignItems:'center' }}>Newly Assigned Leads{newAssigned.length > 0 && <span style={{ marginLeft:8, minWidth:20, height:20, padding:'0 6px', borderRadius:100, background:'#dc2626', color:'#fff', fontSize:11, fontWeight:800, display:'inline-flex', alignItems:'center', justifyContent:'center' }}>{newAssigned.length}</span>}</span></STitle>
           {newAssigned.length === 0 ? (
             <div style={{ height:160, display:'flex', alignItems:'center', justifyContent:'center', color:'#94a3b8', fontSize:13 }}>No new leads — all caught up</div>
           ) : (
@@ -733,7 +733,7 @@ function AERepeatTab({ dateFilters, onDrilldown }) {
 }
 
 // ── Orders Tab ──────────────────────────────────────────────────
-function AEOrdersTab({ dateFilters, onDrilldown, newAssigned = [], onOpenOrder }) {
+function AEOrdersTab({ dateFilters, onDrilldown, newAssigned = [], onOpenOrder, onReadAll }) {
   const { data, loading } = useModuleData('online_order', dateFilters)
   if (loading) return <Loader />
   if (!data) return null
@@ -768,7 +768,7 @@ function AEOrdersTab({ dateFilters, onDrilldown, newAssigned = [], onOpenOrder }
 
       <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:20 }}>
         <div style={{ background:'#fff', borderRadius:14, border:'1px solid #f1f5f9', padding:18 }}>
-          <STitle>Newly Assigned Orders{newAssigned.length > 0 && <span style={{ marginLeft:8, minWidth:20, height:20, padding:'0 6px', borderRadius:100, background:'#dc2626', color:'#fff', fontSize:11, fontWeight:800, display:'inline-flex', alignItems:'center', justifyContent:'center', verticalAlign:'middle' }}>{newAssigned.length}</span>}</STitle>
+          <STitle right={newAssigned.length > 0 ? <button onClick={onReadAll} style={{ fontSize:12, fontWeight:600, color:'#64748b', background:'#f1f5f9', border:'none', borderRadius:8, padding:'5px 10px', cursor:'pointer', whiteSpace:'nowrap' }}>Read all</button> : null}><span style={{ display:'inline-flex', alignItems:'center' }}>Newly Assigned Orders{newAssigned.length > 0 && <span style={{ marginLeft:8, minWidth:20, height:20, padding:'0 6px', borderRadius:100, background:'#dc2626', color:'#fff', fontSize:11, fontWeight:800, display:'inline-flex', alignItems:'center', justifyContent:'center' }}>{newAssigned.length}</span>}</span></STitle>
           {newAssigned.length === 0 ? (
             <div style={{ height:160, display:'flex', alignItems:'center', justifyContent:'center', color:'#94a3b8', fontSize:13 }}>No new orders — all caught up</div>
           ) : (
@@ -926,6 +926,7 @@ export default function AEDashboard() {
   const markSeen = (id) => setSeenOrders(s => { const n = new Set(s); n.add(id); try { localStorage.setItem('ae_seen_orders', JSON.stringify([...n])) } catch {}; return n })
   const newAssigned = assignedOrders.filter(o => !seenOrders.has(o.id))
   const newOrders = newAssigned.length
+  const readAllOrders = () => setSeenOrders(s => { const n = new Set(s); newAssigned.forEach(o => n.add(o.id)); try { localStorage.setItem('ae_seen_orders', JSON.stringify([...n])) } catch {}; return n })
 
   // Newly assigned leads — same click-to-clear notification on the Leads tab.
   const [assignedLeads, setAssignedLeads] = useState([])
@@ -939,6 +940,7 @@ export default function AEDashboard() {
   const markSeenLead = (id) => setSeenLeads(s => { const n = new Set(s); n.add(id); try { localStorage.setItem('ae_seen_leads', JSON.stringify([...n])) } catch {}; return n })
   const newAssignedLeads = assignedLeads.filter(o => !seenLeads.has(o.id))
   const newLeads = newAssignedLeads.length
+  const readAllLeads = () => setSeenLeads(s => { const n = new Set(s); newAssignedLeads.forEach(o => n.add(o.id)); try { localStorage.setItem('ae_seen_leads', JSON.stringify([...n])) } catch {}; return n })
 
   const greeting = () => { const h = new Date().getHours(); return h<12?'Good morning':h<17?'Good afternoon':'Good evening' }
 
@@ -991,9 +993,9 @@ export default function AEDashboard() {
 
       {/* Tab content */}
       {activeTab === 'overview' && <AEOverviewTab data={overviewData} loading={overviewLoading} dateFilters={dateFilters} onDrilldown={setDrilldown} onNavigate={navigate} />}
-      {activeTab === 'leads'    && <AELeadsTab    dateFilters={dateFilters} onDrilldown={setDrilldown} newAssigned={newAssignedLeads} onOpen={(id) => { markSeenLead(id); navigate('inquiry-detail', { id }) }} />}
+      {activeTab === 'leads'    && <AELeadsTab    dateFilters={dateFilters} onDrilldown={setDrilldown} newAssigned={newAssignedLeads} onReadAll={readAllLeads} onOpen={(id) => { markSeenLead(id); navigate('inquiry-detail', { id }) }} />}
       {activeTab === 'repeat'   && <AERepeatTab   dateFilters={dateFilters} onDrilldown={setDrilldown} />}
-      {activeTab === 'orders'   && <AEOrdersTab   dateFilters={dateFilters} onDrilldown={setDrilldown} newAssigned={newAssigned} onOpenOrder={(id) => { markSeen(id); navigate('inquiry-detail', { id }) }} />}
+      {activeTab === 'orders'   && <AEOrdersTab   dateFilters={dateFilters} onDrilldown={setDrilldown} newAssigned={newAssigned} onReadAll={readAllOrders} onOpenOrder={(id) => { markSeen(id); navigate('inquiry-detail', { id }) }} />}
 
       {/* Drilldown + quick edit */}
       {drilldown && <DrilldownModal {...drilldown} onClose={() => setDrilldown(null)} />}

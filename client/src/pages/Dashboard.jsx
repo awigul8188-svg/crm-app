@@ -465,15 +465,9 @@ function useModuleData(type, filters) {
 // ── Leads Tab ───────────────────────────────────────────────────
 const LEAD_TERMINAL = ['Closed Won', 'Closed Lost', 'Fake Lead', 'No response']
 
-function LeadsTab({ filters, onDrilldown }) {
+function LeadsTab({ filters, onDrilldown, unassigned = [], onReadAll }) {
   const { navigate } = useNav()
   const { data, loading } = useModuleData('lead', filters)
-  const [unassigned, setUnassigned] = useState([])
-  useEffect(() => {
-    api.getInquiries('lead', {})
-      .then(list => setUnassigned((list || []).filter(o => !o.assigned_to && !LEAD_TERMINAL.includes(o.disposition))))
-      .catch(() => {})
-  }, [])
   if (loading) return <Loader />
   if (!data) return null
   const p = data.period
@@ -513,7 +507,12 @@ function LeadsTab({ filters, onDrilldown }) {
 
       <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:20, marginBottom:20 }}>
         <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
-          <SectionTitle>New Unassigned Leads{unassigned.length > 0 && <span style={{ marginLeft:8, minWidth:20, height:20, padding:'0 6px', borderRadius:100, background:'#dc2626', color:'#fff', fontSize:11, fontWeight:800, display:'inline-flex', alignItems:'center', justifyContent:'center', verticalAlign:'middle' }}>{unassigned.length}</span>}</SectionTitle>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+            <div style={{ fontFamily:'"Bricolage Grotesque", sans-serif', fontWeight:700, fontSize:14, color:'#0f172a', display:'flex', alignItems:'center' }}>
+              New Unassigned Leads{unassigned.length > 0 && <span style={{ marginLeft:8, minWidth:20, height:20, padding:'0 6px', borderRadius:100, background:'#dc2626', color:'#fff', fontSize:11, fontWeight:800, display:'inline-flex', alignItems:'center', justifyContent:'center' }}>{unassigned.length}</span>}
+            </div>
+            {unassigned.length > 0 && <button onClick={onReadAll} style={{ fontSize:12, fontWeight:600, color:'#64748b', background:'#f1f5f9', border:'none', borderRadius:8, padding:'5px 10px', cursor:'pointer', whiteSpace:'nowrap' }}>Read all</button>}
+          </div>
           {unassigned.length === 0 ? (
             <div style={{ height:180, display:'flex', alignItems:'center', justifyContent:'center', color:'#94a3b8', fontSize:13 }}>No unassigned leads — all caught up</div>
           ) : (
@@ -690,15 +689,9 @@ function RepeatTab({ filters, onDrilldown }) {
 }
 
 // ── Orders Tab ──────────────────────────────────────────────────
-function OrdersTab({ filters, onDrilldown }) {
+function OrdersTab({ filters, onDrilldown, unassigned = [], onReadAll }) {
   const { navigate } = useNav()
   const { data, loading } = useModuleData('online_order', filters)
-  const [unassigned, setUnassigned] = useState([])
-  useEffect(() => {
-    api.getInquiries('online_order', {})
-      .then(list => setUnassigned((list || []).filter(o => !o.assigned_to && !['Processed', 'Cancelled'].includes(o.disposition))))
-      .catch(() => {})
-  }, [])
   if (loading) return <Loader />
   if (!data) return null
   const t = data.today; const p = data.period
@@ -726,7 +719,12 @@ function OrdersTab({ filters, onDrilldown }) {
       </div>
       <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:20, marginBottom:20 }}>
         <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
-          <SectionTitle>New Unassigned Orders{unassigned.length > 0 && <span style={{ marginLeft:8, minWidth:20, height:20, padding:'0 6px', borderRadius:100, background:'#dc2626', color:'#fff', fontSize:11, fontWeight:800, display:'inline-flex', alignItems:'center', justifyContent:'center', verticalAlign:'middle' }}>{unassigned.length}</span>}</SectionTitle>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+            <div style={{ fontFamily:'"Bricolage Grotesque", sans-serif', fontWeight:700, fontSize:14, color:'#0f172a', display:'flex', alignItems:'center' }}>
+              New Unassigned Orders{unassigned.length > 0 && <span style={{ marginLeft:8, minWidth:20, height:20, padding:'0 6px', borderRadius:100, background:'#dc2626', color:'#fff', fontSize:11, fontWeight:800, display:'inline-flex', alignItems:'center', justifyContent:'center' }}>{unassigned.length}</span>}
+            </div>
+            {unassigned.length > 0 && <button onClick={onReadAll} style={{ fontSize:12, fontWeight:600, color:'#64748b', background:'#f1f5f9', border:'none', borderRadius:8, padding:'5px 10px', cursor:'pointer', whiteSpace:'nowrap' }}>Read all</button>}
+          </div>
           {unassigned.length === 0 ? (
             <div style={{ height:160, display:'flex', alignItems:'center', justifyContent:'center', color:'#94a3b8', fontSize:13 }}>No unassigned orders — all caught up</div>
           ) : (
@@ -801,20 +799,31 @@ export default function Dashboard() {
 
   useEffect(() => { api.getUsers().then(setUsers) }, [])
 
-  // Manager notification: new online orders that came in and are UNASSIGNED — red badge on the Orders tab.
-  const [newOrders, setNewOrders] = useState(0)
+  // Manager notifications: new UNASSIGNED online orders / leads. A "seen" set (persisted) lets the
+  // manager bulk-dismiss ("Read all") so both the tile list and the tab badge clear together.
+  const loadSet = (k) => { try { return new Set(JSON.parse(localStorage.getItem(k) || '[]')) } catch { return new Set() } }
+  const saveSet = (k, s) => { try { localStorage.setItem(k, JSON.stringify([...s])) } catch {} }
+  const [unassignedOrders, setUnassignedOrders] = useState([])
+  const [seenOrders, setSeenOrders] = useState(() => loadSet('mgr_seen_orders'))
   useEffect(() => {
     api.getInquiries('online_order', {})
-      .then(list => setNewOrders((list || []).filter(o => !o.assigned_to && !['Processed', 'Cancelled'].includes(o.disposition)).length))
+      .then(list => setUnassignedOrders((list || []).filter(o => !o.assigned_to && !['Processed', 'Cancelled'].includes(o.disposition))))
       .catch(() => {})
   }, [activeTab])
-  // Manager notification: new UNASSIGNED leads.
-  const [newLeads, setNewLeads] = useState(0)
+  const newOrdersList = unassignedOrders.filter(o => !seenOrders.has(o.id))
+  const newOrders = newOrdersList.length
+  const readAllOrders = () => setSeenOrders(s => { const n = new Set(s); unassignedOrders.forEach(o => n.add(o.id)); saveSet('mgr_seen_orders', n); return n })
+
+  const [unassignedLeads, setUnassignedLeads] = useState([])
+  const [seenLeads, setSeenLeads] = useState(() => loadSet('mgr_seen_leads'))
   useEffect(() => {
     api.getInquiries('lead', {})
-      .then(list => setNewLeads((list || []).filter(o => !o.assigned_to && !LEAD_TERMINAL.includes(o.disposition)).length))
+      .then(list => setUnassignedLeads((list || []).filter(o => !o.assigned_to && !LEAD_TERMINAL.includes(o.disposition))))
       .catch(() => {})
   }, [activeTab])
+  const newLeadsList = unassignedLeads.filter(o => !seenLeads.has(o.id))
+  const newLeads = newLeadsList.length
+  const readAllLeads = () => setSeenLeads(s => { const n = new Set(s); unassignedLeads.forEach(o => n.add(o.id)); saveSet('mgr_seen_leads', n); return n })
 
   const dateF = getDateFilters(preset, customFrom, customTo)
   const filters = { from: dateF.from, to: dateF.to, dispositions: filterDispositions, sources: filterSources, users: filterUsers }
@@ -872,9 +881,9 @@ export default function Dashboard() {
 
       {/* Tab content — all receive same filters */}
       {activeTab === 'overview' && <OverviewTab filters={filters} users={users} onDrilldown={setDrilldown} />}
-      {activeTab === 'leads'    && <LeadsTab    filters={filters} onDrilldown={setDrilldown} />}
+      {activeTab === 'leads'    && <LeadsTab    filters={filters} onDrilldown={setDrilldown} unassigned={newLeadsList} onReadAll={readAllLeads} />}
       {activeTab === 'repeat'   && <RepeatTab   filters={filters} onDrilldown={setDrilldown} />}
-      {activeTab === 'orders'   && <OrdersTab   filters={filters} onDrilldown={setDrilldown} />}
+      {activeTab === 'orders'   && <OrdersTab   filters={filters} onDrilldown={setDrilldown} unassigned={newOrdersList} onReadAll={readAllOrders} />}
 
       {/* Drilldown modal */}
       {drilldown && <DrilldownModal {...drilldown} onClose={() => setDrilldown(null)} />}
