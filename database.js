@@ -156,6 +156,28 @@ function runPurchasingV2Migrations() {
   // Link part_assigned/part_reassigned notifications to the assignment so the purchaser's
   // notifications can deep-link straight to the exact part. Older rows stay NULL.
   try { db.exec('ALTER TABLE notifications ADD COLUMN assignment_id INTEGER'); } catch(e) {}
+
+  // Backfill assignment_id for pre-existing 'part_assigned' notifications so older ones are also
+  // clickable. Match on purchaser + part number + customer, taking the most recent assignment.
+  // Only touches NULL rows, so it's cheap on every boot.
+  try {
+    db.exec(`
+      UPDATE notifications
+      SET assignment_id = (
+        SELECT pa.id FROM purchase_assignments pa
+        JOIN requirements r ON pa.requirement_id = r.id
+        JOIN inquiries i ON r.inquiry_id = i.id
+        JOIN customers c ON i.customer_id = c.id
+        WHERE pa.purchaser_id = notifications.user_id
+          AND r.part_number = notifications.comment
+          AND c.name = notifications.customer_name
+        ORDER BY pa.assigned_at DESC LIMIT 1
+      )
+      WHERE assignment_id IS NULL
+        AND inquiry_type = 'part_assigned'
+        AND comment IS NOT NULL AND comment != ''
+    `);
+  } catch(e) { console.log('Notification assignment_id backfill note:', e.message); }
 }
 
 function runOperationsMigrations() {
