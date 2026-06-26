@@ -795,6 +795,33 @@ router.get('/stats', (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Receivables (AR) — open customer balances ─────────────────────────────────
+// Returns every non-pending order with an outstanding balance (charged > received), excluding
+// orders flagged 'na' (stock / FOC / sample). Balance & aging are computed client-side from
+// charged / received / due_date.
+router.get('/receivables', (req, res) => {
+  try {
+    const db = getDB();
+    const { reporting_period } = req.query;
+    const { baseConds, p } = buildPeriodConds(reporting_period, null, null);
+    baseConds.push(`(o.ar_status IS NULL OR o.ar_status != 'na')`);
+    const rows = db.prepare(`
+      SELECT o.id, o.order_number, o.order_date, o.due_date, o.reporting_period, o.payment_status, o.ar_status,
+        c.name AS customer_name,
+        COALESCE(SUM(i.selling * i.quantity), 0) + COALESCE(o.tax_charged,0) + COALESCE(o.shipping_charged,0) + COALESCE(o.cc_charges,0) AS charged,
+        COALESCE(o.customer_paid, 0) AS received
+      FROM op_orders o
+      LEFT JOIN op_customers c ON o.customer_id = c.id
+      LEFT JOIN op_order_items i ON i.order_id = o.id AND COALESCE(i.line_status,'processed') = 'processed'
+      WHERE ${baseConds.join(' AND ')}
+      GROUP BY o.id
+      HAVING charged - received > 0.005
+      ORDER BY COALESCE(o.due_date, o.order_date) ASC, o.id ASC
+    `).all(...p);
+    res.json(rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 function buildPeriodConds(reporting_period, date_from, date_to) {
   const baseConds = ['(o.pending IS NULL OR o.pending = 0)'];
   const simConds  = ['(pending IS NULL OR pending = 0)'];

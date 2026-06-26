@@ -4,7 +4,7 @@ import Modal from '../components/Modal'
 import ImportModal from '../components/ImportModal'
 import SearchableSelect from '../components/SearchableSelect'
 import MultiSelect from '../components/MultiSelect'
-import { Search, Plus, Edit2, Trash2, Package, Users, Truck, RotateCcw, ChevronRight, X, AlertCircle, List, ClipboardList, Upload } from 'lucide-react'
+import { Search, Plus, Edit2, Trash2, Package, Users, Truck, RotateCcw, ChevronRight, X, AlertCircle, List, ClipboardList, Upload, DollarSign } from 'lucide-react'
 
 const BRAND = '#00D4C8'
 
@@ -2068,6 +2068,82 @@ function PendingOrdersPanel({ onClose, onOpenOrder }) {
   )
 }
 
+// ── Receivables (AR) tab — open customer balances with aging ──────────────────
+function ReceivablesTab({ onOpenOrder }) {
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  useEffect(() => {
+    setLoading(true)
+    operationsApi.getReceivables().then(r => setRows(r || [])).catch(() => {}).finally(() => setLoading(false))
+  }, [])
+
+  const today = new Date().toISOString().slice(0, 10)
+  const overdueByDays = (due) => { if (!due) return 0; const d = Math.floor((new Date(today) - new Date(due)) / 86400000); return d > 0 ? d : 0 }
+  const enriched = rows.map(r => {
+    const balance = (Number(r.charged) || 0) - (Number(r.received) || 0)
+    const od = overdueByDays(r.due_date)
+    const bucket = od === 0 ? 'current' : od <= 30 ? '1-30' : od <= 60 ? '31-60' : '60+'
+    const partial = (Number(r.received) || 0) > 0.005
+    return { ...r, balance, od, bucket, partial }
+  })
+  const totalOut = enriched.reduce((a, r) => a + r.balance, 0)
+  const bSum = (b) => enriched.filter(r => r.bucket === b).reduce((a, r) => a + r.balance, 0)
+  const bCnt = (b) => enriched.filter(r => r.bucket === b).length
+
+  if (loading) return <Loader />
+
+  const th = { padding: '10px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }
+  const td = { padding: '9px 12px', fontSize: 13, whiteSpace: 'nowrap' }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Aging summary */}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <DashboardCard label="Total Outstanding" value={fmt(totalOut)} color="#0f172a" sub={`${enriched.length} open orders`} />
+        <DashboardCard label="Current (not due)" value={fmt(bSum('current'))} sub={`${bCnt('current')} orders`} color="#10b981" />
+        <DashboardCard label="1–30 days over" value={fmt(bSum('1-30'))} sub={`${bCnt('1-30')} orders`} color="#f59e0b" />
+        <DashboardCard label="31–60 days over" value={fmt(bSum('31-60'))} sub={`${bCnt('31-60')} orders`} color="#ea580c" />
+        <DashboardCard label="60+ days over" value={fmt(bSum('60+'))} sub={`${bCnt('60+')} orders`} color="#dc2626" />
+      </div>
+
+      {enriched.length === 0 ? (
+        <EmptyState icon={DollarSign} label="open receivables" />
+      ) : (
+        <div style={{ background: '#fff', border: '1px solid #f1f5f9', borderRadius: 14, overflow: 'auto', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+              <th style={th}>Order</th><th style={th}>Customer</th><th style={th}>Month</th>
+              <th style={{ ...th, textAlign: 'right' }}>Charged</th><th style={{ ...th, textAlign: 'right' }}>Received</th>
+              <th style={{ ...th, textAlign: 'right' }}>Balance</th><th style={th}>Due</th><th style={th}>Overdue</th><th style={th}>Status</th>
+            </tr></thead>
+            <tbody>
+              {enriched.map(r => {
+                const st = r.od > 0 ? { label: 'Overdue', bg: '#fee2e2', color: '#b91c1c' }
+                  : r.partial ? { label: 'Partial', bg: '#fef3c7', color: '#b45309' }
+                  : { label: 'Unpaid', bg: '#f1f5f9', color: '#64748b' }
+                return (
+                  <tr key={r.id} onClick={() => onOpenOrder(r.id)} style={{ borderBottom: '1px solid #f8fafc', cursor: 'pointer' }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                    <td style={{ ...td, fontWeight: 600, color: '#0f172a' }}>{r.order_number}</td>
+                    <td style={td}>{r.customer_name || '—'}</td>
+                    <td style={{ ...td, color: '#64748b' }}>{r.reporting_period || '—'}</td>
+                    <td style={{ ...td, textAlign: 'right' }}>{fmt(r.charged)}</td>
+                    <td style={{ ...td, textAlign: 'right', color: '#10b981' }}>{fmt(r.received)}</td>
+                    <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: '#f59e0b' }}>{fmt(r.balance)}</td>
+                    <td style={{ ...td, color: '#64748b' }}>{fmtDate(r.due_date)}</td>
+                    <td style={{ ...td, color: r.od > 60 ? '#dc2626' : r.od > 0 ? '#ea580c' : '#94a3b8', fontWeight: r.od > 0 ? 700 : 400 }}>{r.od > 0 ? `${r.od}d` : '—'}</td>
+                    <td style={td}><span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', padding: '2px 8px', borderRadius: 100, background: st.bg, color: st.color }}>{st.label}</span></td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main Operations Page ──────────────────────────────────────────────────────
 export default function Operations() {
   const [tab, setTab] = useState('orders')
@@ -2108,6 +2184,7 @@ export default function Operations() {
     { key: 'customers',   label: 'Customers',   icon: Users },
     { key: 'suppliers',   label: 'Suppliers',   icon: Truck },
     { key: 'rma',         label: 'RMA',         icon: RotateCcw },
+    { key: 'receivables', label: 'Receivables', icon: DollarSign },
     { key: 'dashboard',   label: 'Dashboard',   icon: ClipboardList },
   ]
 
@@ -2236,6 +2313,7 @@ export default function Operations() {
           />
         )}
         {tab === 'rma' && <RMATab />}
+        {tab === 'receivables' && <ReceivablesTab onOpenOrder={handleOpenOrderFromItems} />}
       </div>
 
       {showImport && (

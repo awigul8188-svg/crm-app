@@ -86,6 +86,12 @@ export const operationsApi = {
   updateItem:     (id, data) => req('PUT',  `/operations/order-items/${id}`, data),
   deleteItem:     (id)       => req('DELETE', `/operations/order-items/${id}`),
 
+  // Receivables (AR) — open customer balances
+  getReceivables: (params = {}) => {
+    const q = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([,v]) => v !== undefined && v !== ''))).toString()
+    return req('GET', `/operations/receivables${q ? '?' + q : ''}`)
+  },
+
   // Customer payments (AR receipts) — order.customer_paid is the sum of these
   getPayments:    (orderId) => req('GET', `/operations/orders/${orderId}/payments`),
   addPayment:     (orderId, data) => req('POST', `/operations/orders/${orderId}/payments`, data),
