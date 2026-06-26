@@ -8,6 +8,11 @@ router.use(authenticate);
 // Get all notifications for current user
 router.get('/', (req, res) => {
   const db = getDB();
+  // CRM follow-ups + team activity are sales-side only. Purchasing roles have their own
+  // notifications (served by /purchasing/stats), so return an empty payload here for them.
+  if (!['manager', 'ae'].includes(req.user.role)) {
+    return res.json({ followups: { overdue: [], today: [], upcoming: [] }, activity: [], total: 0, unreadActivity: 0 });
+  }
   const userId = req.user.role === 'ae' ? req.user.id : null;
   const userFilter = userId ? 'AND i.assigned_to = ?' : '';
   const params = userId ? [userId] : [];

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { purchasingApi, api } from '../api'
+import { purchasingApi } from '../api'
 import { useAuth } from '../App'
 import { formatDate, formatDateShort, timeAgo } from '../components/Badges'
 
@@ -375,16 +375,6 @@ export default function PurchaserDashboard() {
   const dateRange = getDateRange(preset, customFrom, customTo)
   const loadStats = () => purchasingApi.getStats().then(setStats).catch(() => {})
 
-  // Mark notifications read — optimistically update local stats so the tab badge clears.
-  const markNotifRead = (id) => {
-    api.markNotificationRead(id).catch(() => {})
-    setStats(s => s ? { ...s, myNotifications: s.myNotifications.map(n => n.id === id ? { ...n, read: 1 } : n) } : s)
-  }
-  const markAllNotifsRead = async () => {
-    await api.markAllRead().catch(() => {})
-    setStats(s => s ? { ...s, myNotifications: s.myNotifications.map(n => ({ ...n, read: 1 })) } : s)
-  }
-
   const loadParts = () => {
     if (!['lead','repeat','online_order','all_parts'].includes(activeTab)) return
     const type = activeTab === 'all_parts' ? '' : activeTab
@@ -404,8 +394,6 @@ export default function PurchaserDashboard() {
     { key:'lead',      label:`◎ Leads (${getTypeStats('lead').total})` },
     { key:'repeat',    label:`↻ Repeat (${getTypeStats('repeat').total})` },
     { key:'online_order', label:`◈ Orders (${getTypeStats('online_order').total})` },
-    { key:'followups', label:`📅 Follow-ups${stats?.followups?.overdue?.length>0?` (${stats.followups.overdue.length}⚠️)`:''}`},
-    { key:'notifications', label:`🔔 Notifications${stats?.myNotifications?.filter(n=>!n.read).length>0?` (${stats.myNotifications.filter(n=>!n.read).length})`:''}`},
   ]
 
   return (
@@ -531,62 +519,6 @@ export default function PurchaserDashboard() {
                 <Pagination page={page} pages={partsResult.pages||1} onChange={setPage} />
               </div>
             )
-          }
-        </div>
-      )}
-
-      {/* Follow-ups tab */}
-      {activeTab==='followups' && (
-        <div>
-          {[{ label:'⚠️ Overdue', items:stats?.followups?.overdue||[], color:'#ef4444' }, { label:'📆 Today', items:stats?.followups?.today||[], color:'#f59e0b' }, { label:'🗓️ This Week', items:stats?.followups?.upcoming||[], color:BRAND }].map(section => (
-            section.items.length > 0 && (
-              <div key={section.label} style={{ marginBottom:24 }}>
-                <div style={{ fontSize:11, fontWeight:700, color:section.color, textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:10 }}>{section.label} — {section.items.length}</div>
-                <div style={{ borderLeft:`2px solid ${section.color}40`, paddingLeft:16, display:'flex', flexDirection:'column', gap:8 }}>
-                  {section.items.map(fu => (
-                    <div key={fu.id} style={{ background:'#fff', borderRadius:12, border:'1px solid #f1f5f9', padding:'12px 16px', display:'flex', alignItems:'center', gap:10 }}>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontFamily:'monospace', fontWeight:700, fontSize:13, color:'#0f172a' }}>{fu.part_number}</div>
-                        <div style={{ fontSize:12, color:'#64748b', marginTop:2 }}>{fu.note}</div>
-                      </div>
-                      <div style={{ fontSize:11, fontWeight:700, color:section.color, flexShrink:0 }}>{formatDate(fu.follow_up_date)}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )
-          ))}
-          {!stats?.followups?.overdue?.length && !stats?.followups?.today?.length && !stats?.followups?.upcoming?.length && (
-            <div style={{ background:'#fff', borderRadius:14, border:'1px solid #f1f5f9', padding:60, textAlign:'center' }}>
-              <div style={{ fontSize:40, marginBottom:12 }}>✅</div>
-              <div style={{ color:'#94a3b8', fontSize:16, fontWeight:600 }}>All caught up!</div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Notifications tab */}
-      {activeTab==='notifications' && (
-        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-          {stats?.myNotifications?.some(n=>!n.read) && (
-            <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:2 }}>
-              <button onClick={markAllNotifsRead} style={{ fontSize:12, color:BRAND, background:'none', border:'none', cursor:'pointer', fontWeight:600, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>Mark all read</button>
-            </div>
-          )}
-          {!stats?.myNotifications?.length ? <div style={{ background:'#fff', borderRadius:14, border:'1px solid #f1f5f9', padding:48, textAlign:'center', color:'#94a3b8' }}>No notifications yet</div> :
-            stats.myNotifications.map(n => (
-              <div key={n.id} onClick={() => { if(!n.read) markNotifRead(n.id) }} style={{ background:n.read?'#fff':'rgba(0,212,200,0.04)', border:`1px solid ${n.read?'#f1f5f9':'rgba(0,212,200,0.2)'}`, borderRadius:14, padding:'14px 16px', display:'flex', gap:12, alignItems:'flex-start', cursor:n.read?'default':'pointer' }}>
-                <div style={{ width:36, height:36, borderRadius:10, background:n.inquiry_type==='part_assigned'?`${BRAND}20`:n.inquiry_type==='part_reassigned'?'#fef2f2':'#f0fdf4', color:n.inquiry_type==='part_assigned'?BRAND:n.inquiry_type==='part_reassigned'?'#dc2626':'#16a34a', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>
-                  {n.inquiry_type==='part_assigned'?'📦':n.inquiry_type==='part_reassigned'?'↩':'✅'}
-                </div>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:700, fontSize:13, color:'#0f172a', marginBottom:2 }}>{n.action}</div>
-                  {n.comment && <div style={{ fontSize:12, color:'#475569', fontFamily:'monospace', background:'#f8fafc', padding:'3px 8px', borderRadius:6, marginBottom:3 }}>{n.comment}</div>}
-                  <div style={{ fontSize:11, color:'#94a3b8' }}>{n.actor_name} · {timeAgo(n.created_at)}</div>
-                </div>
-                {!n.read && <div style={{ width:8, height:8, borderRadius:'50%', background:BRAND, flexShrink:0, marginTop:4 }} />}
-              </div>
-            ))
           }
         </div>
       )}

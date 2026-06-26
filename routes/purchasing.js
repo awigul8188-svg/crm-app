@@ -138,15 +138,18 @@ router.post('/assign', canManage, (req, res) => {
         urgency=COALESCE(excluded.urgency, urgency)
     `).run(requirement_id, purchaser_id, req.user.id, pm_notes || null, urgency || 'normal');
 
+    // The assignment id lets the purchaser's notification deep-link to the exact part.
+    const assignmentId = db.prepare('SELECT id FROM purchase_assignments WHERE requirement_id=?').get(requirement_id)?.id || null;
+
     // Notify new purchaser
     const r = db.prepare('SELECT r.part_number, c.name as customer_name, i.type FROM requirements r JOIN inquiries i ON r.inquiry_id=i.id JOIN customers c ON i.customer_id=c.id WHERE r.id=?').get(requirement_id);
-    db.prepare("INSERT INTO notifications (user_id, inquiry_id, inquiry_type, customer_name, actor_name, action, comment) VALUES (?,?,?,?,?,?,?)")
-      .run(purchaser_id, null, 'part_assigned', r?.customer_name || '', req.user.name, 'Part assigned to you', r?.part_number || '');
+    db.prepare("INSERT INTO notifications (user_id, inquiry_id, inquiry_type, customer_name, actor_name, action, comment, assignment_id) VALUES (?,?,?,?,?,?,?,?)")
+      .run(purchaser_id, null, 'part_assigned', r?.customer_name || '', req.user.name, 'Part assigned to you', r?.part_number || '', assignmentId);
 
     // Notify old purchaser if reassigned
     if (existing && existing.purchaser_id !== purchaser_id) {
-      db.prepare("INSERT INTO notifications (user_id, inquiry_id, inquiry_type, customer_name, actor_name, action, comment) VALUES (?,?,?,?,?,?,?)")
-        .run(existing.purchaser_id, null, 'part_reassigned', r?.customer_name || '', req.user.name, 'Part reassigned away from you', r?.part_number || '');
+      db.prepare("INSERT INTO notifications (user_id, inquiry_id, inquiry_type, customer_name, actor_name, action, comment, assignment_id) VALUES (?,?,?,?,?,?,?,?)")
+        .run(existing.purchaser_id, null, 'part_reassigned', r?.customer_name || '', req.user.name, 'Part reassigned away from you', r?.part_number || '', assignmentId);
     }
     res.json({ success: true });
   } catch (err) {
@@ -170,14 +173,15 @@ router.post('/assign-bulk', canManage, (req, res) => {
         pm_notes=COALESCE(excluded.pm_notes, pm_notes),
         urgency=COALESCE(excluded.urgency, urgency)
     `);
-    const notifStmt = db.prepare("INSERT INTO notifications (user_id, inquiry_id, inquiry_type, customer_name, actor_name, action, comment) VALUES (?,?,?,?,?,?,?)");
+    const notifStmt = db.prepare("INSERT INTO notifications (user_id, inquiry_id, inquiry_type, customer_name, actor_name, action, comment, assignment_id) VALUES (?,?,?,?,?,?,?,?)");
 
     db.transaction(() => {
       assignments.forEach(a => {
         if (!a.purchaser_id) return;
         const r = db.prepare('SELECT r.part_number, c.name as customer_name FROM requirements r JOIN inquiries i ON r.inquiry_id=i.id JOIN customers c ON i.customer_id=c.id WHERE r.id=?').get(a.requirement_id);
         stmt.run(a.requirement_id, a.purchaser_id, req.user.id, a.pm_notes || null, a.urgency || 'normal');
-        notifStmt.run(a.purchaser_id, null, 'part_assigned', r?.customer_name || '', req.user.name, 'Part assigned to you', r?.part_number || '');
+        const assignmentId = db.prepare('SELECT id FROM purchase_assignments WHERE requirement_id=?').get(a.requirement_id)?.id || null;
+        notifStmt.run(a.purchaser_id, null, 'part_assigned', r?.customer_name || '', req.user.name, 'Part assigned to you', r?.part_number || '', assignmentId);
       });
     })();
     res.json({ success: true });

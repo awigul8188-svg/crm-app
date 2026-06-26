@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../App'
 import { useNav } from '../App'
-import { api } from '../api'
+import { api, purchasingApi } from '../api'
 import {
   LayoutDashboard, Target, RotateCcw, ShoppingBag, Users,
   Bell, Upload, UserCog, LogOut, Settings2,
@@ -40,7 +40,18 @@ export default function Layout({ children }) {
   const [notifCount, setNotifCount] = useState(0)
   const [avatarUrl, setAvatarUrl] = useState(null)
 
-  const loadNotifs = () => api.getNotifications().then(n => setNotifCount(n.total)).catch(() => {})
+  // Purchasers have no CRM notifications — their badge counts unread part notifications + due follow-ups.
+  const loadNotifs = () => {
+    if (user.role === 'purchaser') {
+      purchasingApi.getStats().then(s => {
+        const unread = (s.myNotifications || []).filter(n => !n.read).length
+        const dueFu = (s.followups?.overdue?.length || 0) + (s.followups?.today?.length || 0)
+        setNotifCount(unread + dueFu)
+      }).catch(() => {})
+    } else {
+      api.getNotifications().then(n => setNotifCount(n.total)).catch(() => {})
+    }
+  }
 
   useEffect(() => {
     loadNotifs()

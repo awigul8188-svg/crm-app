@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { Bell, RefreshCw, Check } from 'lucide-react'
-import { api } from '../api'
+import { api, purchasingApi } from '../api'
 import { useAuth } from '../App'
 import { useNav } from '../App'
 import { formatDate, timeAgo } from '../components/Badges'
 import PageHeader from '../components/PageHeader'
+import { PartDetailModal } from './PurchaserDashboard'
 
 const BRAND = '#00D4C8'
 const TYPE_LABELS = { lead: 'Lead', repeat: 'Repeat', online_order: 'Online Order' }
@@ -121,7 +122,139 @@ function SectionLabel({ color, label, count }) {
   )
 }
 
-export default function Notifications() {
+// ── Purchaser notifications (Assigned / Reassigned / Follow-ups) ──────────────
+const PN_ICON = { part_assigned: '📦', part_reassigned: '↩' }
+
+function PurchaserNotifCard({ n, clickable, onClick }) {
+  return (
+    <div onClick={onClick}
+      style={{ cursor: 'pointer', background: n.read ? '#fff' : 'rgba(0,212,200,0.05)', border: `1px solid ${n.read ? '#f1f5f9' : 'rgba(0,212,200,0.25)'}`, borderRadius: 14, padding: '14px 16px', display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 8 }}>
+      <div style={{ width: 36, height: 36, borderRadius: 10, background: n.inquiry_type === 'part_assigned' ? `${BRAND}20` : '#fef2f2', color: n.inquiry_type === 'part_assigned' ? BRAND : '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>
+        {PN_ICON[n.inquiry_type] || '•'}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', marginBottom: 2 }}>{n.action}</div>
+        {n.comment && <div style={{ fontSize: 12, color: '#475569', fontFamily: 'monospace', background: '#f8fafc', padding: '3px 8px', borderRadius: 6, marginBottom: 3, display: 'inline-block' }}>{n.comment}</div>}
+        <div style={{ fontSize: 11, color: '#94a3b8' }}>
+          {n.customer_name ? `${n.customer_name} · ` : ''}{n.actor_name} · {timeAgo(n.created_at)}
+          {clickable && n.assignment_id && <span style={{ color: BRAND, marginLeft: 6, fontWeight: 600 }}>Open part →</span>}
+        </div>
+      </div>
+      {!n.read && <div style={{ width: 8, height: 8, borderRadius: '50%', background: BRAND, flexShrink: 0, marginTop: 4 }} />}
+    </div>
+  )
+}
+
+function PurchaserFollowCard({ f, onOpen, onComplete }) {
+  const [busy, setBusy] = useState(false)
+  const overdue = f.bucket === 'overdue'
+  const complete = async (e) => { e.stopPropagation(); setBusy(true); await onComplete(f.id) }
+  return (
+    <div style={{ background: overdue ? '#fff5f5' : '#fff', border: `1px solid ${overdue ? '#fecaca' : '#f1f5f9'}`, borderRadius: 14, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+      <button onClick={complete} disabled={busy} title="Mark complete"
+        style={{ width: 22, height: 22, borderRadius: 6, border: '2px solid #cbd5e1', background: 'transparent', cursor: 'pointer', flexShrink: 0 }} />
+      <div onClick={() => f.assignment_id && onOpen(f.assignment_id)} style={{ flex: 1, minWidth: 0, cursor: f.assignment_id ? 'pointer' : 'default' }}>
+        <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: '#0f172a' }}>{f.part_number || '—'}</div>
+        <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{f.note}</div>
+        {f.follow_up_date && <div style={{ fontSize: 11, color: overdue ? '#ef4444' : BRAND, fontWeight: 600, marginTop: 2 }}>📅 {formatDate(f.follow_up_date)}{f.assignment_id ? ' · Open part →' : ''}</div>}
+      </div>
+    </div>
+  )
+}
+
+function PurchaserNotifications() {
+  const [stats, setStats] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [tab, setTab] = useState('assigned')
+  const [openPartId, setOpenPartId] = useState(null)
+
+  const load = () => { setLoading(true); purchasingApi.getStats().then(s => { setStats(s); setLoading(false) }).catch(() => setLoading(false)) }
+  useEffect(() => { load() }, [])
+
+  const notifs = stats?.myNotifications || []
+  const assigned = notifs.filter(n => n.inquiry_type === 'part_assigned')
+  const reassigned = notifs.filter(n => n.inquiry_type === 'part_reassigned')
+  const fu = stats?.followups || { overdue: [], today: [], upcoming: [] }
+  const fuAll = [
+    ...(fu.overdue || []).map(f => ({ ...f, bucket: 'overdue' })),
+    ...(fu.today || []).map(f => ({ ...f, bucket: 'today' })),
+    ...(fu.upcoming || []).map(f => ({ ...f, bucket: 'upcoming' })),
+  ]
+  const unread = (arr) => arr.filter(n => !n.read).length
+
+  const markRead = (id) => {
+    api.markNotificationRead(id).catch(() => {})
+    setStats(s => s ? { ...s, myNotifications: s.myNotifications.map(n => n.id === id ? { ...n, read: 1 } : n) } : s)
+  }
+  const markAll = async () => {
+    await api.markAllRead().catch(() => {})
+    setStats(s => s ? { ...s, myNotifications: s.myNotifications.map(n => ({ ...n, read: 1 })) } : s)
+  }
+  const completeFu = async (id) => {
+    await fetch(`/api/purchasing/followup/${id}/complete`, { method: 'PATCH', headers: { Authorization: `Bearer ${localStorage.getItem('crm_token')}` } }).catch(() => {})
+    load()
+  }
+  // Assigned: mark read + open the part. Reassigned: mark read only (purchaser no longer owns it).
+  const clickNotif = (n, openPart) => { if (!n.read) markRead(n.id); if (openPart && n.assignment_id) setOpenPartId(n.assignment_id) }
+
+  const TABS = [
+    { key: 'assigned',   label: 'Assigned',   count: unread(assigned) },
+    { key: 'reassigned', label: 'Reassigned', count: unread(reassigned) },
+    { key: 'followups',  label: 'Follow-ups', count: (fu.overdue?.length || 0) + (fu.today?.length || 0) },
+  ]
+  const anyUnread = unread(notifs) > 0
+
+  const empty = (msg) => <div className="card p-16 text-center"><Bell size={40} className="mx-auto mb-3 text-ink-200" /><div className="font-display font-bold text-ink-400 text-lg">{msg}</div></div>
+
+  return (
+    <div className="page-wrap max-w-3xl">
+      <PageHeader
+        icon={<Bell size={18} />}
+        title="Notifications"
+        subtitle="Your assigned parts and follow-up reminders"
+        action={
+          <div className="flex items-center gap-2">
+            {anyUnread && (
+              <button onClick={markAll} className="btn btn-sm border text-brand-600 hover:bg-brand-50" style={{ borderColor: `${BRAND}40`, background: `${BRAND}08` }}>
+                <Check size={13} /> Mark all read
+              </button>
+            )}
+            <button onClick={load} className="btn-secondary btn-sm"><RefreshCw size={13} /> Refresh</button>
+          </div>
+        }
+      />
+
+      <div className="flex gap-0.5 bg-surface-100 rounded-2xl p-1 mb-5 border border-slate-200">
+        {TABS.map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold cursor-pointer transition-all duration-150 border ${tab === t.key ? 'bg-white text-ink-900 border-slate-200 shadow-card' : 'bg-transparent text-ink-400 border-transparent hover:text-ink-700'}`}>
+            {t.label}
+            {t.count > 0 && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center"
+                style={{ background: t.key === 'followups' ? '#f59e0b' : BRAND, color: '#0a0a0a' }}>
+                {t.count > 99 ? '99+' : t.count}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-24"><div className="w-7 h-7 rounded-full border-2 border-brand-400 border-t-transparent spinner" /></div>
+      ) : (
+        <>
+          {tab === 'assigned' && (assigned.length === 0 ? empty('No assigned-part notifications') : <div>{assigned.map(n => <PurchaserNotifCard key={n.id} n={n} clickable onClick={() => clickNotif(n, true)} />)}</div>)}
+          {tab === 'reassigned' && (reassigned.length === 0 ? empty('No reassignment notifications') : <div>{reassigned.map(n => <PurchaserNotifCard key={n.id} n={n} clickable={false} onClick={() => clickNotif(n, false)} />)}</div>)}
+          {tab === 'followups' && (fuAll.length === 0 ? empty('All caught up!') : <div>{fuAll.map(f => <PurchaserFollowCard key={f.id} f={f} onOpen={setOpenPartId} onComplete={completeFu} />)}</div>)}
+        </>
+      )}
+
+      {openPartId && <PartDetailModal assignmentId={openPartId} onClose={() => setOpenPartId(null)} onSaved={load} />}
+    </div>
+  )
+}
+
+function CrmNotifications() {
   const { user } = useAuth()
   const { navigate } = useNav()
   const [data, setData] = useState(null)
@@ -262,4 +395,10 @@ export default function Notifications() {
       )}
     </div>
   )
+}
+
+export default function Notifications() {
+  const { user } = useAuth()
+  if (user.role === 'purchaser') return <PurchaserNotifications />
+  return <CrmNotifications />
 }

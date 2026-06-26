@@ -153,6 +153,9 @@ function runPurchasingV2Migrations() {
   const db = getDB();
   const cols = ['urgency TEXT DEFAULT "normal"', 'pm_notes TEXT', 'purchaser_notes TEXT', 'not_in_stock INTEGER DEFAULT 0'];
   cols.forEach(col => { try { db.exec('ALTER TABLE purchase_assignments ADD COLUMN ' + col); } catch(e) {} });
+  // Link part_assigned/part_reassigned notifications to the assignment so the purchaser's
+  // notifications can deep-link straight to the exact part. Older rows stay NULL.
+  try { db.exec('ALTER TABLE notifications ADD COLUMN assignment_id INTEGER'); } catch(e) {}
 }
 
 function runOperationsMigrations() {
