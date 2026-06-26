@@ -12,7 +12,7 @@ import ImportData from './pages/ImportData'
 import Notifications from './pages/Notifications'
 import AEDashboard from './pages/AEDashboard'
 import PurchasingManagerView from './pages/PurchasingManagerView'
-import PurchaserDashboard from './pages/PurchaserDashboard'
+import PurchaserDashboard, { PartDetailModal } from './pages/PurchaserDashboard'
 import Operations from './pages/Operations'
 
 export const AuthContext = createContext(null)
@@ -102,6 +102,22 @@ export default function App() {
       <Login />
     </AuthContext.Provider>
   )
+
+  // Deep link: /?part=<assignmentId> renders a single part full-page (the "Open full page" pop-out).
+  // Purchasing roles only; the backend /purchasing/part route still enforces per-record ownership.
+  const partParam = new URLSearchParams(window.location.search).get('part')
+  if (partParam && ['purchaser', 'purchasing_manager', 'manager'].includes(user.role)) {
+    return (
+      <AuthContext.Provider value={{ user, login, logout }}>
+        <PartDetailModal
+          assignmentId={partParam}
+          fullPage
+          onSaved={() => {}}
+          onClose={() => { try { window.close() } catch {} window.location.href = window.location.origin }}
+        />
+      </AuthContext.Provider>
+    )
+  }
 
   // Role-appropriate home/dashboard — also the fallback when a role hits a page it may not see.
   const home = () => {

@@ -48,8 +48,9 @@ function Pagination({ page, pages, onChange }) {
   )
 }
 
-// Full part detail modal
-function PartDetailModal({ assignmentId, onClose, onSaved }) {
+// Full part detail modal. `fullPage` renders it as a standalone full-screen view (used by the
+// popped-out browser tab) instead of a centered modal over a dimmed backdrop.
+export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = false }) {
   const { user } = useAuth()
   const [part, setPart] = useState(null)
   const [tab, setTab] = useState('quote')
@@ -136,23 +137,33 @@ function PartDetailModal({ assignmentId, onClose, onSaved }) {
     } catch(e) { showFlash('err', e.message || 'Could not complete follow-up') }
   }
 
+  // Backdrop (dimmed overlay) vs full-page (plain white, fills the tab). Card adapts to match.
+  const backdropStyle = fullPage
+    ? { position:'fixed', inset:0, zIndex:99999, background:'#f8fafc', display:'flex', alignItems:'stretch', justifyContent:'center' }
+    : { position:'fixed', inset:0, zIndex:99999, background:'rgba(0,0,0,0.55)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', padding:16 }
+  const cardStyle = fullPage
+    ? { background:'#fff', width:'100%', maxWidth:820, maxHeight:'100vh', display:'flex', flexDirection:'column', fontFamily:'"Plus Jakarta Sans",sans-serif' }
+    : { background:'#fff', borderRadius:20, boxShadow:'0 24px 80px rgba(0,0,0,0.25)', width:'100%', maxWidth:640, maxHeight:'92vh', display:'flex', flexDirection:'column', fontFamily:'"Plus Jakarta Sans",sans-serif' }
+
   if (!part) return createPortal(
-    <div style={{ position:'fixed', inset:0, zIndex:99999, background:'rgba(0,0,0,0.5)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-      <div style={{ background:'#fff', borderRadius:20, padding:40, color:'#94a3b8' }}>Loading...</div>
+    <div style={fullPage ? backdropStyle : { position:'fixed', inset:0, zIndex:99999, background:'rgba(0,0,0,0.5)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+      <div style={{ background:'#fff', borderRadius:fullPage?0:20, padding:40, color:'#94a3b8', margin:'auto' }}>Loading...</div>
     </div>, document.body
   )
 
   const tInfo = T[part.inquiry_type]
   const urgInfo = URGENCY[part.urgency||'normal']
   const isOver = part.is_over_selling
+  // In full-page mode the whole surface is the card — backdrop clicks must NOT close it.
+  const openFullPage = () => window.open(`${window.location.origin}/?part=${assignmentId}`, '_blank')
 
   return createPortal(
-    <div onClick={attemptClose} style={{ position:'fixed', inset:0, zIndex:99999, background:'rgba(0,0,0,0.55)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
-      <div onClick={e=>e.stopPropagation()} style={{ background:'#fff', borderRadius:20, boxShadow:'0 24px 80px rgba(0,0,0,0.25)', width:'100%', maxWidth:640, maxHeight:'92vh', display:'flex', flexDirection:'column', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>
+    <div onClick={fullPage ? undefined : attemptClose} style={backdropStyle}>
+      <div onClick={e=>e.stopPropagation()} style={cardStyle}>
         <style>{`@keyframes modalIn{from{opacity:0;transform:scale(0.96) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
         {/* Header */}
-        <div style={{ padding:'16px 22px 12px', borderBottom:'1px solid #f1f5f9', flexShrink:0, background: part.is_delayed?'#fff5f5':part.not_in_stock?'#f8fafc':'#fff', borderRadius:'20px 20px 0 0' }}>
+        <div style={{ padding:'16px 22px 12px', borderBottom:'1px solid #f1f5f9', flexShrink:0, background: part.is_delayed?'#fff5f5':part.not_in_stock?'#f8fafc':'#fff', borderRadius:fullPage?0:'20px 20px 0 0' }}>
           <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between' }}>
             <div>
               <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4, flexWrap:'wrap' }}>
@@ -160,11 +171,11 @@ function PartDetailModal({ assignmentId, onClose, onSaved }) {
                 <span style={{ fontSize:12, fontWeight:600, color:tInfo?.color, background:`${tInfo?.color}15`, padding:'2px 8px', borderRadius:6 }}>{tInfo?.icon} {tInfo?.label}</span>
                 <span style={{ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:12, background:urgInfo.bg, color:urgInfo.color, border:`1px solid ${urgInfo.border}` }}>{urgInfo.label}</span>
                 {part.is_delayed && <span style={{ fontSize:11, fontWeight:700, color:'#dc2626', background:'#fef2f2', padding:'2px 8px', borderRadius:12 }}>⚠️ Delayed {part.working_days_pending}d</span>}
-                {part.not_in_stock && <span style={{ fontSize:11, fontWeight:700, color:'#ef4444', background:'#fef2f2', padding:'2px 8px', borderRadius:12 }}>❌ Not In Stock</span>}
+                {!!part.not_in_stock && <span style={{ fontSize:11, fontWeight:700, color:'#ef4444', background:'#fef2f2', padding:'2px 8px', borderRadius:12 }}>❌ Not In Stock</span>}
               </div>
               <div style={{ fontSize:12, color:'#64748b' }}>Qty: {part.quantity||'—'} · {part.customer_name}{part.customer_company?` · ${part.customer_company}`:''}</div>
               <div style={{ fontSize:11, color:'#94a3b8', marginTop:2 }}>AE: {part.ae_name||'—'} · Assigned {timeAgo(part.assigned_at)}</div>
-              {part.inquiry_type==='online_order' && part.selling_price && (
+              {part.inquiry_type==='online_order' && Number(part.selling_price) > 0 && (
                 <div style={{ fontSize:12, fontWeight:700, color:isOver?'#dc2626':'#10b981', marginTop:3 }}>
                   {isOver
                     ? `⚠️ OVER — buying ${money(part.price)}${part.quantity>1?` × ${part.quantity}`:''} exceeds selling ${money(part.selling_price)}`
@@ -182,6 +193,10 @@ function PartDetailModal({ assignmentId, onClose, onSaved }) {
                 style={{ padding:'6px 12px', borderRadius:10, border:`1px solid ${part.not_in_stock?'#10b981':'#ef4444'}`, background:part.not_in_stock?'#f0fdf4':'#fef2f2', color:part.not_in_stock?'#10b981':'#ef4444', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', whiteSpace:'nowrap' }}>
                 {part.not_in_stock?'✓ Mark In Stock':'❌ Not In Stock'}
               </button>
+              {!fullPage && (
+                <button onClick={openFullPage} title="Open in a new tab (full page)"
+                  style={{ width:32, height:32, borderRadius:10, border:'1px solid #e2e8f0', background:'#fff', cursor:'pointer', fontSize:14, color:'#64748b', display:'flex', alignItems:'center', justifyContent:'center' }}>⤢</button>
+              )}
               <button onClick={attemptClose} style={{ width:32, height:32, borderRadius:10, border:'none', background:'#f1f5f9', cursor:'pointer', fontSize:18, color:'#64748b', display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
             </div>
           </div>
@@ -322,13 +337,13 @@ function PartCard({ part, onClick }) {
           <span style={{ fontFamily:'monospace', fontWeight:800, fontSize:15, color:'#0f172a' }}>{part.part_number}</span>
           <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:12, background:urgInfo.bg, color:urgInfo.color, border:`1px solid ${urgInfo.border}` }}>{urgInfo.label}</span>
           {part.is_delayed && <span style={{ fontSize:11, fontWeight:700, color:'#dc2626' }}>⚠️ {part.working_days_pending}d overdue</span>}
-          {part.not_in_stock && <span style={{ fontSize:11, fontWeight:700, color:'#ef4444', background:'#fef2f2', padding:'2px 6px', borderRadius:6 }}>❌ Not In Stock</span>}
+          {!!part.not_in_stock && <span style={{ fontSize:11, fontWeight:700, color:'#ef4444', background:'#fef2f2', padding:'2px 6px', borderRadius:6 }}>❌ Not In Stock</span>}
         </div>
         <div style={{ fontSize:12, color:'#64748b' }}>Qty: {part.quantity||'—'} · {part.customer_name}{part.customer_company?` · ${part.customer_company}`:''}</div>
         <div style={{ fontSize:11, color:'#94a3b8', marginTop:2 }}>AE: {part.ae_name||'—'} · Assigned {timeAgo(part.assigned_at)}</div>
         {part.pm_notes && <div style={{ fontSize:11, color:'#92400e', background:'#fef9c3', padding:'3px 8px', borderRadius:6, marginTop:4, display:'inline-block' }}>📌 {part.pm_notes}</div>}
       </div>
-      {part.inquiry_type==='online_order' && part.selling_price && (
+      {part.inquiry_type==='online_order' && Number(part.selling_price) > 0 && (
         <div style={{ textAlign:'center', flexShrink:0 }}>
           <div style={{ fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase' }}>Selling</div>
           <div style={{ fontSize:16, fontWeight:800, color:'#10b981', fontFamily:'"Bricolage Grotesque",sans-serif' }}>{money(part.selling_price)}</div>
