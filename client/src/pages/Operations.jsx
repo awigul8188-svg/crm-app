@@ -507,7 +507,7 @@ function RMAForm({ rma, presetOrder, orderItems, customers, orders, onSave, onCl
     email: '', return_quantity: 1, return_reason: '', rma_status: 'Initiated',
     rma_issue_date: new Date().toISOString().slice(0,10), rma_completed_date: '',
     refund_issued: '', restocking_fee: '', return_tracking_number: '',
-    return_shipping_paid: '', notes: '', qb_credit_memo: ''
+    return_shipping_paid: '', notes: '', qb_credit_memo: '', cost_recovered: 1
   }
   const [form, setForm] = useState(rma ? {
     ...blank, ...rma,
@@ -532,6 +532,12 @@ function RMAForm({ rma, presetOrder, orderItems, customers, orders, onSave, onCl
 
   const selectedItem = itemsForOrder.find(i => String(i.id) === String(form.order_item_id))
   const returnAmount = (Number(form.return_quantity) || 0) * (Number(selectedItem?.selling) || 0)
+  // GP reduction this RMA will apply to the order — ONLY once status = Completed.
+  // = qty×selling − (recovered ? qty×buying : 0) − restocking_fee + return_shipping_paid
+  const recovered  = Number(form.cost_recovered) !== 0
+  const costBack   = recovered ? (Number(form.return_quantity) || 0) * (Number(selectedItem?.buying) || 0) : 0
+  const gpImpact   = returnAmount - costBack - (Number(form.restocking_fee) || 0) + (Number(form.return_shipping_paid) || 0)
+  const isCompleted = form.rma_status === 'Completed'
 
   const handleSave = async () => {
     if (!form.rma_number.trim()) { setErr('RMA number is required'); return }
@@ -590,13 +596,24 @@ function RMAForm({ rma, presetOrder, orderItems, customers, orders, onSave, onCl
         <FF label="Return Quantity" half><input className="input" type="number" min="1" value={form.return_quantity} onChange={e => set('return_quantity', e.target.value)} /></FF>
         <FF label="Return Reason" half><input className="input" value={form.return_reason} onChange={e => set('return_reason', e.target.value)} placeholder="Defective, wrong item…" /></FF>
 
+        <FF label="Cost recovered? (goods back to vendor / restocked)" half>
+          <select className="input" value={form.cost_recovered} onChange={e => set('cost_recovered', Number(e.target.value))}>
+            <option value={1}>Yes — cost recovered (vendor credit / restocked)</option>
+            <option value={0}>No — scrapped, we eat the cost</option>
+          </select>
+        </FF>
+
         {selectedItem && (
-          <div style={{ flex: '1 1 100%', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: '10px 14px', display: 'flex', gap: 20, alignItems: 'center' }}>
+          <div style={{ flex: '1 1 100%', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: '10px 14px', display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
             <div><span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Unit Selling Price</span><div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{fmt(selectedItem.selling)}</div></div>
             <div style={{ color: '#94a3b8', fontSize: 18 }}>×</div>
             <div><span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Qty</span><div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{form.return_quantity}</div></div>
             <div style={{ color: '#94a3b8', fontSize: 18 }}>=</div>
             <div><span style={{ fontSize: 11, fontWeight: 700, color: '#064e3b', textTransform: 'uppercase' }}>Return Amount</span><div style={{ fontSize: 22, fontWeight: 900, color: '#10b981' }}>{fmt(returnAmount)}</div></div>
+            <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#7c2d12', textTransform: 'uppercase' }}>GP Impact {isCompleted ? '' : '(on Completed)'}</span>
+              <div style={{ fontSize: 22, fontWeight: 900, color: gpImpact > 0 ? '#dc2626' : '#10b981' }}>{gpImpact > 0 ? '−' : '+'}{fmt(Math.abs(gpImpact))}</div>
+            </div>
           </div>
         )}
 

@@ -335,15 +335,6 @@ function mapStatusOps(raw) {
   return String(raw).trim() || 'Order placed';
 }
 
-function syncRmaAmount(db, orderId) {
-  if (!orderId) return;
-  const res = db.prepare(`
-    SELECT COALESCE(SUM(COALESCE(r.return_quantity,1)*COALESCE(i.selling,0)),0) AS total
-    FROM op_rma r LEFT JOIN op_order_items i ON r.order_item_id=i.id WHERE r.order_id=?
-  `).get(orderId);
-  db.prepare(`UPDATE op_orders SET rma_amount=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(res.total, orderId);
-}
-
 router.delete('/operations/clear', (req, res) => {
   try {
     const db = getDB();
@@ -391,7 +382,6 @@ function importWorkbook(wb, db, options = {}) {
 
     let currentOrder = null;
     let currentOrderId = null;
-    let rmaBuffer = [];
     let currentOrderDate = null;
     let currentCustomerId = null;
     let rmaIndex = 0;
@@ -429,29 +419,6 @@ function importWorkbook(wb, db, options = {}) {
         const isRefunded = status.toLowerCase() === 'refunded';
 
         if (isNewOrder && rawOrder !== '') {
-          // Flush RMAs for previous order
-          if (currentOrderId && rmaBuffer.length) {
-            for (const rmaRow of rmaBuffer) {
-              try {
-                const linkedItem = db.prepare(`SELECT id FROM op_order_items WHERE order_id=? AND part_number=? LIMIT 1`)
-                  .get(currentOrderId, rmaRow.partNumber);
-                db.prepare(`
-                  INSERT INTO op_rma (rma_number,order_id,order_item_id,customer_id,return_quantity,
-                    return_reason,rma_status,rma_issue_date,refund_issued)
-                  VALUES (?,?,?,?,?,?,?,?,?)
-                `).run(
-                  `RMA-${currentOrder}-${++rmaIndex}`,
-                  currentOrderId, linkedItem ? linkedItem.id : null, currentCustomerId,
-                  rmaRow.qty, rmaRow.remarks || null, 'Completed',
-                  currentOrderDate, rmaRow.refundAmount
-                );
-                stats.rmas++;
-              } catch(e) { stats.errors.push(`RMA error row ${i}: ${e.message}`); }
-            }
-            syncRmaAmount(db, currentOrderId);
-            rmaBuffer = [];
-          }
-
           const orderNum = rawOrder;
           const isAdj = isAdjustmentOrder(orderNum);
           const orderDate = parsedRowDate;
@@ -753,27 +720,6 @@ function importWorkbook(wb, db, options = {}) {
         } catch(e) { stats.errors.push(`Item row ${i}: ${e.message}`); }
       }
 
-      // Flush final order's RMAs
-      if (currentOrderId && rmaBuffer.length) {
-        for (const rmaRow of rmaBuffer) {
-          try {
-            const linkedItem = db.prepare(`SELECT id FROM op_order_items WHERE order_id=? AND part_number=? LIMIT 1`)
-              .get(currentOrderId, rmaRow.partNumber);
-            db.prepare(`
-              INSERT INTO op_rma (rma_number,order_id,order_item_id,customer_id,return_quantity,
-                return_reason,rma_status,rma_issue_date,refund_issued)
-              VALUES (?,?,?,?,?,?,?,?,?)
-            `).run(
-              `RMA-${currentOrder}-${++rmaIndex}`,
-              currentOrderId, linkedItem ? linkedItem.id : null, currentCustomerId,
-              rmaRow.qty, rmaRow.remarks||null, 'Completed',
-              currentOrderDate, rmaRow.refundAmount
-            );
-            stats.rmas++;
-          } catch(e) { stats.errors.push(`RMA error final: ${e.message}`); }
-        }
-        syncRmaAmount(db, currentOrderId);
-      }
     });
 
     importOrder();

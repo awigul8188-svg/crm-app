@@ -339,6 +339,12 @@ function runOperationsMigrations() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
   } catch(e) {}
+
+  // v12 — RMA cost-recovery flag for the new (post-sheet) return logic. 1 = the returned goods'
+  // cost is recovered (sent back to vendor / restocked), 0 = scrapped (cost eaten). Drives the GP
+  // reversal for COMPLETED RMAs only. Historical imported orders have no RMA records, so their
+  // rma_amount stays 0 and their numbers are untouched.
+  try { db.exec(`ALTER TABLE op_rma ADD COLUMN cost_recovered INTEGER DEFAULT 1`); } catch(e) {}
 }
 
 module.exports = { initializeDB, getDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations };

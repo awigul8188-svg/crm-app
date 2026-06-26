@@ -364,13 +364,27 @@ router.get('/rma', (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Recompute an order's rma_amount = the GP reduction from its COMPLETED returns.
+// Per-RMA GP reduction (the "profit reversal" model, matching the old sheet negative-line method):
+//   return_qty × selling                            revenue reversed
+//   − (cost_recovered ? return_qty × buying : 0)    cost comes back if recovered, else eaten
+//   − restocking_fee                                kept as profit
+//   + return_shipping_paid                          shipping you absorbed
+// The dashboard GP formula already subtracts rma_amount, so no GP query changes are needed.
+// Only Completed RMAs count — in-process ones move nothing. Orders with no RMAs keep rma_amount 0.
 function syncOrderRmaAmount(db, orderId) {
   if (!orderId) return;
   const result = db.prepare(`
-    SELECT COALESCE(SUM(COALESCE(r.return_quantity,1) * COALESCE(i.selling,0)), 0) AS total_rma
+    SELECT COALESCE(SUM(
+        COALESCE(r.return_quantity,1) * COALESCE(i.selling,0)
+      - CASE WHEN COALESCE(r.cost_recovered,1) = 1
+             THEN COALESCE(r.return_quantity,1) * COALESCE(i.buying,0) ELSE 0 END
+      - COALESCE(r.restocking_fee,0)
+      + COALESCE(r.return_shipping_paid,0)
+    ), 0) AS total_rma
     FROM op_rma r
     LEFT JOIN op_order_items i ON r.order_item_id = i.id
-    WHERE r.order_id = ?
+    WHERE r.order_id = ? AND r.rma_status = 'Completed'
   `).get(orderId);
   db.prepare(`UPDATE op_orders SET rma_amount=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`)
     .run(result.total_rma, orderId);
@@ -478,17 +492,18 @@ router.post('/rma', requireManager, (req, res) => {
     const db = getDB();
     const { rma_number, order_id, order_item_id, customer_id, email, return_quantity, return_reason,
             rma_status, rma_issue_date, rma_completed_date, refund_issued, restocking_fee,
-            return_tracking_number, return_shipping_paid, notes, qb_credit_memo } = req.body;
+            return_tracking_number, return_shipping_paid, notes, qb_credit_memo, cost_recovered } = req.body;
     const result = db.prepare(`
       INSERT INTO op_rma (rma_number,order_id,order_item_id,customer_id,email,return_quantity,return_reason,
         rma_status,rma_issue_date,rma_completed_date,refund_issued,restocking_fee,
-        return_tracking_number,return_shipping_paid,notes,qb_credit_memo)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        return_tracking_number,return_shipping_paid,notes,qb_credit_memo,cost_recovered)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     `).run(rma_number, order_id||null, order_item_id||null, customer_id||null, email||null,
            return_quantity||1, return_reason||null, rma_status||'Initiated',
            rma_issue_date||null, rma_completed_date||null,
            refund_issued||0, restocking_fee||0, return_tracking_number||null,
-           return_shipping_paid||0, notes||null, qb_credit_memo||null);
+           return_shipping_paid||0, notes||null, qb_credit_memo||null,
+           cost_recovered === 0 || cost_recovered === false ? 0 : 1);
     if (order_id) syncOrderRmaAmount(db, order_id);
     res.json(db.prepare(`${RMA_SELECT} WHERE r.id=?`).get(result.lastInsertRowid));
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -508,18 +523,19 @@ router.put('/rma/:id', requireManager, (req, res) => {
     const db = getDB();
     const { rma_number, order_id, order_item_id, customer_id, email, return_quantity, return_reason,
             rma_status, rma_issue_date, rma_completed_date, refund_issued, restocking_fee,
-            return_tracking_number, return_shipping_paid, notes, qb_credit_memo } = req.body;
+            return_tracking_number, return_shipping_paid, notes, qb_credit_memo, cost_recovered } = req.body;
     const prevRma = db.prepare(`SELECT order_id FROM op_rma WHERE id=?`).get(req.params.id);
     db.prepare(`
       UPDATE op_rma SET rma_number=?,order_id=?,order_item_id=?,customer_id=?,email=?,return_quantity=?,
         return_reason=?,rma_status=?,rma_issue_date=?,rma_completed_date=?,refund_issued=?,
         restocking_fee=?,return_tracking_number=?,return_shipping_paid=?,notes=?,
-        qb_credit_memo=?,updated_at=CURRENT_TIMESTAMP WHERE id=?
+        qb_credit_memo=?,cost_recovered=?,updated_at=CURRENT_TIMESTAMP WHERE id=?
     `).run(rma_number, order_id||null, order_item_id||null, customer_id||null, email||null,
            return_quantity||1, return_reason||null, rma_status||'Initiated',
            rma_issue_date||null, rma_completed_date||null,
            refund_issued||0, restocking_fee||0, return_tracking_number||null,
-           return_shipping_paid||0, notes||null, qb_credit_memo||null, req.params.id);
+           return_shipping_paid||0, notes||null, qb_credit_memo||null,
+           cost_recovered === 0 || cost_recovered === false ? 0 : 1, req.params.id);
     if (order_id) syncOrderRmaAmount(db, order_id);
     if (prevRma?.order_id && prevRma.order_id !== (order_id||null)) syncOrderRmaAmount(db, prevRma.order_id);
     res.json(db.prepare(`${RMA_SELECT} WHERE r.id=?`).get(req.params.id));
@@ -841,9 +857,10 @@ router.get('/stats', (req, res) => {
       JOIN op_orders o ON o.id = i.order_id
       WHERE ${where}
     `).get(...params);
+    // "Open" = any RMA not finished (not Completed/Denied). Matches the dashboard summary definition.
     const rmaWhere = (reporting_period || date_from || date_to)
-      ? `rma_status = 'Open' AND order_id IN (SELECT id FROM op_orders WHERE ${where})`
-      : `rma_status = 'Open'`;
+      ? `rma_status NOT IN ('Completed','Denied') AND order_id IN (SELECT id FROM op_orders WHERE ${where})`
+      : `rma_status NOT IN ('Completed','Denied')`;
     const rma_count = db.prepare(`SELECT COUNT(*) AS cnt FROM op_rma WHERE ${rmaWhere}`).get(...params).cnt;
     res.json({ ...stats, ...apStats, open_rma: rma_count });
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -862,8 +879,13 @@ router.get('/receivables', (req, res) => {
     const rows = db.prepare(`
       SELECT o.id, o.order_number, o.order_date, o.due_date, o.reporting_period, o.payment_status, o.ar_status,
         c.name AS customer_name,
-        COALESCE(SUM(i.selling * i.quantity), 0) + COALESCE(o.tax_charged,0) + COALESCE(o.shipping_charged,0) + COALESCE(o.cc_charges,0) AS charged,
-        COALESCE(o.customer_paid, 0) AS received
+        COALESCE(SUM(i.selling * i.quantity), 0) + COALESCE(o.tax_charged,0) + COALESCE(o.shipping_charged,0) + COALESCE(o.cc_charges,0)
+          - COALESCE((SELECT SUM(COALESCE(r.return_quantity,1) * COALESCE(ri.selling,0))
+                      FROM op_rma r LEFT JOIN op_order_items ri ON r.order_item_id = ri.id
+                      WHERE r.order_id = o.id AND r.rma_status = 'Completed'), 0) AS charged,
+        COALESCE(o.customer_paid, 0)
+          - COALESCE((SELECT SUM(COALESCE(r.refund_issued,0))
+                      FROM op_rma r WHERE r.order_id = o.id AND r.rma_status = 'Completed'), 0) AS received
       FROM op_orders o
       LEFT JOIN op_customers c ON o.customer_id = c.id
       LEFT JOIN op_order_items i ON i.order_id = o.id AND COALESCE(i.line_status,'processed') = 'processed'
