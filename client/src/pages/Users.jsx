@@ -4,6 +4,12 @@ import { api } from '../api'
 import { useAuth } from '../App'
 import Modal from '../components/Modal'
 import PageHeader from '../components/PageHeader'
+import { ColumnPicker, useColumnPrefs } from '../components/ColumnPicker'
+
+const USER_COLS = [
+  { key:'name', label:'Name', locked:true }, { key:'username', label:'Username' }, { key:'role', label:'Role' },
+  { key:'joined', label:'Joined' }, { key:'createdby', label:'Created By' }, { key:'actions', label:'Actions', locked:true },
+]
 
 const BRAND = '#00D4C8'
 const inp = { width:'100%', boxSizing:'border-box', background:'#fff', border:'1px solid #e2e8f0', borderRadius:'12px', padding:'10px 14px', fontSize:'13px', color:'#0f172a', fontFamily:'"Plus Jakarta Sans", sans-serif', outline:'none' }
@@ -75,6 +81,9 @@ export default function Users() {
   const [buyerLoading, setBuyerLoading] = useState(false)
   const [selectedBuyers, setSelectedBuyers] = useState(new Set())
   const [creatingBuyers, setCreatingBuyers] = useState(false)
+
+  const { visibleColumns, hidden, toggle, reset: colReset } = useColumnPrefs('users', USER_COLS, [])
+  const show = (k) => visibleColumns.some(c => c.key === k)
 
   const load = () => api.getUsers().then(u => { setUsers(u); setLoading(false) }).catch(e => { setError(e.message || 'Could not load users'); setLoading(false) })
   useEffect(() => { load() }, [])
@@ -177,7 +186,8 @@ export default function Users() {
           </button>
         </>
       )}
-      <button onClick={() => { reset(); setShowNew(true) }} className="btn-primary">+ New User</button>
+      <ColumnPicker columns={USER_COLS} hidden={hidden} toggle={toggle} reset={colReset} />
+      <button onClick={() => { setForm({ username:'', password:'', name:'', role:'ae' }); setError(''); setShowNew(true) }} className="btn-primary">+ New User</button>
     </div>
   )
 
@@ -215,8 +225,8 @@ export default function Users() {
                     <table style={{ width:'100%', borderCollapse:'collapse' }}>
                       <thead>
                         <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
-                          {['Name','Username','Role','Joined','Created By','Actions'].map(h => (
-                            <th key={h} style={{ textAlign:'left', padding:'10px 16px', fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.06em' }}>{h}</th>
+                          {visibleColumns.map(c => (
+                            <th key={c.key} style={{ textAlign:'left', padding:'10px 16px', fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.06em' }}>{c.label}</th>
                           ))}
                         </tr>
                       </thead>
@@ -225,7 +235,7 @@ export default function Users() {
                           <tr key={u.id} style={{ borderBottom:'1px solid #f1f5f9', transition:'background 0.1s' }}
                             onMouseEnter={e => e.currentTarget.style.background='#fafbfc'}
                             onMouseLeave={e => e.currentTarget.style.background='transparent'}>
-                            <td style={{ padding:'12px 16px' }}>
+                            {show('name') && <td style={{ padding:'12px 16px' }}>
                               <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                                 {u.avatar_url
                                   ? <img src={u.avatar_url} alt={u.name} style={{ width:34, height:34, borderRadius:8, objectFit:'cover', flexShrink:0 }} />
@@ -238,11 +248,11 @@ export default function Users() {
                                   </div>
                                 </div>
                               </div>
-                            </td>
-                            <td style={{ padding:'12px 16px', fontFamily:'monospace', fontSize:13, color:'#64748b' }}>{u.username}</td>
-                            <td style={{ padding:'12px 16px' }}><RoleBadge role={u.role} /></td>
-                            <td style={{ padding:'12px 16px', fontSize:12, color:'#94a3b8' }}>{new Date(u.created_at).toLocaleDateString()}</td>
-                            <td style={{ padding:'12px 16px', fontSize:12, color:u.created_by_name?'#64748b':'#cbd5e1' }}>{u.created_by_name || '—'}</td>
+                            </td>}
+                            {show('username') && <td style={{ padding:'12px 16px', fontFamily:'monospace', fontSize:13, color:'#64748b' }}>{u.username}</td>}
+                            {show('role') && <td style={{ padding:'12px 16px' }}><RoleBadge role={u.role} /></td>}
+                            {show('joined') && <td style={{ padding:'12px 16px', fontSize:12, color:'#94a3b8' }}>{new Date(u.created_at).toLocaleDateString()}</td>}
+                            {show('createdby') && <td style={{ padding:'12px 16px', fontSize:12, color:u.created_by_name?'#64748b':'#cbd5e1' }}>{u.created_by_name || '—'}</td>}
                             <td style={{ padding:'12px 16px' }}>
                               {canManageRole(u.role) ? (
                                 <div style={{ display:'flex', gap:6 }}>

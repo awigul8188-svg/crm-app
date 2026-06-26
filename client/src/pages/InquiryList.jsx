@@ -8,14 +8,31 @@ import NewInquiryModal from '../components/NewInquiryModal'
 import MultiSelect from '../components/MultiSelect'
 import PageHeader from '../components/PageHeader'
 import ClosedWonModal from '../components/ClosedWonModal'
+import { ColumnPicker, useColumnPrefs } from '../components/ColumnPicker'
 
 const TYPE_ICONS  = { lead: '◎', repeat: '↻', online_order: '◈' }
 const TYPE_LABELS = { lead: 'Lead', repeat: 'Repeat Inquiry', online_order: 'Online Order' }
 
-const HEADERS = {
-  lead:         ['Date','Assigned To','Disposition','Lead Source','Name','Email','Company','Ph#','Part Number','Qty','Comments',''],
-  repeat:       ['Date','Disposition','Assigned To','Name','Email','Phone','Company','Part#','Qty','Comments','PPC/Outbound',''],
-  online_order: ['Date','Name','Email','Part Number','Total Qty','Order Amount','Source','Assigned To','Comments','Verification','Status',''],
+// Column configs per inquiry type (order matches the row cells). `locked` columns can't be hidden.
+const COLS = {
+  lead: [
+    { key:'date', label:'Date', locked:true }, { key:'assigned', label:'Assigned To' }, { key:'disposition', label:'Disposition' },
+    { key:'source', label:'Lead Source' }, { key:'name', label:'Name', locked:true }, { key:'email', label:'Email' },
+    { key:'company', label:'Company' }, { key:'phone', label:'Ph#' }, { key:'parts', label:'Part Number' },
+    { key:'qty', label:'Qty' }, { key:'notes', label:'Comments' },
+  ],
+  repeat: [
+    { key:'date', label:'Date', locked:true }, { key:'disposition', label:'Disposition' }, { key:'assigned', label:'Assigned To' },
+    { key:'name', label:'Name', locked:true }, { key:'email', label:'Email' }, { key:'phone', label:'Phone' },
+    { key:'company', label:'Company' }, { key:'parts', label:'Part#' }, { key:'qty', label:'Qty' },
+    { key:'notes', label:'Comments' }, { key:'ppc', label:'PPC/Outbound' },
+  ],
+  online_order: [
+    { key:'date', label:'Date', locked:true }, { key:'name', label:'Name', locked:true }, { key:'email', label:'Email' },
+    { key:'parts', label:'Part Number' }, { key:'totalqty', label:'Total Qty' }, { key:'amount', label:'Order Amount' },
+    { key:'source', label:'Source' }, { key:'assigned', label:'Assigned To' }, { key:'notes', label:'Comments' },
+    { key:'verification', label:'Verification' }, { key:'status', label:'Status' },
+  ],
 }
 
 // Inline disposition dropdown — appears in place of the badge
@@ -107,6 +124,11 @@ export default function InquiryList({ type, title }) {
   const [editingDisp, setEditingDisp] = useState(null) // inquiry id being edited
   const [cwInquiry, setCwInquiry] = useState(null)      // inquiry being converted to an order
 
+  // User-chosen visible columns (per type, persisted per browser).
+  const cols = COLS[type] || COLS.lead
+  const { visibleColumns, hidden, toggle, reset } = useColumnPrefs('inquiries-' + type, cols, [])
+  const show = (k) => visibleColumns.some(c => c.key === k)
+
   const load = () => {
     setLoading(true)
     api.getInquiries(type, { disposition: filterDispositions, lead_source: filterSources })
@@ -194,6 +216,9 @@ export default function InquiryList({ type, title }) {
             ✕ Clear all
           </button>
         )}
+        <div className="ml-auto">
+          <ColumnPicker columns={cols} hidden={hidden} toggle={toggle} reset={reset} />
+        </div>
       </div>
 
       {/* Active filter tags */}
@@ -238,7 +263,8 @@ export default function InquiryList({ type, title }) {
             <table className="w-full">
               <thead>
                 <tr className="table-header">
-                  {HEADERS[type].map((h, i) => <th key={i} className="text-left px-4 py-3">{h}</th>)}
+                  {visibleColumns.map(c => <th key={c.key} className="text-left px-4 py-3">{c.label}</th>)}
+                  <th className="px-4 py-3 w-10" />
                 </tr>
               </thead>
               <tbody>
@@ -277,49 +303,49 @@ export default function InquiryList({ type, title }) {
                       onClick={() => { if (editingDisp !== inq.id) navigate('inquiry-detail', { id: inq.id }) }}
                       style={{ cursor: editingDisp === inq.id ? 'default' : 'pointer' }}
                     >
-                      <td className="table-cell text-ink-400 font-mono text-xs whitespace-nowrap">{formatDateShort(inq.created_at)}</td>
+                      {show('date') && <td className="table-cell text-ink-400 font-mono text-xs whitespace-nowrap">{formatDateShort(inq.created_at)}</td>}
 
                       {type === 'lead' && <>
-                        <td className="table-cell font-semibold text-ink-700 whitespace-nowrap">{inq.assigned_name||'—'}</td>
-                        {dispCell}
-                        <td className="table-cell text-xs text-ink-500 whitespace-nowrap">{inq.lead_source||'—'}</td>
-                        <td className="table-cell font-semibold text-ink-900 whitespace-nowrap">{inq.customer_name}</td>
-                        <td className="table-cell text-xs text-ink-500">{inq.customer_email||'—'}</td>
-                        <td className="table-cell text-xs text-ink-500 whitespace-nowrap">{inq.customer_company||'—'}</td>
-                        <td className="table-cell text-xs text-ink-500">{inq.customer_phone||'—'}</td>
-                        <td className="table-cell font-mono text-xs text-ink-700 max-w-[140px] truncate">{partNums}</td>
-                        <td className="table-cell text-xs text-ink-600">{qtys}</td>
-                        <td className="table-cell text-xs text-ink-400 max-w-[140px] truncate">{inq.notes||'—'}</td>
+                        {show('assigned') && <td className="table-cell font-semibold text-ink-700 whitespace-nowrap">{inq.assigned_name||'—'}</td>}
+                        {show('disposition') && dispCell}
+                        {show('source') && <td className="table-cell text-xs text-ink-500 whitespace-nowrap">{inq.lead_source||'—'}</td>}
+                        {show('name') && <td className="table-cell font-semibold text-ink-900 whitespace-nowrap">{inq.customer_name}</td>}
+                        {show('email') && <td className="table-cell text-xs text-ink-500">{inq.customer_email||'—'}</td>}
+                        {show('company') && <td className="table-cell text-xs text-ink-500 whitespace-nowrap">{inq.customer_company||'—'}</td>}
+                        {show('phone') && <td className="table-cell text-xs text-ink-500">{inq.customer_phone||'—'}</td>}
+                        {show('parts') && <td className="table-cell font-mono text-xs text-ink-700 max-w-[140px] truncate">{partNums}</td>}
+                        {show('qty') && <td className="table-cell text-xs text-ink-600">{qtys}</td>}
+                        {show('notes') && <td className="table-cell text-xs text-ink-400 max-w-[140px] truncate">{inq.notes||'—'}</td>}
                       </>}
 
                       {type === 'repeat' && <>
-                        {dispCell}
-                        <td className="table-cell font-semibold text-ink-700 whitespace-nowrap">{inq.assigned_name||'—'}</td>
-                        <td className="table-cell font-semibold text-ink-900 whitespace-nowrap">{inq.customer_name}</td>
-                        <td className="table-cell text-xs text-ink-500">{inq.customer_email||'—'}</td>
-                        <td className="table-cell text-xs text-ink-500">{inq.customer_phone||'—'}</td>
-                        <td className="table-cell text-xs text-ink-500 whitespace-nowrap">{inq.customer_company||'—'}</td>
-                        <td className="table-cell font-mono text-xs text-ink-700 max-w-[130px] truncate">{partNums}</td>
-                        <td className="table-cell text-xs text-ink-600">{qtys}</td>
-                        <td className="table-cell text-xs text-ink-400 max-w-[130px] truncate">{inq.notes||'—'}</td>
-                        <td className="table-cell text-xs">{inq.ppc_or_outbound ? <span className="badge bg-violet-50 text-violet-600 border-violet-100">{inq.ppc_or_outbound}</span> : '—'}</td>
+                        {show('disposition') && dispCell}
+                        {show('assigned') && <td className="table-cell font-semibold text-ink-700 whitespace-nowrap">{inq.assigned_name||'—'}</td>}
+                        {show('name') && <td className="table-cell font-semibold text-ink-900 whitespace-nowrap">{inq.customer_name}</td>}
+                        {show('email') && <td className="table-cell text-xs text-ink-500">{inq.customer_email||'—'}</td>}
+                        {show('phone') && <td className="table-cell text-xs text-ink-500">{inq.customer_phone||'—'}</td>}
+                        {show('company') && <td className="table-cell text-xs text-ink-500 whitespace-nowrap">{inq.customer_company||'—'}</td>}
+                        {show('parts') && <td className="table-cell font-mono text-xs text-ink-700 max-w-[130px] truncate">{partNums}</td>}
+                        {show('qty') && <td className="table-cell text-xs text-ink-600">{qtys}</td>}
+                        {show('notes') && <td className="table-cell text-xs text-ink-400 max-w-[130px] truncate">{inq.notes||'—'}</td>}
+                        {show('ppc') && <td className="table-cell text-xs">{inq.ppc_or_outbound ? <span className="badge bg-violet-50 text-violet-600 border-violet-100">{inq.ppc_or_outbound}</span> : '—'}</td>}
                       </>}
 
                       {type === 'online_order' && <>
-                        <td className="table-cell font-semibold text-ink-900 whitespace-nowrap">{inq.customer_name}</td>
-                        <td className="table-cell text-xs text-ink-500">{inq.customer_email||'—'}</td>
-                        <td className="table-cell font-mono text-xs text-ink-700 max-w-[130px] truncate">{partNums}</td>
-                        <td className="table-cell font-semibold text-ink-700">{totalQty||'—'}</td>
-                        <td className="table-cell font-semibold text-green-700">{inq.order_amount ? `$${inq.order_amount}` : '—'}</td>
-                        <td className="table-cell text-xs text-ink-500 whitespace-nowrap">{inq.lead_source||'—'}</td>
-                        <td className="table-cell font-semibold text-ink-700 whitespace-nowrap">{inq.assigned_name||'—'}</td>
-                        <td className="table-cell text-xs text-ink-400 max-w-[130px] truncate">{inq.notes||'—'}</td>
-                        <td className="table-cell text-xs">
+                        {show('name') && <td className="table-cell font-semibold text-ink-900 whitespace-nowrap">{inq.customer_name}</td>}
+                        {show('email') && <td className="table-cell text-xs text-ink-500">{inq.customer_email||'—'}</td>}
+                        {show('parts') && <td className="table-cell font-mono text-xs text-ink-700 max-w-[130px] truncate">{partNums}</td>}
+                        {show('totalqty') && <td className="table-cell font-semibold text-ink-700">{totalQty||'—'}</td>}
+                        {show('amount') && <td className="table-cell font-semibold text-green-700">{inq.order_amount ? `$${inq.order_amount}` : '—'}</td>}
+                        {show('source') && <td className="table-cell text-xs text-ink-500 whitespace-nowrap">{inq.lead_source||'—'}</td>}
+                        {show('assigned') && <td className="table-cell font-semibold text-ink-700 whitespace-nowrap">{inq.assigned_name||'—'}</td>}
+                        {show('notes') && <td className="table-cell text-xs text-ink-400 max-w-[130px] truncate">{inq.notes||'—'}</td>}
+                        {show('verification') && <td className="table-cell text-xs">
                           {inq.order_ref
                             ? <span className={`badge ${inq.order_ref === 'Verified' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-500 border-red-200'}`}>{inq.order_ref}</span>
                             : '—'}
-                        </td>
-                        {dispCell}
+                        </td>}
+                        {show('status') && dispCell}
                       </>}
 
                       {/* Delete — managers only */}

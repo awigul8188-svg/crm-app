@@ -7,9 +7,17 @@ import { LEAD_SOURCES } from '../components/Badges'
 import Modal from '../components/Modal'
 import MultiSelect from '../components/MultiSelect'
 import PageHeader from '../components/PageHeader'
+import { ColumnPicker, useColumnPrefs } from '../components/ColumnPicker'
+
+const CUST_COLS = [
+  { key:'customer', label:'Customer', locked:true }, { key:'email', label:'Email' }, { key:'phone', label:'Phone' },
+  { key:'source', label:'Lead Source' }, { key:'assigned', label:'Assigned To' }, { key:'inquiries', label:'Inquiries' },
+]
 
 export default function Customers() {
   const { user } = useAuth()
+  const { visibleColumns, hidden, toggle, reset } = useColumnPrefs('customers', CUST_COLS, [])
+  const show = (k) => visibleColumns.some(c => c.key === k)
   const { navigate } = useNav()
   const [customers, setCustomers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -65,6 +73,7 @@ export default function Customers() {
         {filterSources.length > 0 && (
           <button onClick={() => setFilterSources([])} className="btn btn-sm text-red-500 bg-red-50 border border-red-100 hover:bg-red-100">✕ Clear</button>
         )}
+        <div className="ml-auto"><ColumnPicker columns={CUST_COLS} hidden={hidden} toggle={toggle} reset={reset} /></div>
       </div>
 
       {loading ? (
@@ -80,19 +89,19 @@ export default function Customers() {
           <table className="w-full">
             <thead>
               <tr className="table-header">
-                <th className="text-left px-4 py-3">Customer</th>
-                <th className="text-left px-4 py-3">Email</th>
-                <th className="text-left px-4 py-3">Phone</th>
-                <th className="text-left px-4 py-3">Lead Source</th>
-                <th className="text-left px-4 py-3">Assigned To</th>
-                <th className="text-left px-4 py-3">Inquiries</th>
+                {show('customer') && <th className="text-left px-4 py-3">Customer</th>}
+                {show('email') && <th className="text-left px-4 py-3">Email</th>}
+                {show('phone') && <th className="text-left px-4 py-3">Phone</th>}
+                {show('source') && <th className="text-left px-4 py-3">Lead Source</th>}
+                {show('assigned') && <th className="text-left px-4 py-3">Assigned To</th>}
+                {show('inquiries') && <th className="text-left px-4 py-3">Inquiries</th>}
                 {['manager', 'purchasing_manager'].includes(user.role) && <th className="px-4 py-3 w-12" />}
               </tr>
             </thead>
             <tbody>
               {displayed.map(c => (
                 <tr key={c.id} className="table-row" onClick={() => navigate('customer-detail',{id:c.id})}>
-                  <td className="table-cell">
+                  {show('customer') && <td className="table-cell">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-xl bg-brand-50 border border-brand-100 flex items-center justify-center text-brand-600 font-bold text-sm flex-shrink-0">{c.name[0].toUpperCase()}</div>
                       <div>
@@ -100,17 +109,17 @@ export default function Customers() {
                         {c.company && <div className="text-xs text-ink-400">{c.company}</div>}
                       </div>
                     </div>
-                  </td>
-                  <td className="table-cell text-ink-500 text-xs">{c.email||'—'}</td>
-                  <td className="table-cell text-ink-500 text-xs">{c.phone||'—'}</td>
-                  <td className="table-cell">{c.lead_source ? <span className="badge bg-teal-50 text-teal-700 border-teal-200">{c.lead_source}</span> : <span className="text-ink-300 text-sm">—</span>}</td>
-                  <td className="table-cell font-medium text-ink-700 text-sm">{c.assigned_name||'—'}</td>
-                  <td className="table-cell"><span className="badge bg-surface-100 text-ink-600 border-ink-200">{c.inquiry_count}</span></td>
+                  </td>}
+                  {show('email') && <td className="table-cell text-ink-500 text-xs">{c.email||'—'}</td>}
+                  {show('phone') && <td className="table-cell text-ink-500 text-xs">{c.phone||'—'}</td>}
+                  {show('source') && <td className="table-cell">{c.lead_source ? <span className="badge bg-teal-50 text-teal-700 border-teal-200">{c.lead_source}</span> : <span className="text-ink-300 text-sm">—</span>}</td>}
+                  {show('assigned') && <td className="table-cell font-medium text-ink-700 text-sm">{c.assigned_name||'—'}</td>}
+                  {show('inquiries') && <td className="table-cell"><span className="badge bg-surface-100 text-ink-600 border-ink-200">{c.inquiry_count}</span></td>}
                   {['manager', 'purchasing_manager'].includes(user.role) && (
                     <td className="table-cell" onClick={e => e.stopPropagation()}>
                       <button onClick={e => handleDelete(e, c.id, c.name)} disabled={deleting===c.id}
                         className="btn-icon btn-sm text-red-400 hover:text-red-600 hover:bg-red-50">
-                        {deleting===c.id ? '...' : '??'}
+                        {deleting===c.id ? '...' : '🗑'}
                       </button>
                     </td>
                   )}
