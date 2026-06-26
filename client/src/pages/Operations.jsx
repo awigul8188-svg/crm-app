@@ -5,6 +5,7 @@ import Modal from '../components/Modal'
 import ImportModal from '../components/ImportModal'
 import SearchableSelect from '../components/SearchableSelect'
 import MultiSelect from '../components/MultiSelect'
+import { useColumnPrefs, ColumnPicker } from '../components/ColumnPicker'
 import { Search, Plus, Edit2, Trash2, Package, Users, Truck, RotateCcw, ChevronRight, X, AlertCircle, List, ClipboardList, Upload, DollarSign, CreditCard, CheckCircle2, Info } from 'lucide-react'
 
 const BRAND = '#00D4C8'
@@ -1596,10 +1597,10 @@ function OrderItemsTab({ onOpenOrder }) {
   }
 
   const cols = [
-    { key: 'order_number',       label: 'Order #',      render: r => (
+    { key: 'order_number',       label: 'Order #', locked: true, render: r => (
       <button onClick={() => onOpenOrder(r.order_id)} style={{ color: BRAND, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13 }}>{r.order_number || '—'}</button>
     )},
-    { key: 'part_number',        label: 'Part #',       render: r => (
+    { key: 'part_number',        label: 'Part #', locked: true, render: r => (
       <button onClick={() => setEditItem(r)} title="Edit line item" style={{ color: BRAND, fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13, textAlign: 'left' }}
         onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'} onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}>{r.part_number || '(no part#)'}</button>
     )},
@@ -1623,34 +1624,37 @@ function OrderItemsTab({ onOpenOrder }) {
     { key: 'tracking_to_warehouse', label: 'Track→WH'  },
     { key: 'serials',            label: 'Serials'       },
   ]
+  const { visibleColumns, hidden, toggle, reset } = useColumnPrefs('order-items', cols,
+    ['ext_total_buying','cc_paid','tax_paid','shipping_paid','duty_paid','paid_to_supplier','payment_method','payment_due','ta_po_number','tracking_to_warehouse','serials'])
 
   return (
     <div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, alignItems: 'center' }}>
         <SearchPill style={{ flex: 1 }} placeholder="Search by part #, description, order #, supplier…" value={search} onChange={e => setSearch(e.target.value)} />
         <span style={{ fontSize: 12, color: '#94a3b8', whiteSpace: 'nowrap' }}>{rows.length} items</span>
+        <ColumnPicker columns={cols} hidden={hidden} toggle={toggle} reset={reset} />
       </div>
 
       {loading ? <SkeletonRows cols={6} /> : rows.length === 0 ? (
         <EmptyState icon={List} label="Order Items" action={null} />
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflow: 'auto', maxHeight: '65vh', border: '1px solid #f1f5f9', borderRadius: 12 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1400 }}>
             <thead>
               <tr className="table-header">
-                {cols.map(c => <th key={c.key} className="table-cell" style={{ whiteSpace: 'nowrap', textAlign: c.num ? 'right' : 'left' }}>{c.label}</th>)}
-                <th className="table-cell"></th>
+                {visibleColumns.map((c, ci) => <th key={c.key} className="table-cell" style={{ whiteSpace: 'nowrap', textAlign: c.num ? 'right' : 'left', position: 'sticky', top: 0, zIndex: ci === 0 ? 4 : 3, background: '#f1f5f9', ...(ci === 0 ? { left: 0, boxShadow: '2px 0 5px rgba(0,0,0,0.05)' } : {}) }}>{c.label}</th>)}
+                <th className="table-cell" style={{ position: 'sticky', top: 0, zIndex: 3, background: '#f1f5f9' }}></th>
               </tr>
             </thead>
             <tbody>
               {rows.map(row => (
                 <tr key={row.id} className="table-row">
-                  {cols.map(c => {
+                  {visibleColumns.map((c, ci) => {
                     const val = row[c.key]
                     const display = c.render ? c.render(row) : c.fmt ? fmt(val) : (val ?? '—')
                     const color = c.colorFn ? c.colorFn(Number(val)) : c.highlight || (c.bold ? '#0f172a' : '#475569')
                     return (
-                      <td key={c.key} className="table-cell" style={{ fontWeight: c.bold ? 600 : 400, color, textAlign: c.num ? 'right' : 'left', fontVariantNumeric: c.num ? 'tabular-nums' : undefined, whiteSpace: c.key === 'serials' ? 'pre-wrap' : 'nowrap', maxWidth: c.key === 'serials' ? 140 : undefined, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <td key={c.key} className="table-cell" style={{ fontWeight: c.bold ? 600 : 400, color, textAlign: c.num ? 'right' : 'left', fontVariantNumeric: c.num ? 'tabular-nums' : undefined, whiteSpace: c.key === 'serials' ? 'pre-wrap' : 'nowrap', maxWidth: c.key === 'serials' ? 140 : c.key === 'description' ? 200 : undefined, overflow: 'hidden', textOverflow: 'ellipsis', ...(ci === 0 ? { position: 'sticky', left: 0, zIndex: 1, background: '#fff', boxShadow: '2px 0 5px rgba(0,0,0,0.05)' } : {}) }}>
                         {display}
                       </td>
                     )
