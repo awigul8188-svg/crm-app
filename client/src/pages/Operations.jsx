@@ -2029,9 +2029,10 @@ function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
         )}
       </div>
 
-      {/* Close / Reopen open-month confirmation dialog */}
-      {closeConfirm && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {/* Close / Reopen open-month confirmation dialog — portaled to body so it
+          escapes the `page-wrap fade-in` stacking context (else it paints behind the page). */}
+      {closeConfirm && createPortal(
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 100001, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ background: '#fff', borderRadius: 16, padding: 32, maxWidth: 440, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
             <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', marginBottom: 12 }}>
               {closeConfirm === 'reopen-last' ? 'Reopen previous month?' : `Close ${openPeriod}?`}
@@ -2049,7 +2050,8 @@ function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
       {/* KPI Row 1 */}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
