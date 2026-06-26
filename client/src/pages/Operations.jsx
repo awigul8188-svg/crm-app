@@ -139,6 +139,51 @@ const TOAST_STYLE = {
   error:   { bg: '#fef2f2', bd: '#fecaca', fg: '#991b1b', Icon: AlertCircle },
   info:    { bg: '#eff6ff', bd: '#bfdbfe', fg: '#1e40af', Icon: Info },
 }
+// ── Confirm dialog ────────────────────────────────────────────────────────────
+// Promise-based styled confirm. Usage: if (!await confirmAction({ title, message, danger })) return
+const _confirmSubs = new Set()
+function confirmAction(opts = {}) {
+  return new Promise(resolve => {
+    if (!_confirmSubs.size) { resolve(window.confirm(opts.message || opts.title || 'Are you sure?')); return }
+    _confirmSubs.forEach(fn => fn({ ...opts, resolve }))
+  })
+}
+function ConfirmHost() {
+  const [active, setActive] = useState(null)
+  useEffect(() => {
+    const open = (o) => setActive(o)
+    _confirmSubs.add(open)
+    return () => _confirmSubs.delete(open)
+  }, [])
+  useEffect(() => {
+    if (!active) return
+    const h = (e) => { if (e.key === 'Escape') { active.resolve(false); setActive(null) } }
+    document.addEventListener('keydown', h)
+    return () => document.removeEventListener('keydown', h)
+  }, [active])
+  if (!active) return null
+  const close = (val) => { active.resolve(val); setActive(null) }
+  const danger = active.danger !== false
+  return (
+    <div onClick={() => close(false)} style={{ position: 'fixed', inset: 0, zIndex: 100000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(10,10,10,0.30)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}>
+      <div onClick={e => e.stopPropagation()} className="modal-in" style={{ background: '#fff', borderRadius: 16, padding: '22px 24px', width: '100%', maxWidth: 380, boxShadow: '0 24px 60px rgba(0,0,0,0.22)' }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          <div style={{ width: 38, height: 38, borderRadius: 10, background: danger ? '#fef2f2' : '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <AlertCircle size={20} color={danger ? '#dc2626' : '#2563eb'} />
+          </div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#0f172a' }}>{active.title || 'Are you sure?'}</div>
+            {active.message && <div style={{ fontSize: 13, color: '#64748b', marginTop: 3, lineHeight: 1.5 }}>{active.message}</div>}
+          </div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
+          <button className="btn btn-secondary" onClick={() => close(false)}>{active.cancelLabel || 'Cancel'}</button>
+          <button className={danger ? 'btn btn-danger' : 'btn btn-primary'} onClick={() => close(true)}>{active.confirmLabel || 'Confirm'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
 function ToastHost() {
   const [items, setItems] = useState([])
   useEffect(() => {
@@ -788,7 +833,7 @@ function SupplierPaymentsModal({ item, onClose, onChanged }) {
     } catch(e) { setErr(e.message) } finally { setSaving(false) }
   }
   const edit = (p) => { setEditId(p.id); setForm({ amount: p.amount, payment_date: p.payment_date?.slice(0,10) || '', method: p.method || '', reference: p.reference || '', notes: p.notes || '' }) }
-  const del = async (id) => { if (!confirm('Delete this payment?')) return; try { await operationsApi.deleteItemPayment(id); toast('Supplier payment deleted'); if (editId === id) { setEditId(null); setForm(blank) } load(); onChanged && onChanged() } catch(e) { toast(e.message || 'Could not delete payment', 'error') } }
+  const del = async (id) => { if (!await confirmAction({ title: 'Delete payment?', message: 'This supplier payment record will be removed.', confirmLabel: 'Delete' })) return; try { await operationsApi.deleteItemPayment(id); toast('Supplier payment deleted'); if (editId === id) { setEditId(null); setForm(blank) } load(); onChanged && onChanged() } catch(e) { toast(e.message || 'Could not delete payment', 'error') } }
 
   const st = balance <= 0.005 && extCost > 0 ? { label: 'Paid', bg: '#dcfce7', color: '#15803d' }
     : paid > 0.005 ? { label: 'Partial', bg: '#fef3c7', color: '#b45309' }
@@ -871,7 +916,7 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
   }, [orderId])
 
   const handleDeletePayment = async (id) => {
-    if (!confirm('Delete this payment?')) return
+    if (!await confirmAction({ title: 'Delete payment?', message: 'This customer payment record will be removed.', confirmLabel: 'Delete' })) return
     try { await operationsApi.deletePayment(id); toast('Payment deleted'); load(); onUpdated && onUpdated() }
     catch(e) { toast(e.message || 'Could not delete payment', 'error') }
   }
@@ -879,13 +924,13 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
   useEffect(() => { load() }, [load])
 
   const handleDeleteItem = async (id) => {
-    if (!confirm('Delete this line item?')) return
+    if (!await confirmAction({ title: 'Delete line item?', message: 'This line item and its amounts will be removed from the order.', confirmLabel: 'Delete' })) return
     try { await operationsApi.deleteItem(id); toast('Line item deleted'); load(); onUpdated && onUpdated() }
     catch(e) { toast(e.message || 'Could not delete line item', 'error') }
   }
 
   const handleDeleteRMA = async (id) => {
-    if (!confirm('Delete this RMA?')) return
+    if (!await confirmAction({ title: 'Delete RMA?', message: 'This RMA record will be removed.', confirmLabel: 'Delete' })) return
     try { await operationsApi.deleteRMA(id); toast('RMA deleted'); load(); onUpdated && onUpdated() }
     catch(e) { toast(e.message || 'Could not delete RMA', 'error') }
   }
@@ -900,10 +945,10 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
     else { setSelectedItems(s => [...s, id]); setMoveQty(q => ({ ...q, [id]: q[id] ?? item.quantity })) }
   }
   const handleMoveWhole = async () => {
-    if (!confirm('Move this entire order to the next month?')) return
+    if (!await confirmAction({ title: 'Move order to next month?', message: 'The whole order moves to the next reporting month.', danger: false, confirmLabel: 'Move' })) return
     setMoving(true)
-    try { await operationsApi.moveOrderNext(order.id); setSelectedItems([]); setMoveQty({}); load(); onUpdated && onUpdated() }
-    catch(e) { alert(e.message) } finally { setMoving(false) }
+    try { await operationsApi.moveOrderNext(order.id); toast('Order moved to next month'); setSelectedItems([]); setMoveQty({}); load(); onUpdated && onUpdated() }
+    catch(e) { toast(e.message || 'Could not move order', 'error') } finally { setMoving(false) }
   }
   const handleMovePartial = async () => {
     if (!selectedItems.length) return
@@ -913,10 +958,10 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
       return { id, quantity: q, partial: q < it.quantity }
     })
     const anyPartial = items.some(m => m.partial)
-    if (!confirm(`Move ${items.length} line item(s)${anyPartial ? ' (some partial quantities)' : ''} to the next month? They split into a new order (same order #).`)) return
+    if (!await confirmAction({ title: 'Move selected items?', message: `Move ${items.length} line item(s)${anyPartial ? ' (some partial quantities)' : ''} to the next month. They split into a new order with the same order #.`, danger: false, confirmLabel: 'Move' })) return
     setMoving(true)
-    try { await operationsApi.splitOrderNext(order.id, items.map(({ id, quantity }) => ({ id, quantity }))); setSelectedItems([]); setMoveQty({}); load(); onUpdated && onUpdated() }
-    catch(e) { alert(e.message) } finally { setMoving(false) }
+    try { await operationsApi.splitOrderNext(order.id, items.map(({ id, quantity }) => ({ id, quantity }))); toast('Items moved to next month'); setSelectedItems([]); setMoveQty({}); load(); onUpdated && onUpdated() }
+    catch(e) { toast(e.message || 'Could not move items', 'error') } finally { setMoving(false) }
   }
 
   if (!order && loading) return (
@@ -1300,7 +1345,7 @@ function OrdersTab({ jumpOrderId, onJumpHandled, initialStatus, initialLeadSourc
   useEffect(() => { load() }, [load])
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this order and all its line items?')) return
+    if (!await confirmAction({ title: 'Delete order?', message: 'This order and all of its line items will be permanently removed.', confirmLabel: 'Delete order' })) return
     try { await operationsApi.deleteOrder(id); toast('Order deleted'); load() }
     catch(e) { toast(e.message || 'Could not delete order', 'error') }
   }
@@ -1440,12 +1485,13 @@ function EntityTab({ icon: Icon, label, fields, fetchFn, createFn, updateFn, del
     try {
       if (form.id) await updateFn(form.id, form)
       else await createFn(form)
+      toast(form.id ? `${label.slice(0,-1)} updated` : `${label.slice(0,-1)} added`)
       setForm(null); load()
-    } catch(e) { alert(e.message) }
+    } catch(e) { toast(e.message || 'Could not save', 'error') }
   }
 
   const handleDelete = async (id) => {
-    if (!confirm(`Delete this ${label.toLowerCase()}?`)) return
+    if (!await confirmAction({ title: `Delete ${label.slice(0,-1).toLowerCase()}?`, message: 'This record will be permanently removed.', confirmLabel: 'Delete' })) return
     try { await deleteFn(id); toast(`${label.slice(0,-1)} deleted`); load() } catch(e) { toast(e.message || 'Could not delete', 'error') }
   }
 
@@ -1541,7 +1587,7 @@ function OrderItemsTab({ onOpenOrder }) {
   }, [search, load])
 
   const handleDeleteItem = async (id) => {
-    if (!confirm('Delete this line item?')) return
+    if (!await confirmAction({ title: 'Delete line item?', message: 'This line item and its amounts will be removed.', confirmLabel: 'Delete' })) return
     try { await operationsApi.deleteItem(id); toast('Line item deleted'); load(search) }
     catch(e) { toast(e.message || 'Could not delete line item', 'error') }
   }
@@ -1654,7 +1700,7 @@ function RMATab() {
   useEffect(() => { load() }, [load])
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this RMA?')) return
+    if (!await confirmAction({ title: 'Delete RMA?', message: 'This RMA record will be removed.', confirmLabel: 'Delete' })) return
     try { await operationsApi.deleteRMA(id); toast('RMA deleted'); load() }
     catch(e) { toast(e.message || 'Could not delete RMA', 'error') }
   }
@@ -2607,6 +2653,7 @@ export default function Operations() {
     <div className="page-wrap fade-in">
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       <ToastHost />
+      <ConfirmHost />
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
