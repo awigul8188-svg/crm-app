@@ -715,7 +715,7 @@ function AERepeatTab({ dateFilters, onDrilldown }) {
 }
 
 // ── Orders Tab ──────────────────────────────────────────────────
-function AEOrdersTab({ dateFilters, onDrilldown }) {
+function AEOrdersTab({ dateFilters, onDrilldown, newAssigned = [], onOpenOrder }) {
   const { data, loading } = useModuleData('online_order', dateFilters)
   if (loading) return <Loader />
   if (!data) return null
@@ -750,8 +750,28 @@ function AEOrdersTab({ dateFilters, onDrilldown }) {
 
       <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:20 }}>
         <div style={{ background:'#fff', borderRadius:14, border:'1px solid #f1f5f9', padding:18 }}>
-          <STitle>Processed vs Cancelled Trend</STitle>
-          <ResponsiveContainer width="100%" height={180}><BarChart data={(data.trend||[]).map(t => ({ ...t, date:t.date?.slice(5) }))} barSize={8}><XAxis dataKey="date" tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} /><Tooltip content={<Tip />} /><Bar dataKey="processed" name="Processed" fill="#10b981" radius={[3,3,0,0]} /><Bar dataKey="cancelled" name="Cancelled" fill="#ef4444" radius={[3,3,0,0]} /></BarChart></ResponsiveContainer>
+          <STitle>Newly Assigned Orders{newAssigned.length > 0 && <span style={{ marginLeft:8, minWidth:20, height:20, padding:'0 6px', borderRadius:100, background:'#dc2626', color:'#fff', fontSize:11, fontWeight:800, display:'inline-flex', alignItems:'center', justifyContent:'center', verticalAlign:'middle' }}>{newAssigned.length}</span>}</STitle>
+          {newAssigned.length === 0 ? (
+            <div style={{ height:160, display:'flex', alignItems:'center', justifyContent:'center', color:'#94a3b8', fontSize:13 }}>No new orders — all caught up</div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:300, overflowY:'auto' }}>
+              {newAssigned.map(o => (
+                <div key={o.id} onClick={() => onOpenOrder && onOpenOrder(o.id)}
+                  style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 12px', border:'1px solid #f1f5f9', borderRadius:10, cursor:'pointer', transition:'all 0.12s' }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = BRAND; e.currentTarget.style.background = `${BRAND}08` }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = '#f1f5f9'; e.currentTarget.style.background = '#fff' }}>
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontWeight:600, color:'#0f172a', fontSize:13, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{o.customer_name || '—'}</div>
+                    <div style={{ fontSize:11, color:'#94a3b8' }}>{[o.lead_source || o.source, formatDateShort(o.created_at)].filter(Boolean).join(' · ')}</div>
+                  </div>
+                  <div style={{ textAlign:'right', flexShrink:0, marginLeft:12 }}>
+                    {o.order_amount ? <div style={{ fontWeight:700, color:BRAND, fontSize:13 }}>${o.order_amount}</div> : null}
+                    <div style={{ fontSize:11, color:'#dc2626', fontWeight:700 }}>Open →</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div style={{ background:'#fff', borderRadius:14, border:'1px solid #f1f5f9', padding:18 }}>
           <STitle>By Source</STitle>
@@ -875,14 +895,19 @@ export default function AEDashboard() {
   }
   useEffect(() => { loadOverview() }, [])
 
-  // New online orders awaiting attention (not yet Processed/Cancelled) — red badge on the Orders tab.
-  const [newOrders, setNewOrders] = useState(0)
+  // Newly assigned online orders — red badge on the Orders tab that clears as the AE opens each one.
+  // "Seen" order ids persist per-browser; opening an order marks it seen so the notification goes away.
+  const [assignedOrders, setAssignedOrders] = useState([])
+  const [seenOrders, setSeenOrders] = useState(() => { try { return new Set(JSON.parse(localStorage.getItem('ae_seen_orders') || '[]')) } catch { return new Set() } })
   useEffect(() => {
     fetch('/api/inquiries?type=online_order', { headers: { Authorization:`Bearer ${localStorage.getItem('crm_token')}` } })
       .then(r => r.json())
-      .then(list => setNewOrders((Array.isArray(list) ? list : []).filter(o => !['Processed','Cancelled'].includes(o.disposition)).length))
+      .then(list => setAssignedOrders((Array.isArray(list) ? list : []).filter(o => o.assigned_to && !['Processed','Cancelled'].includes(o.disposition))))
       .catch(() => {})
   }, [activeTab])
+  const markSeen = (id) => setSeenOrders(s => { const n = new Set(s); n.add(id); try { localStorage.setItem('ae_seen_orders', JSON.stringify([...n])) } catch {}; return n })
+  const newAssigned = assignedOrders.filter(o => !seenOrders.has(o.id))
+  const newOrders = newAssigned.length
 
   const greeting = () => { const h = new Date().getHours(); return h<12?'Good morning':h<17?'Good afternoon':'Good evening' }
 
@@ -937,7 +962,7 @@ export default function AEDashboard() {
       {activeTab === 'overview' && <AEOverviewTab data={overviewData} loading={overviewLoading} dateFilters={dateFilters} onDrilldown={setDrilldown} onNavigate={navigate} />}
       {activeTab === 'leads'    && <AELeadsTab    dateFilters={dateFilters} onDrilldown={setDrilldown} />}
       {activeTab === 'repeat'   && <AERepeatTab   dateFilters={dateFilters} onDrilldown={setDrilldown} />}
-      {activeTab === 'orders'   && <AEOrdersTab   dateFilters={dateFilters} onDrilldown={setDrilldown} />}
+      {activeTab === 'orders'   && <AEOrdersTab   dateFilters={dateFilters} onDrilldown={setDrilldown} newAssigned={newAssigned} onOpenOrder={(id) => { markSeen(id); navigate('inquiry-detail', { id }) }} />}
 
       {/* Drilldown + quick edit */}
       {drilldown && <DrilldownModal {...drilldown} onClose={() => setDrilldown(null)} />}
