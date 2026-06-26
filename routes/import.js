@@ -8,6 +8,13 @@ const router = express.Router();
 router.use(authenticate, requireManager);
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
+// A blank or "Unknown" buyer in the historical sheet means the purchasing manager (Abdul) sourced it.
+// Applied at import so the attribution survives every re-import (matches the one-time DB backfill).
+function buyerOrAbdul(v) {
+  const b = String(v == null ? '' : v).trim();
+  return (!b || b.toLowerCase() === 'unknown') ? 'Abdul' : b;
+}
+
 function excelDateToISO(serial) {
   if (!serial || isNaN(Number(serial))) return new Date().toISOString();
   const n = Number(serial);
@@ -464,7 +471,7 @@ function importWorkbook(wb, db, options = {}) {
                       reporting_period,ar_status)
                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                   `).run(
-                    orderNum, orderDate, adjCustId, col(2)||null, adjRep||null, col(6)||null,
+                    orderNum, orderDate, adjCustId, col(2)||null, adjRep||null, buyerOrAbdul(col(6)),
                     mapPaymentOps(rawPayment)||null, mapStatusOps(status),
                     parseDollar(col(23))||0, parseDollar(col(22))||0,
                     col(28)||null, col(30)||null, null,
@@ -519,7 +526,7 @@ function importWorkbook(wb, db, options = {}) {
                       reporting_period,ar_status)
                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                   `).run(
-                    orderNum, orderDate, adjCustId, col(2)||null, col(5)||null, col(6)||null,
+                    orderNum, orderDate, adjCustId, col(2)||null, col(5)||null, buyerOrAbdul(col(6)),
                     mapPaymentOps(rawPayment)||null, mapStatusOps(status),
                     parseDollar(col(23))||0, parseDollar(col(22))||0,
                     col(28)||null, col(30)||null, null,
@@ -593,7 +600,7 @@ function importWorkbook(wb, db, options = {}) {
                   reporting_period,ar_status)
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
               `).run(
-                orderNum, orderDate, custId, col(2)||null, col(5)||null, col(6)||null,
+                orderNum, orderDate, custId, col(2)||null, col(5)||null, buyerOrAbdul(col(6)),
                 mapPaymentOps(rawPayment)||null, orderStatus,
                 parseDollar(col(23))||0, parseDollar(col(22))||0,
                 col(28)||null, col(30)||null, null,

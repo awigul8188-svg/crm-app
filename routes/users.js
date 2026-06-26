@@ -141,10 +141,12 @@ router.get('/buyer-candidates', requireManager, (req, res) => {
   try {
     const buyers = db.prepare("SELECT DISTINCT TRIM(buyer) AS buyer FROM op_orders WHERE buyer IS NOT NULL AND TRIM(buyer) <> '' ORDER BY buyer COLLATE NOCASE").all();
     const usernames = new Set(db.prepare('SELECT LOWER(username) AS u FROM users').all().map(r => r.u));
-    const purchaserNames = new Set(db.prepare("SELECT LOWER(name) AS n FROM users WHERE role='purchaser'").all().map(r => r.n));
+    // Match against ALL users by name (not just purchasers) so e.g. Abdul (purchasing_manager) is
+    // recognized as already existing and isn't offered for purchaser creation.
+    const allNames = new Set(db.prepare('SELECT LOWER(name) AS n FROM users').all().map(r => r.n));
     res.json(buyers.map(b => {
       const username = firstNameUsername(b.buyer);
-      const exists = purchaserNames.has(b.buyer.toLowerCase()) || usernames.has(username);
+      const exists = allNames.has(b.buyer.toLowerCase()) || usernames.has(username);
       return { buyer: b.buyer, username, exists };
     }));
   } catch (err) {

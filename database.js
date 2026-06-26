@@ -334,6 +334,17 @@ function runOperationsMigrations() {
     db.prepare(`INSERT OR IGNORE INTO op_settings (key, value) VALUES ('open_period', 'Jun-26')`).run();
   } catch(e) {}
 
+  // One-time: historical orders with no buyer were sourced by the purchasing manager (Abdul).
+  // Attribute them to him so the dashboard byBuyer card credits Abdul instead of "Unknown".
+  // Guarded by a settings flag → runs ONCE; future blank-buyer orders stay blank (still show "Unknown").
+  try {
+    const done = db.prepare("SELECT value FROM op_settings WHERE key='abdul_buyer_backfill'").get();
+    if (!done) {
+      db.prepare("UPDATE op_orders SET buyer='Abdul' WHERE buyer IS NULL OR TRIM(buyer)='' OR LOWER(TRIM(buyer))='unknown'").run();
+      db.prepare("INSERT OR REPLACE INTO op_settings (key, value) VALUES ('abdul_buyer_backfill', '1')").run();
+    }
+  } catch(e) {}
+
   // v9 — customer payment records (AR receipts). An order's customer_paid is kept in sync as the
   // SUM of these rows, so "Received" / balance / paid-status all derive from the payment log
   // instead of a hand-typed number.
