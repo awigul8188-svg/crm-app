@@ -11,9 +11,28 @@ const BRAND = '#00D4C8'
 const ORDER_STATUSES   = ['Order placed', 'In Process', 'On Hold', 'Shipped to US', 'Received in US', 'Shipped to customer', 'Delivered', 'Refunded', 'Cancelled', 'RMA']
 const LEAD_SOURCES     = ['Chat Lead', 'Email Lead', 'Call Lead', 'RFQ', 'RFQ Lead', 'Repeat', 'Outbound', 'PPC', 'Online', 'Chat']
 const PAYMENT_STATUSES = ['CC Charged', 'Wire Received', 'Net']
+// Customer payment terms → number of days until due. Picking a term auto-fills the order's Due Date.
+const NET_TERMS = [
+  { label: 'Due on receipt', days: 0 },
+  { label: 'Net 7',  days: 7 },
+  { label: 'Net 10', days: 10 },
+  { label: 'Net 15', days: 15 },
+  { label: 'Net 30', days: 30 },
+  { label: 'Net 45', days: 45 },
+  { label: 'Net 60', days: 60 },
+]
+// Add `days` to a YYYY-MM-DD date and return YYYY-MM-DD (UTC-safe, no timezone drift).
+function addDays(dateStr, days) {
+  if (!dateStr) return ''
+  const d = new Date(`${dateStr}T00:00:00Z`)
+  if (isNaN(d.getTime())) return ''
+  d.setUTCDate(d.getUTCDate() + (Number(days) || 0))
+  return d.toISOString().slice(0, 10)
+}
 const SHIPPED_VIA      = ['FedEx', 'UPS', 'USPS', 'Customer Account']
 const RMA_STATUSES     = ['Initiated', 'In Review', 'Approved', 'Denied', 'Completed']
 const PAYMENT_METHODS  = ['Pending', 'Wire Transferred', 'Paid via CC', 'Paid via PayPal', 'Net']
+const RECEIVE_METHODS  = ['Wire', 'Credit Card', 'PayPal', 'Check', 'Cash', 'Zelle', 'Other']
 const CONDITIONS       = ['New', 'Refurbished', 'Used', 'Open Box', 'REF']
 const REPS             = ['Ethan', 'Eddie', 'Ryan', 'Justin', 'Hector', 'Aman', 'Online']
 const BUYERS           = ['Danny', 'Samit', 'Jason', 'Jorge', 'Maqsood']
@@ -101,7 +120,7 @@ function OrderForm({ order, customers: customersProp, onSave, onClose, isPending
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   // Advanced financial fields hidden by default (auto-open when editing an order that has any set)
-  const [showMore, setShowMore] = useState(!!(order && (order.tax_charged || order.shipping_charged || order.cc_charges || order.customer_paid || order.rma_amount || order.net)))
+  const [showMore, setShowMore] = useState(!!(order && (order.tax_charged || order.shipping_charged || order.cc_charges || order.customer_paid || order.rma_amount)))
 
   // Customer lists
   const [opsCustomers, setOpsCustomers] = useState(customersProp || [])
@@ -150,6 +169,17 @@ function OrderForm({ order, customers: customersProp, onSave, onClose, isPending
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
+  // Payment terms ⇄ due date: picking a term (or changing the order date) auto-fills the due date.
+  const termDays = (label) => NET_TERMS.find(t => t.label === label)?.days
+  const onTermsChange = (label) => setForm(f => {
+    const days = termDays(label)
+    return { ...f, net: label, due_date: (days !== undefined && f.order_date) ? addDays(f.order_date, days) : f.due_date }
+  })
+  const onOrderDateChange = (val) => setForm(f => {
+    const days = termDays(f.net)
+    return { ...f, order_date: val, due_date: (days !== undefined && val) ? addDays(val, days) : f.due_date }
+  })
+
   const handleSave = async () => {
     if (!form.order_number.trim()) { setErr('Order number is required'); return }
     setSaving(true); setErr('')
@@ -168,8 +198,18 @@ function OrderForm({ order, customers: customersProp, onSave, onClose, isPending
           <SectionLabel>Order</SectionLabel>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
             <FF label="Order Number" third><input className="input" value={form.order_number} onChange={e => set('order_number', e.target.value)} placeholder="TA001234" /></FF>
-            <FF label="Order Date" third><input className="input" type="date" value={form.order_date} onChange={e => set('order_date', e.target.value)} /></FF>
-            <FF label="Due Date" third><input className="input" type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} /></FF>
+            <FF label="Order Date" third><input className="input" type="date" value={form.order_date} onChange={e => onOrderDateChange(e.target.value)} /></FF>
+            <FF label="Payment Terms" third>
+              <select className="input" value={form.net} onChange={e => onTermsChange(e.target.value)}>
+                <option value="">—</option>
+                {form.net && !NET_TERMS.some(t => t.label === form.net) && <option value={form.net}>{form.net} (custom)</option>}
+                {NET_TERMS.map(t => <option key={t.label}>{t.label}</option>)}
+              </select>
+            </FF>
+            <FF label="Due Date" third>
+              <input className="input" type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} />
+              {termDays(form.net) !== undefined && <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 3 }}>Auto-set from terms · editable</div>}
+            </FF>
           </div>
         </div>
 
@@ -277,11 +317,9 @@ function OrderForm({ order, customers: customersProp, onSave, onClose, isPending
           </button>
           {showMore && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 14 }}>
-              <FF label="Net (terms)" third><input className="input" value={form.net} onChange={e => set('net', e.target.value)} placeholder="e.g. Net 30" /></FF>
               <FF label="Tax Charged ($)" third><input className="input" type="number" value={form.tax_charged} onChange={e => set('tax_charged', e.target.value)} placeholder="0.00" /></FF>
               <FF label="Shipping Charged ($)" third><input className="input" type="number" value={form.shipping_charged} onChange={e => set('shipping_charged', e.target.value)} placeholder="0.00" /></FF>
               <FF label="CC Charges ($)" third><input className="input" type="number" value={form.cc_charges} onChange={e => set('cc_charges', e.target.value)} placeholder="0.00" /></FF>
-              <FF label="Customer Paid ($)" third><input className="input" type="number" value={form.customer_paid} onChange={e => set('customer_paid', e.target.value)} placeholder="0.00" /></FF>
               <FF label="RMA Amount ($)" third><input className="input" type="number" value={form.rma_amount} onChange={e => set('rma_amount', e.target.value)} placeholder="0.00" /></FF>
             </div>
           )}
@@ -568,6 +606,45 @@ function RMAForm({ rma, presetOrder, orderItems, customers, orders, onSave, onCl
 }
 
 // ── Order Detail Modal ────────────────────────────────────────────────────────
+// ── Customer payment (AR receipt) form ───────────────────────────────────────
+function PaymentForm({ orderId, payment, onSaved, onClose }) {
+  const blank = { amount: '', payment_date: new Date().toISOString().slice(0,10), method: '', reference: '', notes: '' }
+  const [form, setForm] = useState(payment ? { ...blank, ...payment, payment_date: payment.payment_date?.slice(0,10) || '' } : blank)
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const handleSave = async () => {
+    if (!(Number(form.amount) > 0)) { setErr('Enter a payment amount greater than 0'); return }
+    setSaving(true); setErr('')
+    try {
+      if (payment) await operationsApi.updatePayment(payment.id, form)
+      else await operationsApi.addPayment(orderId, form)
+      onSaved()
+    } catch(e) { setErr(e.message) } finally { setSaving(false) }
+  }
+  return (
+    <Modal title={payment ? 'Edit Payment' : 'Record Payment'} onClose={onClose}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+        <FF label="Amount Received ($)" half><input className="input" type="number" value={form.amount} onChange={e => set('amount', e.target.value)} placeholder="0.00" autoFocus /></FF>
+        <FF label="Date Received" half><input className="input" type="date" value={form.payment_date} onChange={e => set('payment_date', e.target.value)} /></FF>
+        <FF label="Method" half>
+          <select className="input" value={form.method} onChange={e => set('method', e.target.value)}>
+            <option value="">—</option>
+            {RECEIVE_METHODS.map(m => <option key={m}>{m}</option>)}
+          </select>
+        </FF>
+        <FF label="Reference" half><input className="input" value={form.reference} onChange={e => set('reference', e.target.value)} placeholder="txn / check #" /></FF>
+        <FF label="Notes"><input className="input" value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="optional" /></FF>
+      </div>
+      {err && <div style={{ background: '#fee2e2', color: '#dc2626', borderRadius: 10, padding: '10px 14px', fontSize: 13, marginTop: 12 }}>{err}</div>}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
+        <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : payment ? 'Save Changes' : 'Record Payment'}</button>
+      </div>
+    </Modal>
+  )
+}
+
 function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
   const [order, setOrder] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -576,13 +653,24 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
   const [editItem, setEditItem] = useState(null)
   const [addRMA, setAddRMA] = useState(false)
   const [editRMA, setEditRMA] = useState(null)
+  const [payments, setPayments] = useState([])
+  const [payForm, setPayForm] = useState(null)   // false-y = closed; true = new; object = edit
 
   const load = useCallback(async () => {
     setLoading(true)
-    try { const o = await operationsApi.getOrder(orderId); setOrder(o) }
+    try {
+      const o = await operationsApi.getOrder(orderId); setOrder(o)
+      const p = await operationsApi.getPayments(orderId); setPayments(p || [])
+    }
     catch(e) { console.error(e) }
     finally { setLoading(false) }
   }, [orderId])
+
+  const handleDeletePayment = async (id) => {
+    if (!confirm('Delete this payment?')) return
+    await operationsApi.deletePayment(id)
+    load(); onUpdated && onUpdated()
+  }
 
   useEffect(() => { load() }, [load])
 
@@ -693,9 +781,61 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
           <FinCard label="Total Buying"   value={fmt(order.total_buying)} color="#64748b" />
           <FinCard label="RMA Amount"     value={fmt(order.rma_amount)} color="#f59e0b" />
           <FinCard label="GP"             value={fmt(gp)}        color={gp >= 0 ? '#10b981' : '#ef4444'} />
-          <FinCard label="Customer Paid"  value={fmt(order.customer_paid)} color={BRAND} />
-          <FinCard label="Remaining"      value={fmt(remaining)} color={remaining > 0 ? '#f59e0b' : '#10b981'} />
         </div>
+
+        {/* Customer payments (AR) — Received & Balance derive from the payment log below */}
+        {(() => {
+          const charged = Number(order.total_order_value) || 0
+          const received = Number(order.customer_paid) || 0
+          const bal = charged - received
+          const overdue = bal > 0.005 && order.due_date && new Date(order.due_date) < new Date(new Date().toISOString().slice(0,10))
+          const st = bal <= 0.005 && charged > 0 ? { label: 'Paid', bg: '#dcfce7', color: '#15803d' }
+            : overdue ? { label: 'Overdue', bg: '#fee2e2', color: '#b91c1c' }
+            : received > 0.005 ? { label: 'Partial', bg: '#fef3c7', color: '#b45309' }
+            : { label: 'Unpaid', bg: '#f1f5f9', color: '#64748b' }
+          return (
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <SectionLabel>Customer Payments</SectionLabel>
+                  <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', padding: '2px 9px', borderRadius: 100, background: st.bg, color: st.color }}>{st.label}</span>
+                </div>
+                <button className="btn btn-secondary btn-sm" onClick={() => setPayForm(true)}><Plus size={13} /> Record Payment</button>
+              </div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+                <FinCard label="Charged" value={fmt(charged)} />
+                <FinCard label="Received" value={fmt(received)} color={BRAND} />
+                <FinCard label="Balance Due" value={fmt(bal)} color={bal > 0.005 ? '#f59e0b' : '#10b981'} />
+              </div>
+              {payments.length === 0 ? (
+                <div style={{ fontSize: 13, color: '#94a3b8', padding: '6px 0' }}>No payments recorded yet.</div>
+              ) : (
+                <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', color: '#94a3b8', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      <th style={{ padding: '6px 8px' }}>Date</th><th style={{ padding: '6px 8px' }}>Amount</th>
+                      <th style={{ padding: '6px 8px' }}>Method</th><th style={{ padding: '6px 8px' }}>Reference</th><th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payments.map(p => (
+                      <tr key={p.id} style={{ borderTop: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '7px 8px' }}>{fmtDate(p.payment_date)}</td>
+                        <td style={{ padding: '7px 8px', fontWeight: 700, color: '#10b981' }}>{fmt(p.amount)}</td>
+                        <td style={{ padding: '7px 8px' }}>{p.method || '—'}</td>
+                        <td style={{ padding: '7px 8px', color: '#64748b' }}>{p.reference || '—'}{p.notes ? ` · ${p.notes}` : ''}</td>
+                        <td style={{ padding: '7px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <button onClick={() => setPayForm(p)} title="Edit" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4 }}><Edit2 size={13} /></button>
+                          <button onClick={() => handleDeletePayment(p.id)} title="Delete" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: 4 }}><Trash2 size={13} /></button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )
+        })()}
 
         {/* Order details */}
         <SectionLabel>Details</SectionLabel>
@@ -840,6 +980,11 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
       {editOrder && (
         <OrderForm order={order} customers={customers} onClose={() => setEditOrder(false)}
           onSave={() => { setEditOrder(false); load(); onUpdated && onUpdated() }} />
+      )}
+      {payForm && (
+        <PaymentForm orderId={order.id} payment={payForm === true ? null : payForm}
+          onClose={() => setPayForm(null)}
+          onSaved={() => { setPayForm(null); load(); onUpdated && onUpdated() }} />
       )}
       {addItem && (
         <ItemForm orderId={order.id} suppliers={suppliers} onClose={() => setAddItem(false)}

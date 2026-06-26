@@ -111,20 +111,21 @@ router.post('/orders', requireManager, (req, res) => {
     const db = getDB();
     const { order_number, order_date, customer_id, email, lead_source, rep, ppc_order_rep, buyer,
             payment_status, order_status, net, due_date, tax_charged, shipping_charged,
-            cc_charges, customer_paid, rma_amount, shipped_via, tracking_to_customer, notes,
+            cc_charges, rma_amount, shipped_via, tracking_to_customer, notes,
             reporting_period } = req.body;
     // New CRM orders are auto-tagged to the current OPEN month (so they appear in month/quarter
     // dashboards). An explicit reporting_period in the body still wins if provided.
     const period = reporting_period || getOpenPeriod(db);
+    // customer_paid is NOT set here — it is derived from the customer payment log (op_order_payments).
     const result = db.prepare(`
       INSERT INTO op_orders (order_number,order_date,customer_id,email,lead_source,rep,ppc_order_rep,buyer,
-        payment_status,order_status,net,due_date,tax_charged,shipping_charged,cc_charges,customer_paid,
+        payment_status,order_status,net,due_date,tax_charged,shipping_charged,cc_charges,
         rma_amount,shipped_via,tracking_to_customer,notes,reporting_period)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     `).run(order_number, order_date||null, customer_id||null, email||null,
            lead_source||null, rep||null, ppc_order_rep||null, buyer||null,
            payment_status||null, order_status||'Order placed', net||0, due_date||null,
-           tax_charged||0, shipping_charged||0, cc_charges||0, customer_paid||0,
+           tax_charged||0, shipping_charged||0, cc_charges||0,
            rma_amount||0, shipped_via||null, tracking_to_customer||null, notes||null, period||null);
     const order = db.prepare(`${ORDER_TOTALS_SQL} WHERE o.id = ? GROUP BY o.id`).get(result.lastInsertRowid);
     res.json(order);
@@ -163,16 +164,17 @@ router.put('/orders/:id', requireManager, (req, res) => {
     const db = getDB();
     const { order_number, order_date, customer_id, email, lead_source, rep, ppc_order_rep, buyer,
             payment_status, order_status, net, due_date, tax_charged, shipping_charged,
-            cc_charges, customer_paid, rma_amount, shipped_via, tracking_to_customer, notes } = req.body;
+            cc_charges, rma_amount, shipped_via, tracking_to_customer, notes } = req.body;
+    // customer_paid is intentionally NOT updated here — it is owned by the payment log (syncOrderPaid).
     db.prepare(`
       UPDATE op_orders SET order_number=?,order_date=?,customer_id=?,email=?,lead_source=?,rep=?,
         ppc_order_rep=?,buyer=?,payment_status=?,order_status=?,net=?,due_date=?,tax_charged=?,
-        shipping_charged=?,cc_charges=?,customer_paid=?,rma_amount=?,shipped_via=?,
+        shipping_charged=?,cc_charges=?,rma_amount=?,shipped_via=?,
         tracking_to_customer=?,notes=?,updated_at=CURRENT_TIMESTAMP WHERE id=?
     `).run(order_number, order_date||null, customer_id||null, email||null,
            lead_source||null, rep||null, ppc_order_rep||null, buyer||null,
            payment_status||null, order_status||'Order placed', net||0, due_date||null,
-           tax_charged||0, shipping_charged||0, cc_charges||0, customer_paid||0,
+           tax_charged||0, shipping_charged||0, cc_charges||0,
            rma_amount||0, shipped_via||null, tracking_to_customer||null, notes||null, req.params.id);
     const order = db.prepare(`${ORDER_TOTALS_SQL} WHERE o.id = ? GROUP BY o.id`).get(req.params.id);
     res.json(order);
@@ -367,6 +369,55 @@ function syncOrderRmaAmount(db, orderId) {
   db.prepare(`UPDATE op_orders SET rma_amount=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`)
     .run(result.total_rma, orderId);
 }
+
+// Keep op_orders.customer_paid in sync with the SUM of recorded customer payments.
+function syncOrderPaid(db, orderId) {
+  if (!orderId) return;
+  const r = db.prepare(`SELECT COALESCE(SUM(amount),0) AS total FROM op_order_payments WHERE order_id=?`).get(orderId);
+  db.prepare(`UPDATE op_orders SET customer_paid=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(r.total, orderId);
+}
+
+// ── Customer payments (AR receipts) ───────────────────────────────────────────
+router.get('/orders/:id/payments', (req, res) => {
+  try {
+    const rows = getDB().prepare(`SELECT * FROM op_order_payments WHERE order_id=? ORDER BY payment_date DESC, id DESC`).all(req.params.id);
+    res.json(rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/orders/:id/payments', requireManager, (req, res) => {
+  try {
+    const db = getDB();
+    const { amount, payment_date, method, reference, notes } = req.body;
+    const result = db.prepare(`INSERT INTO op_order_payments (order_id,amount,payment_date,method,reference,notes) VALUES (?,?,?,?,?,?)`)
+      .run(req.params.id, Number(amount) || 0, payment_date || null, method || null, reference || null, notes || null);
+    syncOrderPaid(db, req.params.id);
+    res.json(db.prepare(`SELECT * FROM op_order_payments WHERE id=?`).get(result.lastInsertRowid));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.put('/payments/:id', requireManager, (req, res) => {
+  try {
+    const db = getDB();
+    const { amount, payment_date, method, reference, notes } = req.body;
+    const row = db.prepare(`SELECT order_id FROM op_order_payments WHERE id=?`).get(req.params.id);
+    if (!row) return res.status(404).json({ error: 'Payment not found' });
+    db.prepare(`UPDATE op_order_payments SET amount=?,payment_date=?,method=?,reference=?,notes=? WHERE id=?`)
+      .run(Number(amount) || 0, payment_date || null, method || null, reference || null, notes || null, req.params.id);
+    syncOrderPaid(db, row.order_id);
+    res.json(db.prepare(`SELECT * FROM op_order_payments WHERE id=?`).get(req.params.id));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/payments/:id', requireManager, (req, res) => {
+  try {
+    const db = getDB();
+    const row = db.prepare(`SELECT order_id FROM op_order_payments WHERE id=?`).get(req.params.id);
+    db.prepare(`DELETE FROM op_order_payments WHERE id=?`).run(req.params.id);
+    if (row) syncOrderPaid(db, row.order_id);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
 
 router.post('/rma', requireManager, (req, res) => {
   try {

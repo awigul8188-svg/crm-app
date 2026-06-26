@@ -304,6 +304,22 @@ function runOperationsMigrations() {
     db.exec(`CREATE TABLE IF NOT EXISTS op_settings (key TEXT PRIMARY KEY, value TEXT)`);
     db.prepare(`INSERT OR IGNORE INTO op_settings (key, value) VALUES ('open_period', 'Jun-26')`).run();
   } catch(e) {}
+
+  // v9 — customer payment records (AR receipts). An order's customer_paid is kept in sync as the
+  // SUM of these rows, so "Received" / balance / paid-status all derive from the payment log
+  // instead of a hand-typed number.
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS op_order_payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL REFERENCES op_orders(id) ON DELETE CASCADE,
+      amount REAL DEFAULT 0,
+      payment_date DATE,
+      method TEXT,
+      reference TEXT,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+  } catch(e) {}
 }
 
 module.exports = { initializeDB, getDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations };

@@ -86,6 +86,12 @@ export const operationsApi = {
   updateItem:     (id, data) => req('PUT',  `/operations/order-items/${id}`, data),
   deleteItem:     (id)       => req('DELETE', `/operations/order-items/${id}`),
 
+  // Customer payments (AR receipts) — order.customer_paid is the sum of these
+  getPayments:    (orderId) => req('GET', `/operations/orders/${orderId}/payments`),
+  addPayment:     (orderId, data) => req('POST', `/operations/orders/${orderId}/payments`, data),
+  updatePayment:  (id, data) => req('PUT', `/operations/payments/${id}`, data),
+  deletePayment:  (id) => req('DELETE', `/operations/payments/${id}`),
+
   // Customers
   getCustomers:   (search) => req('GET', `/operations/customers${search ? `?search=${encodeURIComponent(search)}` : ''}`),
   createCustomer: (data)   => req('POST', '/operations/customers', data),

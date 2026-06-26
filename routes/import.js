@@ -262,13 +262,26 @@ function classifyAR(raw) {
   if (!raw) return 'na';
   const s = String(raw).toLowerCase().trim();
   if (!s || s === 'na' || s === 'stock' || s === 'foc' || s === 'sample' || s === 'rma') return 'na';
-  const hasReceived = /received|charged|deposited|credit note|released/i.test(s);
-  const hasPending  = /^net[\s-]?\d|waiting|pending|not yet|in process|never paid/i.test(s);
-  if (hasReceived && hasPending) return 'partial'; // e.g. "50% received - rest on Net 1"
+  // Only EXPLICIT partial markers count as partial (e.g. "50% received - rest on Net 1",
+  // "25K+25K wire received - rest on Net 7"). A plain Net term followed by "received" (e.g.
+  // "Net-30 - wire received") is FULLY received — the Net was just the original term.
+  const isExplicitPartial = /partial|\d+\s*%|rest on|remaining|k\s*\+\s*\d/i.test(s);
+  const hasReceived = /received|recived|charged|deposit|credit note|released/i.test(s);
+  if (hasReceived && isExplicitPartial) return 'partial';
   if (hasReceived) return 'received';
   if (/paypal|^pp$|^pp |cheque|check|^wire$|refund/i.test(s)) return 'received';
-  if (hasPending) return 'pending';
+  if (/^net[\s-]?\d|waiting|pending|not yet|in process|never paid/i.test(s)) return 'pending';
   return 'na';
+}
+
+// Customer payment method derived from the (mapped) payment_status, for backfilled payment records.
+function arMethod(paymentStatus) {
+  const s = String(paymentStatus || '').toLowerCase();
+  if (s.includes('paypal')) return 'PayPal';
+  if (s.includes('check') || s.includes('cheque')) return 'Check';
+  if (s.includes('wire')) return 'Wire';
+  if (s.includes('cc') || s.includes('charged')) return 'Credit Card';
+  return '';
 }
 
 // AP status from col N (Paid to vendor) — raw text, not dollar amount
@@ -764,6 +777,35 @@ function importWorkbook(wb, db, options = {}) {
     });
 
     importOrder();
+
+    // ── Backfill customer payments from the sheet ────────────────────────────
+    // The sheet's Payment Status column records how/whether the customer paid. For orders that were
+    // fully received, create a payment record for the full charged value so AR reflects the sheet
+    // (Received = full, Balance = 0, status = Paid). Only touches imported orders that have no payment
+    // yet (idempotent); partial/pending/NA orders are left for manual entry.
+    try {
+      const received = db.prepare(`
+        SELECT o.id, o.order_date, o.payment_status,
+          COALESCE(SUM(i.selling*i.quantity),0) + COALESCE(o.tax_charged,0) + COALESCE(o.shipping_charged,0) + COALESCE(o.cc_charges,0) AS total_value
+        FROM op_orders o
+        LEFT JOIN op_order_items i ON i.order_id = o.id AND COALESCE(i.line_status,'processed')='processed'
+        WHERE o.ar_status = 'received' AND COALESCE(o.customer_paid,0) = 0
+          AND NOT EXISTS (SELECT 1 FROM op_order_payments p WHERE p.order_id = o.id)
+        GROUP BY o.id
+      `).all();
+      const insP = db.prepare(`INSERT INTO op_order_payments (order_id,amount,payment_date,method,reference,notes) VALUES (?,?,?,?,?,?)`);
+      const updP = db.prepare(`UPDATE op_orders SET customer_paid=? WHERE id=?`);
+      db.transaction(() => {
+        for (const o of received) {
+          const amt = Math.round((Number(o.total_value) || 0) * 100) / 100;
+          if (amt <= 0) continue;
+          insP.run(o.id, amt, o.order_date || null, arMethod(o.payment_status), null, 'Imported from sheet');
+          updP.run(amt, o.id);
+          stats.payments = (stats.payments || 0) + 1;
+        }
+      })();
+    } catch(e) { stats.errors.push('AR backfill: ' + e.message); }
+
     return stats;
 }
 
