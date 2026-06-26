@@ -4,6 +4,7 @@ import { purchasingApi } from '../api'
 import { useAuth } from '../App'
 import { formatDate, formatDateShort, timeAgo } from '../components/Badges'
 import SearchableSelect from '../components/SearchableSelect'
+import { ColumnPicker, useColumnPrefs } from '../components/ColumnPicker'
 
 const BRAND = '#00D4C8'
 const T = { lead:{ icon:'◎', label:'Lead', color:'#3b82f6' }, repeat:{ icon:'↻', label:'Repeat', color:'#6366f1' }, online_order:{ icon:'◈', label:'Order', color:'#f59e0b' } }
@@ -418,12 +419,20 @@ const STATUS_META = {
 }
 const statusOf = (p) => p.not_in_stock ? 'not_in_stock' : (p.quote_id ? 'quoted' : 'pending')
 
+const PP_COLS = [
+  { key:'part_number', label:'Part #', locked:true }, { key:'customer_name', label:'Customer' }, { key:'inquiry_type', label:'Type' },
+  { key:'quantity', label:'Qty' }, { key:'urgency', label:'Urgency' }, { key:'status', label:'Status' },
+  { key:'price', label:'Quote' }, { key:'assigned_at', label:'Assigned' },
+]
+
 export function PurchaserParts() {
   const [parts, setParts] = useState([])
   const [loading, setLoading] = useState(true)
   const [openPartId, setOpenPartId] = useState(null)
   const [f, setF] = useState({ part:'', customer:'', type:'', urgency:'', status:'' })
   const [sort, setSort] = useState({ key:'', dir:1 })
+  const { visibleColumns, hidden, toggle, reset } = useColumnPrefs('purchaser-parts', PP_COLS, [])
+  const show = (k) => visibleColumns.some(c => c.key === k)
 
   const load = () => { setLoading(true); purchasingApi.getMyParts({ all:1 }).then(d => { setParts(d.parts||[]); setLoading(false) }).catch(()=>setLoading(false)) }
   useEffect(() => { load() }, [])
@@ -456,42 +465,47 @@ export function PurchaserParts() {
 
   return (
     <div style={{ padding:28, maxWidth:1200, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>
-      <h1 style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:800, fontSize:24, color:'#0f172a', margin:'0 0 4px' }}>📦 Assigned Parts</h1>
-      <p style={{ color:'#94a3b8', fontSize:13, margin:'0 0 18px' }}>All parts assigned to you · showing {rows.length} of {parts.length}</p>
+      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
+        <div>
+          <h1 style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:800, fontSize:24, color:'#0f172a', margin:'0 0 4px' }}>📦 Assigned Parts</h1>
+          <p style={{ color:'#94a3b8', fontSize:13, margin:'0 0 18px' }}>All parts assigned to you · showing {rows.length} of {parts.length}</p>
+        </div>
+        <ColumnPicker columns={PP_COLS} hidden={hidden} toggle={toggle} reset={reset} />
+      </div>
 
       <div style={{ background:'#fff', border:'1px solid #f1f5f9', borderRadius:14, overflow:'hidden' }}>
         <div style={{ maxHeight:'calc(100vh - 230px)', overflow:'auto' }}>
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
             <thead>
-              <tr>{th('Part #','part_number')}{th('Customer','customer_name')}{th('Type','inquiry_type')}{th('Qty','quantity',true)}{th('Urgency','urgency')}{th('Status')}{th('Quote','price',true)}{th('Assigned','assigned_at')}</tr>
+              <tr>{show('part_number')&&th('Part #','part_number')}{show('customer_name')&&th('Customer','customer_name')}{show('inquiry_type')&&th('Type','inquiry_type')}{show('quantity')&&th('Qty','quantity',true)}{show('urgency')&&th('Urgency','urgency')}{show('status')&&th('Status')}{show('price')&&th('Quote','price',true)}{show('assigned_at')&&th('Assigned','assigned_at')}</tr>
               <tr style={{ background:'#fff', position:'sticky', top:39, zIndex:1 }}>
-                <td style={{ padding:'6px 8px' }}><input value={f.part} onChange={e=>setFilter('part',e.target.value)} placeholder="Search…" style={fStyle} /></td>
-                <td style={{ padding:'6px 8px' }}><input value={f.customer} onChange={e=>setFilter('customer',e.target.value)} placeholder="Search…" style={fStyle} /></td>
-                <td style={{ padding:'6px 8px' }}><select value={f.type} onChange={e=>setFilter('type',e.target.value)} style={fStyle}><option value="">All</option><option value="lead">Lead</option><option value="repeat">Repeat</option><option value="online_order">Order</option></select></td>
-                <td />
-                <td style={{ padding:'6px 8px' }}><select value={f.urgency} onChange={e=>setFilter('urgency',e.target.value)} style={fStyle}><option value="">All</option><option value="critical">Critical</option><option value="high">High</option><option value="normal">Normal</option><option value="low">Low</option></select></td>
-                <td style={{ padding:'6px 8px' }}><select value={f.status} onChange={e=>setFilter('status',e.target.value)} style={fStyle}><option value="">All</option><option value="pending">Pending</option><option value="quoted">Quoted</option><option value="not_in_stock">Not In Stock</option></select></td>
-                <td /><td />
+                {show('part_number') && <td style={{ padding:'6px 8px' }}><input value={f.part} onChange={e=>setFilter('part',e.target.value)} placeholder="Search…" style={fStyle} /></td>}
+                {show('customer_name') && <td style={{ padding:'6px 8px' }}><input value={f.customer} onChange={e=>setFilter('customer',e.target.value)} placeholder="Search…" style={fStyle} /></td>}
+                {show('inquiry_type') && <td style={{ padding:'6px 8px' }}><select value={f.type} onChange={e=>setFilter('type',e.target.value)} style={fStyle}><option value="">All</option><option value="lead">Lead</option><option value="repeat">Repeat</option><option value="online_order">Order</option></select></td>}
+                {show('quantity') && <td />}
+                {show('urgency') && <td style={{ padding:'6px 8px' }}><select value={f.urgency} onChange={e=>setFilter('urgency',e.target.value)} style={fStyle}><option value="">All</option><option value="critical">Critical</option><option value="high">High</option><option value="normal">Normal</option><option value="low">Low</option></select></td>}
+                {show('status') && <td style={{ padding:'6px 8px' }}><select value={f.status} onChange={e=>setFilter('status',e.target.value)} style={fStyle}><option value="">All</option><option value="pending">Pending</option><option value="quoted">Quoted</option><option value="not_in_stock">Not In Stock</option></select></td>}
+                {show('price') && <td />}{show('assigned_at') && <td />}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={8} style={{ padding:48, textAlign:'center', color:'#94a3b8' }}>Loading…</td></tr>
+                <tr><td colSpan={visibleColumns.length} style={{ padding:48, textAlign:'center', color:'#94a3b8' }}>Loading…</td></tr>
               ) : rows.length===0 ? (
-                <tr><td colSpan={8} style={{ padding:48, textAlign:'center', color:'#94a3b8' }}>No parts match your filters</td></tr>
+                <tr><td colSpan={visibleColumns.length} style={{ padding:48, textAlign:'center', color:'#94a3b8' }}>No parts match your filters</td></tr>
               ) : rows.map(p => {
                 const st = STATUS_META[statusOf(p)]; const urg = URGENCY[p.urgency||'normal']; const ti = T[p.inquiry_type]
                 return (
                   <tr key={p.assignment_id} onClick={()=>setOpenPartId(p.assignment_id)} style={{ cursor:'pointer', borderBottom:'1px solid #f1f5f9', background:p.is_delayed?'#fff8f8':'#fff' }}
                     onMouseEnter={e=>e.currentTarget.style.background='#f8fafc'} onMouseLeave={e=>e.currentTarget.style.background=p.is_delayed?'#fff8f8':'#fff'}>
-                    <td style={{ padding:'10px 12px', fontFamily:'monospace', fontWeight:700, color:'#0f172a' }}>{p.part_number}{p.is_delayed && <span style={{ color:'#dc2626', fontSize:11, marginLeft:6 }}>⚠️{p.working_days_pending}d</span>}</td>
-                    <td style={{ padding:'10px 12px', color:'#0f172a' }}>{p.customer_name}{p.customer_company?<span style={{ color:'#94a3b8' }}> · {p.customer_company}</span>:''}</td>
-                    <td style={{ padding:'10px 12px' }}><span style={{ fontSize:12, color:ti?.color }}>{ti?.icon} {ti?.label}</span></td>
-                    <td style={{ padding:'10px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums' }}>{p.quantity||'—'}</td>
-                    <td style={{ padding:'10px 12px' }}><span style={{ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:12, background:urg.bg, color:urg.color, border:`1px solid ${urg.border}` }}>{urg.label}</span></td>
-                    <td style={{ padding:'10px 12px' }}><span style={{ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:12, background:st.bg, color:st.color }}>{st.label}</span></td>
-                    <td style={{ padding:'10px 12px', textAlign:'right', fontWeight:700, color:p.quote_id?'#16a34a':'#cbd5e1', fontVariantNumeric:'tabular-nums' }}>{p.quote_id?money(p.price):'—'}</td>
-                    <td style={{ padding:'10px 12px', color:'#64748b', whiteSpace:'nowrap' }}>{timeAgo(p.assigned_at)}</td>
+                    {show('part_number') && <td style={{ padding:'10px 12px', fontFamily:'monospace', fontWeight:700, color:'#0f172a' }}>{p.part_number}{p.is_delayed && <span style={{ color:'#dc2626', fontSize:11, marginLeft:6 }}>⚠️{p.working_days_pending}d</span>}</td>}
+                    {show('customer_name') && <td style={{ padding:'10px 12px', color:'#0f172a' }}>{p.customer_name}{p.customer_company?<span style={{ color:'#94a3b8' }}> · {p.customer_company}</span>:''}</td>}
+                    {show('inquiry_type') && <td style={{ padding:'10px 12px' }}><span style={{ fontSize:12, color:ti?.color }}>{ti?.icon} {ti?.label}</span></td>}
+                    {show('quantity') && <td style={{ padding:'10px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums' }}>{p.quantity||'—'}</td>}
+                    {show('urgency') && <td style={{ padding:'10px 12px' }}><span style={{ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:12, background:urg.bg, color:urg.color, border:`1px solid ${urg.border}` }}>{urg.label}</span></td>}
+                    {show('status') && <td style={{ padding:'10px 12px' }}><span style={{ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:12, background:st.bg, color:st.color }}>{st.label}</span></td>}
+                    {show('price') && <td style={{ padding:'10px 12px', textAlign:'right', fontWeight:700, color:p.quote_id?'#16a34a':'#cbd5e1', fontVariantNumeric:'tabular-nums' }}>{p.quote_id?money(p.price):'—'}</td>}
+                    {show('assigned_at') && <td style={{ padding:'10px 12px', color:'#64748b', whiteSpace:'nowrap' }}>{timeAgo(p.assigned_at)}</td>}
                   </tr>
                 )
               })}

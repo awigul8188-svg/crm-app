@@ -4,6 +4,7 @@ import { purchasingApi } from '../api'
 import { api } from '../api'
 import { formatDateShort, timeAgo } from '../components/Badges'
 import Modal from '../components/Modal'
+import { ColumnPicker, useColumnPrefs } from '../components/ColumnPicker'
 
 const BRAND = '#00D4C8'
 const T = {
@@ -235,6 +236,15 @@ function PartsTable({ type, purchasers, dateRange, onRefresh }) {
   useEffect(() => { const t = setTimeout(load, search ? 300 : 0); return () => clearTimeout(t) }, [type, filterStatus, page, search, JSON.stringify(dateRange)])
   const handleAssign = async (reqId, purchaserId) => { try { if (purchaserId) await purchasingApi.assign({ requirement_id: reqId, purchaser_id: purchaserId }) } catch (e) {} load(); onRefresh() }
   const filtered = result?.parts || []
+  const PT_COLS = [
+    { key:'urgency', label:'Urgency' }, { key:'part_number', label:'Part Number', locked:true }, { key:'qty', label:'Qty' },
+    { key:'customer', label:'Customer' }, { key:'ae', label:'AE' },
+    ...(type === 'online_order' ? [{ key:'selling', label:'Selling' }] : []),
+    { key:'date', label:'Date' }, { key:'assign', label:'Assign', locked:true }, { key:'status', label:'Status' },
+    { key:'pm_notes', label:'PM Notes' }, { key:'quote', label:'Quote' },
+  ]
+  const { visibleColumns, hidden, toggle, reset } = useColumnPrefs('pm-parts-' + type, PT_COLS, [])
+  const show = (k) => visibleColumns.some(c => c.key === k)
   return (
     <div className="fade-in">
       <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -247,6 +257,7 @@ function PartsTable({ type, purchasers, dateRange, onRefresh }) {
           <option value="not_in_stock">Not In Stock</option>
         </select>
         {result && <div style={{ fontSize: 12, color: '#94a3b8', marginLeft: 'auto' }}>{result.total} total</div>}
+        <ColumnPicker columns={PT_COLS} hidden={hidden} toggle={toggle} reset={reset} />
       </div>
       {loading ? <div style={{ textAlign: 'center', padding: 48, color: '#94a3b8' }}>Loading...</div> : filtered.length === 0 ? (
         <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #f1f5f9', padding: 48, textAlign: 'center', color: '#94a3b8' }}>No parts found</div>
@@ -255,34 +266,34 @@ function PartsTable({ type, purchasers, dateRange, onRefresh }) {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead><tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                {['Urgency', 'Part Number', 'Qty', 'Customer', 'AE', ...(type === 'online_order' ? ['Selling'] : []), 'Date', 'Assign', 'Status', 'PM Notes', 'Quote'].map(h => (
-                  <th key={h} style={{ textAlign: 'left', padding: '9px 12px', fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>{h}</th>
+                {visibleColumns.map(c => (
+                  <th key={c.key} style={{ textAlign: 'left', padding: '9px 12px', fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>{c.label}</th>
                 ))}
               </tr></thead>
               <tbody>
                 {filtered.map((p, i) => (
                   <tr key={p.requirement_id} style={{ borderBottom: '1px solid #f1f5f9', background: p.is_delayed ? '#fff5f5' : p.is_over_selling ? '#fff7ed' : i % 2 === 0 ? '#fff' : '#fafbfc', transition: 'background 0.15s' }}>
-                    <td style={{ padding: '9px 12px' }}><UrgencyBadge urgency={p.urgency} /></td>
-                    <td style={{ padding: '9px 12px' }}>
+                    {show('urgency') && <td style={{ padding: '9px 12px' }}><UrgencyBadge urgency={p.urgency} /></td>}
+                    {show('part_number') && <td style={{ padding: '9px 12px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#0f172a' }}>{p.part_number}</span>
                         {p.is_delayed && <span title="Delayed >4 working days" style={{ fontSize: 10, color: '#dc2626' }}>⚠️</span>}
                         {p.not_in_stock && <span style={{ fontSize: 10, color: '#ef4444', background: '#fef2f2', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>OUT</span>}
                       </div>
-                    </td>
-                    <td style={{ padding: '9px 12px', color: '#475569' }}>{p.quantity || '—'}</td>
-                    <td style={{ padding: '9px 12px', fontWeight: 500, whiteSpace: 'nowrap' }}>{p.customer_name}<div style={{ fontSize: 11, color: '#94a3b8' }}>{p.customer_company}</div></td>
-                    <td style={{ padding: '9px 12px', color: '#64748b', whiteSpace: 'nowrap' }}>{p.ae_name || '—'}</td>
-                    {type === 'online_order' && <td style={{ padding: '9px 12px', fontWeight: 700, color: p.is_over_selling ? '#dc2626' : '#10b981' }}>{p.selling_price ? money(p.selling_price) : '—'}</td>}
-                    <td style={{ padding: '9px 12px', color: '#94a3b8', fontSize: 11, whiteSpace: 'nowrap' }}>{formatDateShort(p.inquiry_date)}</td>
-                    <td style={{ padding: '9px 12px' }}><AssignCell part={p} purchasers={purchasers} onAssign={handleAssign} /></td>
-                    <td style={{ padding: '9px 12px' }}>
+                    </td>}
+                    {show('qty') && <td style={{ padding: '9px 12px', color: '#475569' }}>{p.quantity || '—'}</td>}
+                    {show('customer') && <td style={{ padding: '9px 12px', fontWeight: 500, whiteSpace: 'nowrap' }}>{p.customer_name}<div style={{ fontSize: 11, color: '#94a3b8' }}>{p.customer_company}</div></td>}
+                    {show('ae') && <td style={{ padding: '9px 12px', color: '#64748b', whiteSpace: 'nowrap' }}>{p.ae_name || '—'}</td>}
+                    {type === 'online_order' && show('selling') && <td style={{ padding: '9px 12px', fontWeight: 700, color: p.is_over_selling ? '#dc2626' : '#10b981' }}>{p.selling_price ? money(p.selling_price) : '—'}</td>}
+                    {show('date') && <td style={{ padding: '9px 12px', color: '#94a3b8', fontSize: 11, whiteSpace: 'nowrap' }}>{formatDateShort(p.inquiry_date)}</td>}
+                    {show('assign') && <td style={{ padding: '9px 12px' }}><AssignCell part={p} purchasers={purchasers} onAssign={handleAssign} /></td>}
+                    {show('status') && <td style={{ padding: '9px 12px' }}>
                       <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 12, ...(p.not_in_stock ? { background: '#fef2f2', color: '#dc2626' } : p.assignment_id ? p.assignment_status === 'quoted' ? { background: '#f0fdf4', color: '#16a34a' } : { background: '#fff7ed', color: '#d97706' } : { background: '#f8fafc', color: '#64748b' }) }}>
                         {p.not_in_stock ? 'Not In Stock' : p.assignment_id ? p.assignment_status === 'quoted' ? 'Quoted' : 'Pending' : 'Unassigned'}
                       </span>
-                    </td>
-                    <td style={{ padding: '9px 12px', maxWidth: 140, color: '#64748b', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.pm_notes || '—'}</td>
-                    <td style={{ padding: '9px 12px', maxWidth: 160 }}>
+                    </td>}
+                    {show('pm_notes') && <td style={{ padding: '9px 12px', maxWidth: 140, color: '#64748b', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.pm_notes || '—'}</td>}
+                    {show('quote') && <td style={{ padding: '9px 12px', maxWidth: 160 }}>
                       {p.quote_id ? (
                         <div>
                           <div style={{ fontWeight: 700, color: p.is_over_selling ? '#dc2626' : '#10b981', fontSize: 12 }}>{money(p.price)} {p.is_over_selling && '⚠️'}</div>
@@ -290,7 +301,7 @@ function PartsTable({ type, purchasers, dateRange, onRefresh }) {
                           <div style={{ fontSize: 10, color: '#94a3b8' }}>{p.supplier_name}</div>
                         </div>
                       ) : <span style={{ color: '#cbd5e1', fontSize: 11 }}>No quote</span>}
-                    </td>
+                    </td>}
                   </tr>
                 ))}
               </tbody>
@@ -729,8 +740,15 @@ function QuotesTable({ dateRange }) {
   useEffect(() => { setPage(1) }, [type, JSON.stringify(dateRange)])
   useEffect(() => {
     setLoading(true)
-    purchasingApi.getQuotes({ page, type, from: dateRange.from, to: dateRange.to }).then(d => { setResult(d); setLoading(false) })
+    purchasingApi.getQuotes({ page, type, from: dateRange.from, to: dateRange.to }).then(d => { setResult(d); setLoading(false) }).catch(() => setLoading(false))
   }, [page, type, JSON.stringify(dateRange)])
+  const QT_COLS = [
+    { key:'date', label:'Date' }, { key:'part', label:'Part', locked:true }, { key:'qty', label:'Qty' }, { key:'customer', label:'Customer' },
+    { key:'type', label:'Type' }, { key:'ae', label:'AE' }, { key:'purchaser', label:'Purchaser' }, { key:'price', label:'Price' },
+    { key:'selling', label:'Selling' }, { key:'delta', label:'Δ' }, { key:'condition', label:'Condition' }, { key:'lead_time', label:'Lead Time' }, { key:'supplier', label:'Supplier' },
+  ]
+  const { visibleColumns, hidden, toggle, reset } = useColumnPrefs('pm-quotes', QT_COLS, [])
+  const show = (k) => visibleColumns.some(c => c.key === k)
   if (loading) return <div style={{ textAlign: 'center', padding: 48, color: '#94a3b8' }}>Loading...</div>
   const quotes = result?.quotes || []
   return (
@@ -743,38 +761,39 @@ function QuotesTable({ dateRange }) {
           <option value="online_order">Online Orders</option>
         </select>
         {result && <div style={{ fontSize: 12, color: '#94a3b8', marginLeft: 'auto' }}>{result.total} total quotes</div>}
+        <ColumnPicker columns={QT_COLS} hidden={hidden} toggle={toggle} reset={reset} />
       </div>
       {quotes.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #f1f5f9', padding: 48, textAlign: 'center', color: '#94a3b8' }}>No quotes yet</div> : (
         <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #f1f5f9', overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead><tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                {['Date', 'Part', 'Qty', 'Customer', 'Type', 'AE', 'Purchaser', 'Price', 'Selling', 'Δ', 'Condition', 'Lead Time', 'Supplier'].map(h => (
-                  <th key={h} style={{ textAlign: 'left', padding: '9px 12px', fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>{h}</th>
+                {visibleColumns.map(c => (
+                  <th key={c.key} style={{ textAlign: 'left', padding: '9px 12px', fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>{c.label}</th>
                 ))}
               </tr></thead>
               <tbody>
                 {quotes.map((q, i) => (
                   <tr key={q.id} style={{ borderBottom: '1px solid #f1f5f9', background: q.is_over_selling ? '#fff5f5' : i % 2 === 0 ? '#fff' : '#fafbfc' }}>
-                    <td style={{ padding: '9px 12px', color: '#94a3b8', fontSize: 11, whiteSpace: 'nowrap' }}>{formatDateShort(q.updated_at)}</td>
-                    <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontWeight: 700, color: '#0f172a' }}>{q.part_number}</td>
-                    <td style={{ padding: '9px 12px', color: '#475569' }}>{q.quantity || '—'}</td>
-                    <td style={{ padding: '9px 12px', fontWeight: 500, whiteSpace: 'nowrap' }}>{q.customer_name}</td>
-                    <td style={{ padding: '9px 12px' }}><span style={{ color: T[q.inquiry_type]?.color, fontSize: 13 }}>{T[q.inquiry_type]?.icon}</span></td>
-                    <td style={{ padding: '9px 12px', color: '#64748b' }}>{q.ae_name || '—'}</td>
-                    <td style={{ padding: '9px 12px', fontWeight: 600, color: BRAND }}>{q.purchaser_name}</td>
-                    <td style={{ padding: '9px 12px', fontWeight: 700, color: q.is_over_selling ? '#dc2626' : '#10b981', fontSize: 13 }}>{money(q.price)}</td>
-                    <td style={{ padding: '9px 12px', color: '#64748b' }}>{q.selling_price ? money(q.selling_price) : '—'}</td>
-                    <td style={{ padding: '9px 12px' }}>
+                    {show('date') && <td style={{ padding: '9px 12px', color: '#94a3b8', fontSize: 11, whiteSpace: 'nowrap' }}>{formatDateShort(q.updated_at)}</td>}
+                    {show('part') && <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontWeight: 700, color: '#0f172a' }}>{q.part_number}</td>}
+                    {show('qty') && <td style={{ padding: '9px 12px', color: '#475569' }}>{q.quantity || '—'}</td>}
+                    {show('customer') && <td style={{ padding: '9px 12px', fontWeight: 500, whiteSpace: 'nowrap' }}>{q.customer_name}</td>}
+                    {show('type') && <td style={{ padding: '9px 12px' }}><span style={{ color: T[q.inquiry_type]?.color, fontSize: 13 }}>{T[q.inquiry_type]?.icon}</span></td>}
+                    {show('ae') && <td style={{ padding: '9px 12px', color: '#64748b' }}>{q.ae_name || '—'}</td>}
+                    {show('purchaser') && <td style={{ padding: '9px 12px', fontWeight: 600, color: BRAND }}>{q.purchaser_name}</td>}
+                    {show('price') && <td style={{ padding: '9px 12px', fontWeight: 700, color: q.is_over_selling ? '#dc2626' : '#10b981', fontSize: 13 }}>{money(q.price)}</td>}
+                    {show('selling') && <td style={{ padding: '9px 12px', color: '#64748b' }}>{q.selling_price ? money(q.selling_price) : '—'}</td>}
+                    {show('delta') && <td style={{ padding: '9px 12px' }}>
                       {q.selling_price && q.inquiry_type === 'online_order' ? (
                         <span style={{ fontSize: 11, fontWeight: 700, color: q.is_over_selling ? '#dc2626' : '#10b981' }}>
                           {q.is_over_selling ? '⚠️ +' : '✓ '}${Math.abs(num(q.price) * (parseInt(q.quantity) || 1) - num(q.selling_price)).toFixed(2)}
                         </span>
                       ) : '—'}
-                    </td>
-                    <td style={{ padding: '9px 12px' }}><span style={{ fontSize: 11, background: '#f1f5f9', padding: '2px 7px', borderRadius: 5 }}>{q.condition}</span></td>
-                    <td style={{ padding: '9px 12px', color: '#64748b', fontSize: 11 }}>{q.lead_time || '—'}</td>
-                    <td style={{ padding: '9px 12px', color: '#64748b', fontSize: 11 }}>{q.supplier_name || '—'}</td>
+                    </td>}
+                    {show('condition') && <td style={{ padding: '9px 12px' }}><span style={{ fontSize: 11, background: '#f1f5f9', padding: '2px 7px', borderRadius: 5 }}>{q.condition}</span></td>}
+                    {show('lead_time') && <td style={{ padding: '9px 12px', color: '#64748b', fontSize: 11 }}>{q.lead_time || '—'}</td>}
+                    {show('supplier') && <td style={{ padding: '9px 12px', color: '#64748b', fontSize: 11 }}>{q.supplier_name || '—'}</td>}
                   </tr>
                 ))}
               </tbody>
