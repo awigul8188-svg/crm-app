@@ -23,6 +23,32 @@ function getOpenPeriod(db) {
   return row?.value || null;
 }
 
+// Collapse lead-source spelling variants into canonical buckets (same rules as the Marketing card)
+// so source breakdowns don't show duplicates. 'Chat' (website order) is kept distinct from 'Chat lead'.
+function canonicalSource(s) {
+  const x = String(s || '').toLowerCase().trim();
+  if (/chat/.test(x))         return /lead/.test(x) ? 'Chat Lead' : 'Chat';
+  if (/call|inbound/.test(x)) return 'Call Lead';   // 'Call lead' + 'Inbound call'
+  if (/rfq|form/.test(x))     return 'RFQ Lead';     // 'RFQ Lead' + 'Web RFQ Lead' + 'Form lead'
+  if (/email/.test(x))        return 'Email Lead';
+  if (/online/.test(x))       return 'Online';
+  if (/repeat/.test(x))       return 'Repeat';
+  if (/outbound/.test(x))     return 'Outbound';
+  if (/ppc/.test(x))          return 'PPC';
+  if (!x || x === 'unknown')  return 'Unknown';
+  return String(s);
+}
+// Merge rows that share a canonical lead_source, summing the given numeric keys; sort by sortKey desc.
+function consolidateSources(rows, sumKeys, sortKey) {
+  const map = {};
+  for (const r of (rows || [])) {
+    const k = canonicalSource(r.lead_source);
+    if (!map[k]) { map[k] = { lead_source: k }; sumKeys.forEach(sk => { map[k][sk] = 0; }); }
+    sumKeys.forEach(sk => { map[k][sk] += Number(r[sk]) || 0; });
+  }
+  return Object.values(map).sort((a, b) => (b[sortKey] || 0) - (a[sortKey] || 0));
+}
+
 const ORDER_TOTALS_SQL = `
   SELECT
     o.*,
@@ -918,7 +944,11 @@ router.get('/dashboard', (req, res) => {
       WHERE ${baseWhere}
     `).get(...p);
 
-    res.json({ kpis: { ...kpis, ...apKpis }, byMonth, byRep, bySource, byBuyer, byStatus, byLeadSource, topCustomers, byPayment });
+    res.json({
+      kpis: { ...kpis, ...apKpis }, byMonth, byRep, byBuyer, byStatus, topCustomers, byPayment,
+      bySource: consolidateSources(bySource, ['order_count', 'revenue', 'gp'], 'gp'),
+      byLeadSource: consolidateSources(byLeadSource, ['count', 'rma_total'], 'count'),
+    });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
