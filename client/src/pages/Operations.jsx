@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { operationsApi, api } from '../api'
 import Modal from '../components/Modal'
 import ImportModal from '../components/ImportModal'
@@ -164,8 +165,8 @@ function ConfirmHost() {
   if (!active) return null
   const close = (val) => { active.resolve(val); setActive(null) }
   const danger = active.danger !== false
-  return (
-    <div onClick={() => close(false)} style={{ position: 'fixed', inset: 0, zIndex: 100000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(10,10,10,0.30)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}>
+  return createPortal(
+    <div onClick={() => close(false)} style={{ position: 'fixed', inset: 0, zIndex: 100001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(10,10,10,0.30)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}>
       <div onClick={e => e.stopPropagation()} className="modal-in" style={{ background: '#fff', borderRadius: 16, padding: '22px 24px', width: '100%', maxWidth: 380, boxShadow: '0 24px 60px rgba(0,0,0,0.22)' }}>
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
           <div style={{ width: 38, height: 38, borderRadius: 10, background: danger ? '#fef2f2' : '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -181,7 +182,8 @@ function ConfirmHost() {
           <button className={danger ? 'btn btn-danger' : 'btn btn-primary'} onClick={() => close(true)}>{active.confirmLabel || 'Confirm'}</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 function ToastHost() {
@@ -195,8 +197,8 @@ function ToastHost() {
     return () => _toastSubs.delete(add)
   }, [])
   const dismiss = id => setItems(list => list.filter(x => x.id !== id))
-  return (
-    <div style={{ position: 'fixed', top: 18, right: 18, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 10, pointerEvents: 'none' }}>
+  return createPortal(
+    <div style={{ position: 'fixed', top: 18, right: 18, zIndex: 100002, display: 'flex', flexDirection: 'column', gap: 10, pointerEvents: 'none' }}>
       {items.map(t => {
         const s = TOAST_STYLE[t.type] || TOAST_STYLE.success
         return (
@@ -208,7 +210,8 @@ function ToastHost() {
           </div>
         )
       })}
-    </div>
+    </div>,
+    document.body
   )
 }
 
