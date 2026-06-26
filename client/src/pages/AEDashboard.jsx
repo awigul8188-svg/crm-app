@@ -10,6 +10,7 @@ import ClosedWonModal from '../components/ClosedWonModal'
 
 const BRAND = '#00D4C8'
 const C = ['#00D4C8','#3b82f6','#6366f1','#f59e0b','#ef4444','#10b981','#8b5cf6','#f97316','#ec4899','#84cc16']
+const LEAD_TERMINAL = ['Closed Won', 'Closed Lost', 'Fake Lead', 'No response']
 const TYPE_ICONS  = { lead:'◎', repeat:'↻', online_order:'◈' }
 const TYPE_COLORS = { lead:'#3b82f6', repeat:'#6366f1', online_order:'#f59e0b' }
 const TYPE_LABELS = { lead:'Lead', repeat:'Repeat', online_order:'Online Order' }
@@ -587,7 +588,7 @@ function useModuleData(type, dateFilters) {
 }
 
 // ── Leads Tab ───────────────────────────────────────────────────
-function AELeadsTab({ dateFilters, onDrilldown }) {
+function AELeadsTab({ dateFilters, onDrilldown, newAssigned = [], onOpen }) {
   const { data, loading } = useModuleData('lead', dateFilters)
   if (loading) return <Loader />
   if (!data) return null
@@ -620,9 +621,26 @@ function AELeadsTab({ dateFilters, onDrilldown }) {
 
       <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:20, marginBottom:20 }}>
         <div style={{ background:'#fff', borderRadius:14, border:'1px solid #f1f5f9', padding:18 }}>
-          <STitle>Lead Trend — Won vs Total</STitle>
-          {trendData.length === 0 ? <div style={{ height:160, display:'flex', alignItems:'center', justifyContent:'center', color:'#94a3b8' }}>No data</div> : (
-            <ResponsiveContainer width="100%" height={180}><BarChart data={trendData} barSize={8} barGap={2}><XAxis dataKey="date" tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} /><Tooltip content={<Tip />} /><Bar dataKey="total" name="Total" fill="#3b82f6" radius={[3,3,0,0]} /><Bar dataKey="won" name="Won" fill="#10b981" radius={[3,3,0,0]} /></BarChart></ResponsiveContainer>
+          <STitle>Newly Assigned Leads{newAssigned.length > 0 && <span style={{ marginLeft:8, minWidth:20, height:20, padding:'0 6px', borderRadius:100, background:'#dc2626', color:'#fff', fontSize:11, fontWeight:800, display:'inline-flex', alignItems:'center', justifyContent:'center', verticalAlign:'middle' }}>{newAssigned.length}</span>}</STitle>
+          {newAssigned.length === 0 ? (
+            <div style={{ height:160, display:'flex', alignItems:'center', justifyContent:'center', color:'#94a3b8', fontSize:13 }}>No new leads — all caught up</div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:300, overflowY:'auto' }}>
+              {newAssigned.map(o => (
+                <div key={o.id} onClick={() => onOpen && onOpen(o.id)}
+                  style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 12px', border:'1px solid #f1f5f9', borderRadius:10, cursor:'pointer', transition:'all 0.12s' }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = BRAND; e.currentTarget.style.background = `${BRAND}08` }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = '#f1f5f9'; e.currentTarget.style.background = '#fff' }}>
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontWeight:600, color:'#0f172a', fontSize:13, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{o.customer_name || '—'}</div>
+                    <div style={{ fontSize:11, color:'#94a3b8' }}>{[o.lead_source, formatDateShort(o.created_at)].filter(Boolean).join(' · ')}</div>
+                  </div>
+                  <div style={{ textAlign:'right', flexShrink:0, marginLeft:12 }}>
+                    <div style={{ fontSize:11, color:'#dc2626', fontWeight:700 }}>Open →</div>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
         <div style={{ background:'#fff', borderRadius:14, border:'1px solid #f1f5f9', padding:18 }}>
@@ -909,11 +927,24 @@ export default function AEDashboard() {
   const newAssigned = assignedOrders.filter(o => !seenOrders.has(o.id))
   const newOrders = newAssigned.length
 
+  // Newly assigned leads — same click-to-clear notification on the Leads tab.
+  const [assignedLeads, setAssignedLeads] = useState([])
+  const [seenLeads, setSeenLeads] = useState(() => { try { return new Set(JSON.parse(localStorage.getItem('ae_seen_leads') || '[]')) } catch { return new Set() } })
+  useEffect(() => {
+    fetch('/api/inquiries?type=lead', { headers: { Authorization:`Bearer ${localStorage.getItem('crm_token')}` } })
+      .then(r => r.json())
+      .then(list => setAssignedLeads((Array.isArray(list) ? list : []).filter(o => o.assigned_to && !LEAD_TERMINAL.includes(o.disposition))))
+      .catch(() => {})
+  }, [activeTab])
+  const markSeenLead = (id) => setSeenLeads(s => { const n = new Set(s); n.add(id); try { localStorage.setItem('ae_seen_leads', JSON.stringify([...n])) } catch {}; return n })
+  const newAssignedLeads = assignedLeads.filter(o => !seenLeads.has(o.id))
+  const newLeads = newAssignedLeads.length
+
   const greeting = () => { const h = new Date().getHours(); return h<12?'Good morning':h<17?'Good afternoon':'Good evening' }
 
   const tabs = [
     { key:'overview', label:'My Overview', icon:<LayoutDashboard size={13} /> },
-    { key:'leads',    label:'Leads',       icon:<Target size={13} /> },
+    { key:'leads',    label:'Leads',       icon:<Target size={13} />, badge:newLeads },
     { key:'repeat',   label:'Repeat',      icon:<RotateCcw size={13} /> },
     { key:'orders',   label:'Orders',      icon:<ShoppingBag size={13} />, badge:newOrders },
   ]
@@ -960,7 +991,7 @@ export default function AEDashboard() {
 
       {/* Tab content */}
       {activeTab === 'overview' && <AEOverviewTab data={overviewData} loading={overviewLoading} dateFilters={dateFilters} onDrilldown={setDrilldown} onNavigate={navigate} />}
-      {activeTab === 'leads'    && <AELeadsTab    dateFilters={dateFilters} onDrilldown={setDrilldown} />}
+      {activeTab === 'leads'    && <AELeadsTab    dateFilters={dateFilters} onDrilldown={setDrilldown} newAssigned={newAssignedLeads} onOpen={(id) => { markSeenLead(id); navigate('inquiry-detail', { id }) }} />}
       {activeTab === 'repeat'   && <AERepeatTab   dateFilters={dateFilters} onDrilldown={setDrilldown} />}
       {activeTab === 'orders'   && <AEOrdersTab   dateFilters={dateFilters} onDrilldown={setDrilldown} newAssigned={newAssigned} onOpenOrder={(id) => { markSeen(id); navigate('inquiry-detail', { id }) }} />}
 

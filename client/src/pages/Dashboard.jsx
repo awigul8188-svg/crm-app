@@ -463,8 +463,17 @@ function useModuleData(type, filters) {
 }
 
 // ── Leads Tab ───────────────────────────────────────────────────
+const LEAD_TERMINAL = ['Closed Won', 'Closed Lost', 'Fake Lead', 'No response']
+
 function LeadsTab({ filters, onDrilldown }) {
+  const { navigate } = useNav()
   const { data, loading } = useModuleData('lead', filters)
+  const [unassigned, setUnassigned] = useState([])
+  useEffect(() => {
+    api.getInquiries('lead', {})
+      .then(list => setUnassigned((list || []).filter(o => !o.assigned_to && !LEAD_TERMINAL.includes(o.disposition))))
+      .catch(() => {})
+  }, [])
   if (loading) return <Loader />
   if (!data) return null
   const p = data.period
@@ -504,9 +513,26 @@ function LeadsTab({ filters, onDrilldown }) {
 
       <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:20, marginBottom:20 }}>
         <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
-          <SectionTitle>Lead Trend — Won vs Total</SectionTitle>
-          {trendData.length === 0 ? <div style={{ height:180, display:'flex', alignItems:'center', justifyContent:'center', color:'#94a3b8' }}>No data</div> : (
-            <ResponsiveContainer width="100%" height={200}><BarChart data={trendData} barSize={8} barGap={2}><XAxis dataKey="date" tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize:10, fill:'#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} /><Tooltip content={<Tip />} /><Bar dataKey="total" name="Total" fill="#3b82f6" radius={[3,3,0,0]} /><Bar dataKey="won" name="Won" fill="#10b981" radius={[3,3,0,0]} /></BarChart></ResponsiveContainer>
+          <SectionTitle>New Unassigned Leads{unassigned.length > 0 && <span style={{ marginLeft:8, minWidth:20, height:20, padding:'0 6px', borderRadius:100, background:'#dc2626', color:'#fff', fontSize:11, fontWeight:800, display:'inline-flex', alignItems:'center', justifyContent:'center', verticalAlign:'middle' }}>{unassigned.length}</span>}</SectionTitle>
+          {unassigned.length === 0 ? (
+            <div style={{ height:180, display:'flex', alignItems:'center', justifyContent:'center', color:'#94a3b8', fontSize:13 }}>No unassigned leads — all caught up</div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:320, overflowY:'auto' }}>
+              {unassigned.map(o => (
+                <div key={o.id} onClick={() => navigate('inquiry-detail', { id: o.id })}
+                  style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 12px', border:'1px solid #f1f5f9', borderRadius:10, cursor:'pointer', transition:'all 0.12s' }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = BRAND; e.currentTarget.style.background = `${BRAND}08` }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = '#f1f5f9'; e.currentTarget.style.background = '#fff' }}>
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontWeight:600, color:'#0f172a', fontSize:13, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{o.customer_name || '—'}</div>
+                    <div style={{ fontSize:11, color:'#94a3b8' }}>{[o.lead_source, formatDateShort(o.created_at)].filter(Boolean).join(' · ')}</div>
+                  </div>
+                  <div style={{ textAlign:'right', flexShrink:0, marginLeft:12 }}>
+                    <div style={{ fontSize:11, color:'#dc2626', fontWeight:700 }}>Assign →</div>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
         <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', padding:20 }}>
@@ -782,6 +808,13 @@ export default function Dashboard() {
       .then(list => setNewOrders((list || []).filter(o => !o.assigned_to && !['Processed', 'Cancelled'].includes(o.disposition)).length))
       .catch(() => {})
   }, [activeTab])
+  // Manager notification: new UNASSIGNED leads.
+  const [newLeads, setNewLeads] = useState(0)
+  useEffect(() => {
+    api.getInquiries('lead', {})
+      .then(list => setNewLeads((list || []).filter(o => !o.assigned_to && !LEAD_TERMINAL.includes(o.disposition)).length))
+      .catch(() => {})
+  }, [activeTab])
 
   const dateF = getDateFilters(preset, customFrom, customTo)
   const filters = { from: dateF.from, to: dateF.to, dispositions: filterDispositions, sources: filterSources, users: filterUsers }
@@ -790,7 +823,7 @@ export default function Dashboard() {
 
   const tabs = [
     { key: 'overview', label: 'Overview',      icon: <LayoutDashboard size={13} /> },
-    { key: 'leads',    label: 'Leads',         icon: <Target size={13} /> },
+    { key: 'leads',    label: 'Leads',         icon: <Target size={13} />, badge: newLeads },
     { key: 'repeat',   label: 'Repeat',        icon: <RotateCcw size={13} /> },
     { key: 'orders',   label: 'Online Orders', icon: <ShoppingBag size={13} />, badge: newOrders },
   ]
