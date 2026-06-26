@@ -137,6 +137,16 @@ export const operationsApi = {
   // Quarter management
   closeQuarter: (period) => req('POST', '/operations/quarters/close', { period }),
   reopenQuarter: (period) => req('DELETE', `/operations/quarters/close/${encodeURIComponent(period)}`),
+
+  // Open month (boundary) management
+  getOpenPeriod: () => req('GET', '/operations/open-period'),
+  closeMonth: () => req('POST', '/operations/months/close'),
+  reopenMonth: (period) => req('POST', '/operations/months/reopen', period ? { period } : {}),
+
+  // Move an order (or selected line items) to the next month
+  moveOrderNext: (id) => req('POST', `/operations/orders/${id}/move-next`),
+  // items: [{ id, quantity }] — quantity is how many UNITS of that line to move (partial split)
+  splitOrderNext: (id, items) => req('POST', `/operations/orders/${id}/split-next`, { items }),
 };
 
 export const importApi = {

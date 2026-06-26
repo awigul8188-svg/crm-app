@@ -296,6 +296,14 @@ function runOperationsMigrations() {
   // revenue & GP rollups until set to 'processed'. Defaults to 'processed' so existing/imported
   // data keeps counting unchanged.
   try { db.exec(`ALTER TABLE op_order_items ADD COLUMN line_status TEXT DEFAULT 'processed'`); } catch(e) {}
+
+  // v8 — key/value settings for Operations. Holds 'open_period' = the current OPEN reporting month
+  // that new CRM-entered orders are auto-tagged to. "Close month" advances it to the next calendar
+  // month. Seeded to 'Jun-26' (the last month of the historical sheet import) if not already set.
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS op_settings (key TEXT PRIMARY KEY, value TEXT)`);
+    db.prepare(`INSERT OR IGNORE INTO op_settings (key, value) VALUES ('open_period', 'Jun-26')`).run();
+  } catch(e) {}
 }
 
 module.exports = { initializeDB, getDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations };

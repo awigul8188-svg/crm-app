@@ -5,6 +5,24 @@ const { authenticate, requireManager } = require('../middleware/auth');
 
 router.use(authenticate);
 
+// ── Reporting-period helpers (open/close month) ────────────────────────────────
+const PERIOD_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+// 'Jun-26' → 'Jul-26', 'Dec-26' → 'Jan-27'
+function nextPeriod(period) {
+  if (!period) return period;
+  const [mon, yr] = String(period).split('-');
+  let idx = PERIOD_MONTHS.indexOf(mon);
+  if (idx === -1 || yr === undefined) return period;
+  let year = parseInt(yr, 10);
+  idx += 1;
+  if (idx > 11) { idx = 0; year += 1; }
+  return `${PERIOD_MONTHS[idx]}-${String(year).padStart(2, '0')}`;
+}
+function getOpenPeriod(db) {
+  const row = db.prepare(`SELECT value FROM op_settings WHERE key='open_period'`).get();
+  return row?.value || null;
+}
+
 const ORDER_TOTALS_SQL = `
   SELECT
     o.*,
@@ -67,17 +85,21 @@ router.post('/orders', requireManager, (req, res) => {
     const db = getDB();
     const { order_number, order_date, customer_id, email, lead_source, rep, ppc_order_rep, buyer,
             payment_status, order_status, net, due_date, tax_charged, shipping_charged,
-            cc_charges, customer_paid, rma_amount, shipped_via, tracking_to_customer, notes } = req.body;
+            cc_charges, customer_paid, rma_amount, shipped_via, tracking_to_customer, notes,
+            reporting_period } = req.body;
+    // New CRM orders are auto-tagged to the current OPEN month (so they appear in month/quarter
+    // dashboards). An explicit reporting_period in the body still wins if provided.
+    const period = reporting_period || getOpenPeriod(db);
     const result = db.prepare(`
       INSERT INTO op_orders (order_number,order_date,customer_id,email,lead_source,rep,ppc_order_rep,buyer,
         payment_status,order_status,net,due_date,tax_charged,shipping_charged,cc_charges,customer_paid,
-        rma_amount,shipped_via,tracking_to_customer,notes)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        rma_amount,shipped_via,tracking_to_customer,notes,reporting_period)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     `).run(order_number, order_date||null, customer_id||null, email||null,
            lead_source||null, rep||null, ppc_order_rep||null, buyer||null,
            payment_status||null, order_status||'Order placed', net||0, due_date||null,
            tax_charged||0, shipping_charged||0, cc_charges||0, customer_paid||0,
-           rma_amount||0, shipped_via||null, tracking_to_customer||null, notes||null);
+           rma_amount||0, shipped_via||null, tracking_to_customer||null, notes||null, period||null);
     const order = db.prepare(`${ORDER_TOTALS_SQL} WHERE o.id = ? GROUP BY o.id`).get(result.lastInsertRowid);
     res.json(order);
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -515,6 +537,131 @@ router.delete('/quarters/close/:period', requireManager, (req, res) => {
     const db = getDB();
     db.prepare(`DELETE FROM op_quarter_closings WHERE period = ?`).run(req.params.period);
     res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Open month (boundary) ──────────────────────────────────────────────────────
+
+// Current open month — the period new CRM orders are auto-tagged to.
+router.get('/open-period', (req, res) => {
+  try { res.json({ open_period: getOpenPeriod(getDB()) }); }
+  catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Close the current open month and auto-advance to the next calendar month.
+router.post('/months/close', requireManager, (req, res) => {
+  try {
+    const db = getDB();
+    const open = getOpenPeriod(db);
+    if (!open) return res.status(400).json({ error: 'No open period configured' });
+    const next = nextPeriod(open);
+    db.transaction(() => {
+      db.prepare(`INSERT OR REPLACE INTO op_quarter_closings (period, closed_at, closed_by) VALUES (?, CURRENT_TIMESTAMP, ?)`)
+        .run(open, req.user?.id || null);
+      db.prepare(`UPDATE op_settings SET value=? WHERE key='open_period'`).run(next);
+    })();
+    res.json({ ok: true, closed: open, open_period: next });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Reopen the most-recently-closed month: roll the open period back to it and clear its closed flag.
+router.post('/months/reopen', requireManager, (req, res) => {
+  try {
+    const db = getDB();
+    let target = req.body?.period;
+    if (!target) target = db.prepare(`SELECT period FROM op_quarter_closings ORDER BY closed_at DESC LIMIT 1`).get()?.period;
+    if (!target) return res.status(400).json({ error: 'No closed month to reopen' });
+    db.transaction(() => {
+      db.prepare(`DELETE FROM op_quarter_closings WHERE period=?`).run(target);
+      db.prepare(`UPDATE op_settings SET value=? WHERE key='open_period'`).run(target);
+    })();
+    res.json({ ok: true, open_period: target });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Move a WHOLE order to the next month (relative to its current period).
+router.post('/orders/:id/move-next', requireManager, (req, res) => {
+  try {
+    const db = getDB();
+    const o = db.prepare(`SELECT id, reporting_period FROM op_orders WHERE id=?`).get(req.params.id);
+    if (!o) return res.status(404).json({ error: 'Order not found' });
+    const cur = o.reporting_period || getOpenPeriod(db);
+    const to = nextPeriod(cur);
+    db.prepare(`UPDATE op_orders SET reporting_period=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(to, o.id);
+    const order = db.prepare(`${ORDER_TOTALS_SQL} WHERE o.id=? GROUP BY o.id`).get(o.id);
+    res.json({ ok: true, from: cur, to, order });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Move part of an order to the next month: selected line items (optionally a partial QUANTITY of
+// each) split into a new sibling order (same order_number) in the next period.
+// Body accepts either:
+//   { item_ids: [1,2] }                 → move those whole line items
+//   { items: [{ id, quantity }] }       → move `quantity` units of each (partial split)
+// Per-unit selling/buying carry to both halves; line-total cost fields (cc/tax/shipping/duty/paid)
+// are divided proportionally by quantity so total GP is preserved exactly. Order-level charges
+// (tax_charged/shipping_charged/cc_charges) stay with the original order.
+router.post('/orders/:id/split-next', requireManager, (req, res) => {
+  try {
+    const db = getDB();
+    let moves = [];
+    if (Array.isArray(req.body?.items)) moves = req.body.items.map(x => ({ id: x.id, qty: x.quantity }));
+    else if (Array.isArray(req.body?.item_ids)) moves = req.body.item_ids.map(id => ({ id, qty: null }));
+    if (!moves.length) return res.status(400).json({ error: 'items or item_ids required' });
+    const o = db.prepare(`SELECT * FROM op_orders WHERE id=?`).get(req.params.id);
+    if (!o) return res.status(404).json({ error: 'Order not found' });
+    const cur = o.reporting_period || getOpenPeriod(db);
+    const to = nextPeriod(cur);
+    const round2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
+    let newId, movedCount = 0;
+    db.transaction(() => {
+      const r = db.prepare(`
+        INSERT INTO op_orders (order_number,order_date,customer_id,email,lead_source,rep,ppc_order_rep,buyer,
+          payment_status,order_status,shipped_via,tracking_to_customer,notes,reporting_period)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      `).run(o.order_number, o.order_date, o.customer_id, o.email, o.lead_source, o.rep, o.ppc_order_rep, o.buyer,
+             o.payment_status, o.order_status, o.shipped_via, o.tracking_to_customer,
+             `${o.notes ? o.notes + ' ' : ''}[split from ${cur}]`, to);
+      newId = r.lastInsertRowid;
+      for (const m of moves) {
+        const it = db.prepare(`SELECT * FROM op_order_items WHERE id=? AND order_id=?`).get(m.id, o.id);
+        if (!it) continue;
+        const fullQty = Number(it.quantity) || 0;
+        let moveQty = (m.qty === null || m.qty === undefined) ? fullQty : Math.min(Number(m.qty) || 0, fullQty);
+        if (moveQty <= 0) continue;
+        if (moveQty >= fullQty) {
+          db.prepare(`UPDATE op_order_items SET order_id=? WHERE id=?`).run(newId, it.id);
+        } else {
+          // Split: moved portion's line-totals = round(orig * moveQty/fullQty); original keeps the remainder.
+          const ratio = moveQty / fullQty;
+          const movCC = round2(it.cc_paid * ratio), movTax = round2(it.tax_paid * ratio);
+          const movShip = round2(it.shipping_paid * ratio), movDuty = round2(it.duty_paid * ratio);
+          const movPaid = round2(it.paid_to_supplier * ratio);
+          db.prepare(`
+            INSERT INTO op_order_items (order_id,part_number,description,product,supplier_id,quantity,
+              product_condition,selling,buying,cc_paid,tax_paid,shipping_paid,duty_paid,paid_to_supplier,
+              payment_method,payment_due,tracking_to_warehouse,ta_po_number,serials,ap_status,line_status)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          `).run(newId, it.part_number, it.description, it.product, it.supplier_id, moveQty,
+                 it.product_condition, it.selling, it.buying, movCC, movTax, movShip, movDuty, movPaid,
+                 it.payment_method, it.payment_due, it.tracking_to_warehouse, it.ta_po_number, it.serials,
+                 it.ap_status, it.line_status);
+          db.prepare(`
+            UPDATE op_order_items SET quantity=?, cc_paid=?, tax_paid=?, shipping_paid=?, duty_paid=?,
+              paid_to_supplier=?, updated_at=CURRENT_TIMESTAMP WHERE id=?
+          `).run(fullQty - moveQty, round2(it.cc_paid - movCC), round2(it.tax_paid - movTax),
+                 round2(it.shipping_paid - movShip), round2(it.duty_paid - movDuty),
+                 round2(it.paid_to_supplier - movPaid), it.id);
+        }
+        movedCount += 1;
+      }
+      // If nothing actually moved, drop the empty sibling order we created.
+      if (movedCount === 0) db.prepare(`DELETE FROM op_orders WHERE id=?`).run(newId);
+    })();
+    if (movedCount === 0) return res.status(400).json({ error: 'No valid items/quantities to move' });
+    const new_order = db.prepare(`${ORDER_TOTALS_SQL} WHERE o.id=? GROUP BY o.id`).get(newId);
+    const original = db.prepare(`${ORDER_TOTALS_SQL} WHERE o.id=? GROUP BY o.id`).get(o.id);
+    res.json({ ok: true, from: cur, to, new_order, original });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

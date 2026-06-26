@@ -556,6 +556,35 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
     load(); onUpdated && onUpdated()
   }
 
+  // Move order / line items (or a partial quantity of a line) to the next reporting month
+  const [selectedItems, setSelectedItems] = useState([])
+  const [moveQty, setMoveQty] = useState({})   // item id → units to move
+  const [moving, setMoving] = useState(false)
+  const toggleItemSel = (item) => {
+    const id = item.id
+    if (selectedItems.includes(id)) { setSelectedItems(s => s.filter(x => x !== id)) }
+    else { setSelectedItems(s => [...s, id]); setMoveQty(q => ({ ...q, [id]: q[id] ?? item.quantity })) }
+  }
+  const handleMoveWhole = async () => {
+    if (!confirm('Move this entire order to the next month?')) return
+    setMoving(true)
+    try { await operationsApi.moveOrderNext(order.id); setSelectedItems([]); setMoveQty({}); load(); onUpdated && onUpdated() }
+    catch(e) { alert(e.message) } finally { setMoving(false) }
+  }
+  const handleMovePartial = async () => {
+    if (!selectedItems.length) return
+    const items = selectedItems.map(id => {
+      const it = order.items.find(x => x.id === id)
+      const q = Math.max(1, Math.min(Number(moveQty[id]) || it.quantity, it.quantity))
+      return { id, quantity: q, partial: q < it.quantity }
+    })
+    const anyPartial = items.some(m => m.partial)
+    if (!confirm(`Move ${items.length} line item(s)${anyPartial ? ' (some partial quantities)' : ''} to the next month? They split into a new order (same order #).`)) return
+    setMoving(true)
+    try { await operationsApi.splitOrderNext(order.id, items.map(({ id, quantity }) => ({ id, quantity }))); setSelectedItems([]); setMoveQty({}); load(); onUpdated && onUpdated() }
+    catch(e) { alert(e.message) } finally { setMoving(false) }
+  }
+
   if (!order && loading) return (
     <Modal title="Loading…" onClose={onClose} wide><Loader /></Modal>
   )
@@ -604,8 +633,14 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <StatusBadge status={order.order_status} />
             {order.payment_status && <StatusBadge status={order.payment_status} styleMap={{ [order.payment_status]: { bg: '#dbeafe', color: '#1d4ed8' } }} />}
+            {order.reporting_period && <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f1f5f9', borderRadius: 100, padding: '3px 10px' }}>📅 {order.reporting_period}</span>}
           </div>
-          <button className="btn btn-secondary btn-sm" onClick={() => setEditOrder(true)}><Edit2 size={13} /> Edit Order</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-secondary btn-sm" onClick={handleMoveWhole} disabled={moving} title="Move this whole order to the next month">
+              <ChevronRight size={13} /> Move to next month
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setEditOrder(true)}><Edit2 size={13} /> Edit Order</button>
+          </div>
         </div>
 
         {/* Financial summary */}
@@ -648,21 +683,44 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
         {/* Line items */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <SectionLabel>Line Items ({order.items?.length || 0})</SectionLabel>
-          <button className="btn btn-primary btn-sm" onClick={() => setAddItem(true)}><Plus size={13} /> Add Item</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {selectedItems.length > 0 && (
+              <button className="btn btn-secondary btn-sm" onClick={handleMovePartial} disabled={moving}
+                style={{ background: '#fff7ed', color: '#c2410c', borderColor: '#fed7aa' }}>
+                <ChevronRight size={13} /> Move {selectedItems.length} to next month
+              </button>
+            )}
+            <button className="btn btn-primary btn-sm" onClick={() => setAddItem(true)}><Plus size={13} /> Add Item</button>
+          </div>
         </div>
         {order.items?.length > 0 ? (
           <div style={{ overflowX: 'auto', marginBottom: 24 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 1100 }}>
               <thead>
                 <tr style={{ background: '#f8fafc' }}>
-                  {[...itemCols.map(c => c.h), ''].map(h => (
-                    <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+                  <th style={{ padding: '8px 10px', width: 28 }}></th>
+                  {[...itemCols.map(c => c.h), ''].map((h, hi) => (
+                    <th key={h || `blank-${hi}`} style={{ padding: '8px 10px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {order.items.map(item => (
-                  <tr key={item.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <tr key={item.id} style={{ borderBottom: '1px solid #f1f5f9', background: selectedItems.includes(item.id) ? '#fff7ed' : 'transparent' }}>
+                    <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <input type="checkbox" checked={selectedItems.includes(item.id)} onChange={() => toggleItemSel(item)} title="Select to move to next month" style={{ cursor: 'pointer' }} />
+                        {selectedItems.includes(item.id) && item.quantity > 1 && (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 3 }} title="Units to move to next month">
+                            <input type="number" min={1} max={item.quantity}
+                              value={moveQty[item.id] ?? item.quantity}
+                              onChange={e => setMoveQty(q => ({ ...q, [item.id]: Math.max(1, Math.min(Number(e.target.value) || 1, item.quantity)) }))}
+                              style={{ width: 48, padding: '2px 4px', fontSize: 11, border: '1px solid #fed7aa', borderRadius: 4 }} />
+                            <span style={{ fontSize: 10, color: '#94a3b8' }}>of {item.quantity}</span>
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     {itemCols.map(c => (
                       <td key={c.h} style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>{c.render(item)}</td>
                     ))}
@@ -1316,10 +1374,24 @@ function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
   const [periods, setPeriods] = useState([])
   const [closeConfirm, setCloseConfirm] = useState(null) // 'close' | 'reopen' | null
   const [closeLoading, setCloseLoading] = useState(false)
+  const [openPeriod, setOpenPeriod] = useState(null)     // current OPEN month (new orders land here)
 
   const loadPeriods = () => operationsApi.getReportingPeriods().then(setPeriods).catch(() => {})
+  const loadOpen = () => operationsApi.getOpenPeriod().then(d => setOpenPeriod(d.open_period)).catch(() => {})
 
-  useEffect(() => { loadPeriods() }, [])
+  useEffect(() => { loadPeriods(); loadOpen() }, [])
+
+  // 'Jun-26' → 'Jul-26', 'Dec-26' → 'Jan-27'
+  const PERIOD_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  const nextPeriodLabel = (period) => {
+    if (!period) return ''
+    const [mon, yr] = String(period).split('-')
+    let idx = PERIOD_MONTHS.indexOf(mon)
+    if (idx === -1 || yr === undefined) return ''
+    let year = parseInt(yr, 10); idx += 1
+    if (idx > 11) { idx = 0; year += 1 }
+    return `${PERIOD_MONTHS[idx]}-${String(year).padStart(2, '0')}`
+  }
 
   const load = (from, to, months) => {
     setLoading(true)
@@ -1367,24 +1439,23 @@ function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
     load('', '', [])
   }
 
-  // For close/reopen: work on selected open/closed months
-  const selectedPeriodData = periods.filter(p => selectedMonths.includes(p.reporting_period))
-  const openSelected   = selectedPeriodData.filter(p => !p.closed)
-  const closedSelected = selectedPeriodData.filter(p => p.closed)
-  const allSelectedClosed = selectedMonths.length > 0 && openSelected.length === 0
-
-  const handleCloseMonths = async () => {
+  const handleCloseOpenMonth = async () => {
     setCloseLoading(true)
     try {
-      if (allSelectedClosed) {
-        for (const p of closedSelected) await operationsApi.reopenQuarter(p.reporting_period)
-      } else {
-        for (const p of openSelected) await operationsApi.closeQuarter(p.reporting_period)
-      }
-      await loadPeriods()
+      await operationsApi.closeMonth()
+      await Promise.all([loadOpen(), loadPeriods()])
+      load('', '', selectedMonths)
     } catch(e) {}
-    setCloseLoading(false)
-    setCloseConfirm(null)
+    setCloseLoading(false); setCloseConfirm(null)
+  }
+  const handleReopenLast = async () => {
+    setCloseLoading(true)
+    try {
+      await operationsApi.reopenMonth()
+      await Promise.all([loadOpen(), loadPeriods()])
+      load('', '', selectedMonths)
+    } catch(e) {}
+    setCloseLoading(false); setCloseConfirm(null)
   }
 
   if (loading) return <Loader />
@@ -1470,46 +1541,41 @@ function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
           <button className="btn btn-secondary" onClick={handleClear} style={{ padding: '7px 12px', fontSize: 13 }}>Clear</button>
         )}
 
-        {/* Close / Reopen Month button */}
-        {selectedMonths.length > 0 && (
-          <div style={{ marginLeft: 'auto' }}>
-            {allSelectedClosed ? (
-              <button onClick={() => setCloseConfirm('reopen')} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', fontSize: 12, fontWeight: 700, background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0', borderRadius: 8, cursor: 'pointer' }}>
-                🔒 Closed — Reopen?
-              </button>
-            ) : (
-              <button onClick={() => setCloseConfirm('close')} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', fontSize: 12, fontWeight: 700, background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', borderRadius: 8, cursor: 'pointer' }}>
-                🔐 Close Month{openSelected.length > 1 ? 's' : ''}
+        {/* Open-month boundary control — close the open month, advancing to the next */}
+        {openPeriod && (
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 12, color: '#64748b', whiteSpace: 'nowrap' }}>
+              Open month: <span style={{ fontWeight: 800, color: '#0f172a' }}>{openPeriod}</span>
+            </span>
+            {periods.some(p => p.closed) && (
+              <button onClick={() => setCloseConfirm('reopen-last')} style={{ fontSize: 11, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+                Reopen last
               </button>
             )}
+            <button onClick={() => setCloseConfirm('close-open')} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', fontSize: 12, fontWeight: 700, background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              🔐 Close {openPeriod} → open {nextPeriodLabel(openPeriod)}
+            </button>
           </div>
         )}
       </div>
 
-      {/* Close / Reopen Month confirmation dialog */}
+      {/* Close / Reopen open-month confirmation dialog */}
       {closeConfirm && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: '#fff', borderRadius: 16, padding: 32, maxWidth: 420, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: 32, maxWidth: 440, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
             <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', marginBottom: 12 }}>
-              {closeConfirm === 'reopen' ? 'Reopen Month(s)?' : 'Close Month(s)?'}
+              {closeConfirm === 'reopen-last' ? 'Reopen previous month?' : `Close ${openPeriod}?`}
             </div>
-            <div style={{ fontSize: 14, color: '#64748b', marginBottom: 8, lineHeight: 1.6 }}>
-              {closeConfirm === 'reopen'
-                ? `This will reopen the following months and allow new orders to be added:`
-                : `This will finalize the following months and lock them:`}
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 20 }}>
-              {(closeConfirm === 'reopen' ? closedSelected : openSelected).map(p => (
-                <span key={p.reporting_period} style={{ background: '#f0fffe', border: '1px solid #00D4C8', color: '#0f172a', borderRadius: 6, padding: '3px 10px', fontSize: 13, fontWeight: 600 }}>
-                  {p.reporting_period}
-                </span>
-              ))}
+            <div style={{ fontSize: 14, color: '#64748b', marginBottom: 20, lineHeight: 1.6 }}>
+              {closeConfirm === 'reopen-last'
+                ? 'This reopens the most recently closed month and makes it the open month again — new orders will go back into it.'
+                : <>This finalizes <b>{openPeriod}</b> and opens <b>{nextPeriodLabel(openPeriod)}</b>. New orders will be tagged to <b>{nextPeriodLabel(openPeriod)}</b> from now on. Existing orders stay fully editable.</>}
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={() => setCloseConfirm(null)} disabled={closeLoading}>Cancel</button>
-              <button onClick={handleCloseMonths} disabled={closeLoading}
-                style={{ padding: '8px 20px', fontSize: 13, fontWeight: 700, background: closeConfirm === 'reopen' ? '#00D4C8' : '#dc2626', color: '#fff', border: 'none', borderRadius: 8, cursor: closeLoading ? 'not-allowed' : 'pointer', opacity: closeLoading ? 0.7 : 1 }}>
-                {closeLoading ? 'Saving...' : closeConfirm === 'reopen' ? 'Yes, Reopen' : 'Yes, Close'}
+              <button onClick={closeConfirm === 'reopen-last' ? handleReopenLast : handleCloseOpenMonth} disabled={closeLoading}
+                style={{ padding: '8px 20px', fontSize: 13, fontWeight: 700, background: closeConfirm === 'reopen-last' ? '#00D4C8' : '#dc2626', color: '#fff', border: 'none', borderRadius: 8, cursor: closeLoading ? 'not-allowed' : 'pointer', opacity: closeLoading ? 0.7 : 1 }}>
+                {closeLoading ? 'Saving…' : closeConfirm === 'reopen-last' ? 'Yes, Reopen' : `Yes, Close ${openPeriod}`}
               </button>
             </div>
           </div>
