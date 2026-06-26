@@ -92,11 +92,23 @@ export const operationsApi = {
     return req('GET', `/operations/receivables${q ? '?' + q : ''}`)
   },
 
+  // Payables (AP) — open supplier balances
+  getPayables: (params = {}) => {
+    const q = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([,v]) => v !== undefined && v !== ''))).toString()
+    return req('GET', `/operations/payables${q ? '?' + q : ''}`)
+  },
+
   // Customer payments (AR receipts) — order.customer_paid is the sum of these
   getPayments:    (orderId) => req('GET', `/operations/orders/${orderId}/payments`),
   addPayment:     (orderId, data) => req('POST', `/operations/orders/${orderId}/payments`, data),
   updatePayment:  (id, data) => req('PUT', `/operations/payments/${id}`, data),
   deletePayment:  (id) => req('DELETE', `/operations/payments/${id}`),
+
+  // Supplier payments (AP disbursements) — item.paid_to_supplier is the sum of these
+  getItemPayments:    (itemId) => req('GET', `/operations/order-items/${itemId}/payments`),
+  addItemPayment:     (itemId, data) => req('POST', `/operations/order-items/${itemId}/payments`, data),
+  updateItemPayment:  (id, data) => req('PUT', `/operations/item-payments/${id}`, data),
+  deleteItemPayment:  (id) => req('DELETE', `/operations/item-payments/${id}`),
 
   // Customers
   getCustomers:   (search) => req('GET', `/operations/customers${search ? `?search=${encodeURIComponent(search)}` : ''}`),

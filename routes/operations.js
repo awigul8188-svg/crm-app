@@ -194,18 +194,21 @@ router.post('/orders/:id/items', (req, res) => {
   try {
     const db = getDB();
     const { part_number, description, product, supplier_id, quantity, product_condition,
-            selling, buying, cc_paid, tax_paid, shipping_paid, duty_paid, paid_to_supplier,
-            payment_method, payment_due, tracking_to_warehouse, ta_po_number, serials, line_status } = req.body;
+            selling, buying, cc_paid, tax_paid, shipping_paid, duty_paid,
+            payment_method, payment_due, tracking_to_warehouse, ta_po_number, serials, line_status,
+            supplier_terms } = req.body;
+    // paid_to_supplier is NOT set here — it is derived from the supplier payment log (op_item_payments).
     const result = db.prepare(`
       INSERT INTO op_order_items (order_id,part_number,description,product,supplier_id,quantity,
-        product_condition,selling,buying,cc_paid,tax_paid,shipping_paid,duty_paid,paid_to_supplier,
-        payment_method,payment_due,tracking_to_warehouse,ta_po_number,serials,line_status)
+        product_condition,selling,buying,cc_paid,tax_paid,shipping_paid,duty_paid,
+        payment_method,payment_due,tracking_to_warehouse,ta_po_number,serials,line_status,supplier_terms)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     `).run(req.params.id, part_number||null, description||null, product||null, supplier_id||null,
            quantity||1, product_condition||null, selling||0, buying||0, cc_paid||0,
-           tax_paid||0, shipping_paid||0, duty_paid||0, paid_to_supplier||0,
+           tax_paid||0, shipping_paid||0, duty_paid||0,
            payment_method||null, payment_due||null, tracking_to_warehouse||null,
-           ta_po_number||null, serials||null, line_status === 'pending' ? 'pending' : 'processed');
+           ta_po_number||null, serials||null, line_status === 'pending' ? 'pending' : 'processed',
+           supplier_terms||null);
     const item = db.prepare(`
       SELECT i.*, s.company AS supplier_name,
         (i.selling * i.quantity) AS total_selling,
@@ -221,18 +224,21 @@ router.put('/order-items/:id', (req, res) => {
   try {
     const db = getDB();
     const { part_number, description, product, supplier_id, quantity, product_condition,
-            selling, buying, cc_paid, tax_paid, shipping_paid, duty_paid, paid_to_supplier,
-            payment_method, payment_due, tracking_to_warehouse, ta_po_number, serials, line_status } = req.body;
+            selling, buying, cc_paid, tax_paid, shipping_paid, duty_paid,
+            payment_method, payment_due, tracking_to_warehouse, ta_po_number, serials, line_status,
+            supplier_terms } = req.body;
+    // paid_to_supplier is intentionally NOT updated here — owned by the supplier payment log (syncItemPaid).
     db.prepare(`
       UPDATE op_order_items SET part_number=?,description=?,product=?,supplier_id=?,quantity=?,
         product_condition=?,selling=?,buying=?,cc_paid=?,tax_paid=?,shipping_paid=?,duty_paid=?,
-        paid_to_supplier=?,payment_method=?,payment_due=?,tracking_to_warehouse=?,ta_po_number=?,
-        serials=?,line_status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?
+        payment_method=?,payment_due=?,tracking_to_warehouse=?,ta_po_number=?,
+        serials=?,line_status=?,supplier_terms=?,updated_at=CURRENT_TIMESTAMP WHERE id=?
     `).run(part_number||null, description||null, product||null, supplier_id||null,
            quantity||1, product_condition||null, selling||0, buying||0, cc_paid||0,
-           tax_paid||0, shipping_paid||0, duty_paid||0, paid_to_supplier||0,
+           tax_paid||0, shipping_paid||0, duty_paid||0,
            payment_method||null, payment_due||null, tracking_to_warehouse||null,
-           ta_po_number||null, serials||null, line_status === 'pending' ? 'pending' : 'processed', req.params.id);
+           ta_po_number||null, serials||null, line_status === 'pending' ? 'pending' : 'processed',
+           supplier_terms||null, req.params.id);
     const item = db.prepare(`
       SELECT i.*, s.company AS supplier_name,
         (i.selling * i.quantity) AS total_selling,
@@ -415,6 +421,54 @@ router.delete('/payments/:id', requireManager, (req, res) => {
     const row = db.prepare(`SELECT order_id FROM op_order_payments WHERE id=?`).get(req.params.id);
     db.prepare(`DELETE FROM op_order_payments WHERE id=?`).run(req.params.id);
     if (row) syncOrderPaid(db, row.order_id);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Supplier payments (AP disbursements) ──────────────────────────────────────
+// A line item's paid_to_supplier is kept in sync with the SUM of its payment records.
+function syncItemPaid(db, itemId) {
+  if (!itemId) return;
+  const r = db.prepare(`SELECT COALESCE(SUM(amount),0) AS total FROM op_item_payments WHERE order_item_id=?`).get(itemId);
+  db.prepare(`UPDATE op_order_items SET paid_to_supplier=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(r.total, itemId);
+}
+
+router.get('/order-items/:id/payments', (req, res) => {
+  try {
+    res.json(getDB().prepare(`SELECT * FROM op_item_payments WHERE order_item_id=? ORDER BY payment_date DESC, id DESC`).all(req.params.id));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/order-items/:id/payments', requireManager, (req, res) => {
+  try {
+    const db = getDB();
+    const { amount, payment_date, method, reference, notes } = req.body;
+    const result = db.prepare(`INSERT INTO op_item_payments (order_item_id,amount,payment_date,method,reference,notes) VALUES (?,?,?,?,?,?)`)
+      .run(req.params.id, Number(amount) || 0, payment_date || null, method || null, reference || null, notes || null);
+    syncItemPaid(db, req.params.id);
+    res.json(db.prepare(`SELECT * FROM op_item_payments WHERE id=?`).get(result.lastInsertRowid));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.put('/item-payments/:id', requireManager, (req, res) => {
+  try {
+    const db = getDB();
+    const { amount, payment_date, method, reference, notes } = req.body;
+    const row = db.prepare(`SELECT order_item_id FROM op_item_payments WHERE id=?`).get(req.params.id);
+    if (!row) return res.status(404).json({ error: 'Payment not found' });
+    db.prepare(`UPDATE op_item_payments SET amount=?,payment_date=?,method=?,reference=?,notes=? WHERE id=?`)
+      .run(Number(amount) || 0, payment_date || null, method || null, reference || null, notes || null, req.params.id);
+    syncItemPaid(db, row.order_item_id);
+    res.json(db.prepare(`SELECT * FROM op_item_payments WHERE id=?`).get(req.params.id));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/item-payments/:id', requireManager, (req, res) => {
+  try {
+    const db = getDB();
+    const row = db.prepare(`SELECT order_item_id FROM op_item_payments WHERE id=?`).get(req.params.id);
+    db.prepare(`DELETE FROM op_item_payments WHERE id=?`).run(req.params.id);
+    if (row) syncItemPaid(db, row.order_item_id);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -817,6 +871,61 @@ router.get('/receivables', (req, res) => {
       GROUP BY o.id
       HAVING charged - received > 0.005
       ORDER BY COALESCE(o.due_date, o.order_date) ASC, o.id ASC
+    `).all(...p);
+    res.json(rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/payables', (req, res) => {
+  try {
+    const db = getDB();
+    const { reporting_period } = req.query;
+    const periodConds = ['(o.pending IS NULL OR o.pending = 0)'];
+    const p = [];
+    if (reporting_period) {
+      const periods = reporting_period.split(',').map(s => s.trim()).filter(Boolean);
+      if (periods.length === 1) {
+        periodConds.push('o.reporting_period = ?'); p.push(periods[0]);
+      } else {
+        const ph = periods.map(() => '?').join(',');
+        periodConds.push(`o.reporting_period IN (${ph})`); p.push(...periods);
+      }
+    }
+    const where = periodConds.join(' AND ');
+    const rows = db.prepare(`
+      SELECT
+        i.id AS item_id,
+        i.order_id,
+        o.order_number,
+        o.order_date,
+        o.reporting_period,
+        i.part_number,
+        i.description,
+        i.quantity,
+        i.buying,
+        i.cc_paid,
+        i.tax_paid,
+        i.shipping_paid,
+        i.duty_paid,
+        COALESCE(i.quantity,0) * COALESCE(i.buying,0) + COALESCE(i.cc_paid,0) + COALESCE(i.tax_paid,0)
+          + COALESCE(i.shipping_paid,0) + COALESCE(i.duty_paid,0) AS ext_cost,
+        COALESCE(i.paid_to_supplier,0) AS paid,
+        COALESCE(i.payment_due, NULL) AS payment_due,
+        COALESCE(i.supplier_terms, '') AS supplier_terms,
+        i.ap_status,
+        COALESCE(i.line_status,'processed') AS line_status,
+        s.id AS supplier_id,
+        s.company AS supplier_name
+      FROM op_order_items i
+      JOIN op_orders o ON o.id = i.order_id
+      LEFT JOIN op_suppliers s ON s.id = i.supplier_id
+      WHERE ${where}
+        AND COALESCE(i.line_status,'processed') = 'processed'
+        AND (i.ap_status IS NULL OR i.ap_status != 'na')
+        AND (COALESCE(i.quantity,0) * COALESCE(i.buying,0) + COALESCE(i.cc_paid,0)
+              + COALESCE(i.tax_paid,0) + COALESCE(i.shipping_paid,0) + COALESCE(i.duty_paid,0)
+             - COALESCE(i.paid_to_supplier,0)) > 0.005
+      ORDER BY COALESCE(i.payment_due, o.order_date) ASC, i.id ASC
     `).all(...p);
     res.json(rows);
   } catch(e) { res.status(500).json({ error: e.message }); }

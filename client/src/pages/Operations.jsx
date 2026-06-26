@@ -4,7 +4,7 @@ import Modal from '../components/Modal'
 import ImportModal from '../components/ImportModal'
 import SearchableSelect from '../components/SearchableSelect'
 import MultiSelect from '../components/MultiSelect'
-import { Search, Plus, Edit2, Trash2, Package, Users, Truck, RotateCcw, ChevronRight, X, AlertCircle, List, ClipboardList, Upload, DollarSign } from 'lucide-react'
+import { Search, Plus, Edit2, Trash2, Package, Users, Truck, RotateCcw, ChevronRight, X, AlertCircle, List, ClipboardList, Upload, DollarSign, CreditCard } from 'lucide-react'
 
 const BRAND = '#00D4C8'
 
@@ -340,10 +340,10 @@ function OrderForm({ order, customers: customersProp, onSave, onClose, isPending
 }
 
 // ── Order Item Form ───────────────────────────────────────────────────────────
-function ItemForm({ item, orderId, suppliers: suppliersProp, onSave, onClose }) {
+function ItemForm({ item, orderId, orderDate, suppliers: suppliersProp, onSave, onClose }) {
   const blank = { part_number: '', description: '', product: '', supplier_id: '', quantity: 1,
     product_condition: '', selling: '', buying: '', cc_paid: '', tax_paid: '', shipping_paid: '',
-    duty_paid: '', paid_to_supplier: '', payment_method: '', payment_due: '',
+    duty_paid: '', paid_to_supplier: '', payment_method: '', payment_due: '', supplier_terms: '',
     tracking_to_warehouse: '', ta_po_number: '', serials: '', line_status: 'processed' }
   const [form, setForm] = useState(item ? { ...blank, ...item, supplier_id: item.supplier_id||'', payment_due: item.payment_due?.slice(0,10)||'' } : blank)
   const [saving, setSaving] = useState(false)
@@ -370,6 +370,12 @@ function ItemForm({ item, orderId, suppliers: suppliersProp, onSave, onClose }) 
   }
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  // Supplier terms → payment-due date (= order date + N days). Editable afterward.
+  const onSupplierTerms = (label) => setForm(f => {
+    const days = NET_TERMS.find(t => t.label === label)?.days
+    return { ...f, supplier_terms: label, payment_due: (days !== undefined && orderDate) ? addDays(orderDate.slice(0,10), days) : f.payment_due }
+  })
 
   const handleSave = async () => {
     setSaving(true); setErr('')
@@ -458,7 +464,17 @@ function ItemForm({ item, orderId, suppliers: suppliersProp, onSave, onClose }) 
             {PAYMENT_METHODS.map(m => <option key={m}>{m}</option>)}
           </select>
         </FF>
-        <FF label="Payment Due" third><input className="input" type="date" value={form.payment_due} onChange={e => set('payment_due', e.target.value)} /></FF>
+        <FF label="Supplier Terms" third>
+          <select className="input" value={form.supplier_terms} onChange={e => onSupplierTerms(e.target.value)}>
+            <option value="">—</option>
+            {form.supplier_terms && !NET_TERMS.some(t => t.label === form.supplier_terms) && <option value={form.supplier_terms}>{form.supplier_terms} (custom)</option>}
+            {NET_TERMS.map(t => <option key={t.label}>{t.label}</option>)}
+          </select>
+        </FF>
+        <FF label="Payment Due" third>
+          <input className="input" type="date" value={form.payment_due} onChange={e => set('payment_due', e.target.value)} />
+          {NET_TERMS.some(t => t.label === form.supplier_terms) && <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 3 }}>Auto-set from terms · editable</div>}
+        </FF>
 
         <div style={{ flex: '1 1 100%', borderTop: '1px solid #f1f5f9', paddingTop: 12 }} />
 
@@ -645,6 +661,96 @@ function PaymentForm({ orderId, payment, onSaved, onClose }) {
   )
 }
 
+// ── Supplier payments (AP) manager for one line item ─────────────────────────
+function SupplierPaymentsModal({ item, onClose, onChanged }) {
+  const [payments, setPayments] = useState([])
+  const [loading, setLoading] = useState(true)
+  const blank = { amount: '', payment_date: new Date().toISOString().slice(0,10), method: '', reference: '', notes: '' }
+  const [form, setForm] = useState(blank)
+  const [editId, setEditId] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  const extCost = item.ext_total_buying != null
+    ? Number(item.ext_total_buying) || 0
+    : (Number(item.buying)||0)*(Number(item.quantity)||0) + (Number(item.cc_paid)||0)+(Number(item.tax_paid)||0)+(Number(item.shipping_paid)||0)+(Number(item.duty_paid)||0)
+
+  const load = () => { setLoading(true); operationsApi.getItemPayments(item.id).then(p => setPayments(p || [])).catch(() => {}).finally(() => setLoading(false)) }
+  useEffect(() => { load() }, [])
+
+  const paid = payments.reduce((a, p) => a + (Number(p.amount) || 0), 0)
+  const balance = extCost - paid
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const save = async () => {
+    if (!(Number(form.amount) > 0)) { setErr('Enter an amount greater than 0'); return }
+    setSaving(true); setErr('')
+    try {
+      if (editId) await operationsApi.updateItemPayment(editId, form)
+      else await operationsApi.addItemPayment(item.id, form)
+      setForm(blank); setEditId(null); load(); onChanged && onChanged()
+    } catch(e) { setErr(e.message) } finally { setSaving(false) }
+  }
+  const edit = (p) => { setEditId(p.id); setForm({ amount: p.amount, payment_date: p.payment_date?.slice(0,10) || '', method: p.method || '', reference: p.reference || '', notes: p.notes || '' }) }
+  const del = async (id) => { if (!confirm('Delete this payment?')) return; await operationsApi.deleteItemPayment(id); if (editId === id) { setEditId(null); setForm(blank) } load(); onChanged && onChanged() }
+
+  const st = balance <= 0.005 && extCost > 0 ? { label: 'Paid', bg: '#dcfce7', color: '#15803d' }
+    : paid > 0.005 ? { label: 'Partial', bg: '#fef3c7', color: '#b45309' }
+    : { label: 'Unpaid', bg: '#f1f5f9', color: '#64748b' }
+
+  return (
+    <Modal title={`Supplier Payments — ${item.part_number || 'line item'}`} onClose={onClose}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+        <FinCard label="Cost" value={fmt(extCost)} color="#64748b" />
+        <FinCard label="Paid" value={fmt(paid)} color="#10b981" />
+        <FinCard label="Balance" value={fmt(balance)} color={balance > 0.005 ? '#ef4444' : '#10b981'} />
+      </div>
+      <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', padding: '2px 9px', borderRadius: 100, background: st.bg, color: st.color }}>{st.label}</span>
+        {item.supplier_name && <span style={{ fontSize: 12, color: '#64748b' }}>{item.supplier_name}</span>}
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end', background: '#f8fafc', borderRadius: 12, padding: 12, marginBottom: 12 }}>
+        <FF label="Amount ($)" third><input className="input" type="number" value={form.amount} onChange={e => set('amount', e.target.value)} placeholder="0.00" /></FF>
+        <FF label="Date Paid" third><input className="input" type="date" value={form.payment_date} onChange={e => set('payment_date', e.target.value)} /></FF>
+        <FF label="Method" third>
+          <select className="input" value={form.method} onChange={e => set('method', e.target.value)}>
+            <option value="">—</option>{RECEIVE_METHODS.map(m => <option key={m}>{m}</option>)}
+          </select>
+        </FF>
+        <FF label="Reference"><input className="input" value={form.reference} onChange={e => set('reference', e.target.value)} placeholder="txn / wire ref" /></FF>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-primary btn-sm" onClick={save} disabled={saving}>{saving ? '…' : editId ? 'Update' : 'Add Payment'}</button>
+          {editId && <button className="btn btn-secondary btn-sm" onClick={() => { setEditId(null); setForm(blank) }}>Cancel</button>}
+        </div>
+      </div>
+      {err && <div style={{ background: '#fee2e2', color: '#dc2626', borderRadius: 10, padding: '8px 12px', fontSize: 13, marginBottom: 10 }}>{err}</div>}
+
+      {loading ? <Loader /> : payments.length === 0 ? (
+        <div style={{ fontSize: 13, color: '#94a3b8', padding: '6px 0' }}>No supplier payments recorded yet.</div>
+      ) : (
+        <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+          <thead><tr style={{ textAlign: 'left', color: '#94a3b8', fontSize: 10, textTransform: 'uppercase' }}>
+            <th style={{ padding: '6px 8px' }}>Date</th><th style={{ padding: '6px 8px' }}>Amount</th><th style={{ padding: '6px 8px' }}>Method</th><th style={{ padding: '6px 8px' }}>Ref</th><th /></tr></thead>
+          <tbody>
+            {payments.map(p => (
+              <tr key={p.id} style={{ borderTop: '1px solid #f1f5f9' }}>
+                <td style={{ padding: '7px 8px' }}>{fmtDate(p.payment_date)}</td>
+                <td style={{ padding: '7px 8px', fontWeight: 700, color: '#10b981' }}>{fmt(p.amount)}</td>
+                <td style={{ padding: '7px 8px' }}>{p.method || '—'}</td>
+                <td style={{ padding: '7px 8px', color: '#64748b' }}>{p.reference || '—'}</td>
+                <td style={{ padding: '7px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <button onClick={() => edit(p)} title="Edit" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4 }}><Edit2 size={13} /></button>
+                  <button onClick={() => del(p.id)} title="Delete" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: 4 }}><Trash2 size={13} /></button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Modal>
+  )
+}
+
 function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
   const [order, setOrder] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -655,6 +761,7 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
   const [editRMA, setEditRMA] = useState(null)
   const [payments, setPayments] = useState([])
   const [payForm, setPayForm] = useState(null)   // false-y = closed; true = new; object = edit
+  const [supPayItem, setSupPayItem] = useState(null)  // line item whose AP payments modal is open
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -908,6 +1015,7 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
                     ))}
                     <td style={{ padding: '8px 10px' }}>
                       <div style={{ display: 'flex', gap: 4 }}>
+                        <button className="btn btn-ghost btn-sm" style={{ padding: '2px 6px', color: '#10b981' }} title="Supplier payments" onClick={() => setSupPayItem(item)}><DollarSign size={11} /></button>
                         <button className="btn btn-ghost btn-sm" style={{ padding: '2px 6px' }} onClick={() => setEditItem(item)}><Edit2 size={11} /></button>
                         <button className="btn btn-ghost btn-sm" style={{ padding: '2px 6px', color: '#ef4444' }} onClick={() => handleDeleteItem(item.id)}><Trash2 size={11} /></button>
                       </div>
@@ -987,11 +1095,11 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
           onSaved={() => { setPayForm(null); load(); onUpdated && onUpdated() }} />
       )}
       {addItem && (
-        <ItemForm orderId={order.id} suppliers={suppliers} onClose={() => setAddItem(false)}
+        <ItemForm orderId={order.id} orderDate={order.order_date} suppliers={suppliers} onClose={() => setAddItem(false)}
           onSave={() => { setAddItem(false); load(); onUpdated && onUpdated() }} />
       )}
       {editItem && (
-        <ItemForm item={editItem} orderId={order.id} suppliers={suppliers} onClose={() => setEditItem(null)}
+        <ItemForm item={editItem} orderId={order.id} orderDate={order.order_date} suppliers={suppliers} onClose={() => setEditItem(null)}
           onSave={() => { setEditItem(null); load(); onUpdated && onUpdated() }} />
       )}
       {addRMA && (
@@ -1011,6 +1119,13 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
           customers={customers}
           onClose={() => setEditRMA(null)}
           onSave={() => { setEditRMA(null); load(); onUpdated && onUpdated() }}
+        />
+      )}
+      {supPayItem && (
+        <SupplierPaymentsModal
+          item={supPayItem}
+          onClose={() => setSupPayItem(null)}
+          onChanged={() => { load(); onUpdated && onUpdated() }}
         />
       )}
     </>
@@ -1381,7 +1496,7 @@ function OrderItemsTab({ onOpenOrder }) {
       )}
 
       {editItem && (
-        <ItemForm item={editItem} orderId={editItem.order_id} suppliers={suppliers}
+        <ItemForm item={editItem} orderId={editItem.order_id} orderDate={editItem.order_date} suppliers={suppliers}
           onClose={() => setEditItem(null)}
           onSave={() => { setEditItem(null); load(search) }} />
       )}
@@ -2068,6 +2183,158 @@ function PendingOrdersPanel({ onClose, onOpenOrder }) {
   )
 }
 
+// ── Payables (AP) tab — open supplier balances with aging ────────────────────
+function PayablesTab() {
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [supPayItem, setSupPayItem] = useState(null)
+  const [expanded, setExpanded] = useState({})  // supplier_id → bool
+
+  const load = () => {
+    setLoading(true)
+    operationsApi.getPayables().then(r => setRows(r || [])).catch(() => {}).finally(() => setLoading(false))
+  }
+  useEffect(() => { load() }, [])
+
+  const today = new Date().toISOString().slice(0, 10)
+  const overdueByDays = (due) => { if (!due) return 0; const d = Math.floor((new Date(today) - new Date(due)) / 86400000); return d > 0 ? d : 0 }
+
+  const enriched = rows.map(r => {
+    const balance = (Number(r.ext_cost) || 0) - (Number(r.paid) || 0)
+    const od = overdueByDays(r.payment_due)
+    const bucket = od === 0 ? 'current' : od <= 30 ? '1-30' : od <= 60 ? '31-60' : '60+'
+    return { ...r, balance, od, bucket }
+  })
+
+  // Group by supplier
+  const supplierMap = {}
+  enriched.forEach(r => {
+    const key = r.supplier_id || '__none__'
+    if (!supplierMap[key]) supplierMap[key] = { supplier_id: r.supplier_id, supplier_name: r.supplier_name || 'Unknown Supplier', items: [], totalCost: 0, totalPaid: 0, totalBal: 0 }
+    supplierMap[key].items.push(r)
+    supplierMap[key].totalCost += Number(r.ext_cost) || 0
+    supplierMap[key].totalPaid += Number(r.paid) || 0
+    supplierMap[key].totalBal  += r.balance
+  })
+  const suppliers = Object.values(supplierMap).sort((a, b) => b.totalBal - a.totalBal)
+
+  const totalOut = enriched.reduce((a, r) => a + r.balance, 0)
+  const bSum = (b) => enriched.filter(r => r.bucket === b).reduce((a, r) => a + r.balance, 0)
+  const bCnt = (b) => enriched.filter(r => r.bucket === b).length
+  const overdue = enriched.filter(r => r.od > 0)
+  const overdueAmt = overdue.reduce((a, r) => a + r.balance, 0)
+  const oldest = overdue.reduce((m, r) => Math.max(m, r.od), 0)
+
+  if (loading) return <Loader />
+
+  const th = { padding: '10px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }
+  const td = { padding: '9px 12px', fontSize: 13, whiteSpace: 'nowrap' }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {supPayItem && (
+        <SupplierPaymentsModal item={supPayItem} onClose={() => setSupPayItem(null)} onChanged={() => { setSupPayItem(null); load() }} />
+      )}
+
+      {/* Overdue alert banner */}
+      {overdue.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, padding: '12px 16px' }}>
+          <AlertCircle size={20} color="#dc2626" />
+          <div style={{ fontSize: 13, color: '#7f1d1d' }}>
+            <strong style={{ fontWeight: 800 }}>{overdue.length} line item{overdue.length !== 1 ? 's' : ''} overdue to pay</strong> — <strong style={{ fontWeight: 800 }}>{fmt(overdueAmt)}</strong> outstanding{oldest > 0 ? `, oldest ${oldest} days past due` : ''}.
+          </div>
+        </div>
+      )}
+
+      {/* Aging summary */}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <DashboardCard label="Total Payable" value={fmt(totalOut)} color="#0f172a" sub={`${enriched.length} open line items`} />
+        <DashboardCard label="Current (not due)" value={fmt(bSum('current'))} sub={`${bCnt('current')} items`} color="#10b981" />
+        <DashboardCard label="1–30 days over" value={fmt(bSum('1-30'))} sub={`${bCnt('1-30')} items`} color="#f59e0b" />
+        <DashboardCard label="31–60 days over" value={fmt(bSum('31-60'))} sub={`${bCnt('31-60')} items`} color="#ea580c" />
+        <DashboardCard label="60+ days over" value={fmt(bSum('60+'))} sub={`${bCnt('60+')} items`} color="#dc2626" />
+      </div>
+
+      {suppliers.length === 0 ? (
+        <EmptyState icon={DollarSign} label="open payables" />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {suppliers.map(sup => {
+            const key = sup.supplier_id || '__none__'
+            const isOpen = !!expanded[key]
+            const supOverdue = sup.items.filter(r => r.od > 0)
+            return (
+              <div key={key} style={{ background: '#fff', border: '1px solid #f1f5f9', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+                {/* Supplier header row */}
+                <div onClick={() => setExpanded(e => ({ ...e, [key]: !e[key] }))}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', cursor: 'pointer', background: isOpen ? '#f8fafc' : '#fff' }}
+                  onMouseEnter={e => { if (!isOpen) e.currentTarget.style.background = '#f8fafc' }}
+                  onMouseLeave={e => { if (!isOpen) e.currentTarget.style.background = '#fff' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <ChevronRight size={14} style={{ transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s', color: '#94a3b8' }} />
+                    <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>{sup.supplier_name}</span>
+                    <span style={{ fontSize: 11, color: '#94a3b8' }}>{sup.items.length} item{sup.items.length !== 1 ? 's' : ''}</span>
+                    {supOverdue.length > 0 && <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', padding: '2px 8px', borderRadius: 100, background: '#fee2e2', color: '#b91c1c' }}>{supOverdue.length} overdue</span>}
+                  </div>
+                  <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 10, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Owed</div>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>{fmt(sup.totalCost)}</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 10, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Paid</div>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: '#10b981' }}>{fmt(sup.totalPaid)}</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 10, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Balance</div>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: '#f59e0b' }}>{fmt(sup.totalBal)}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Drill-in line items */}
+                {isOpen && (
+                  <div style={{ borderTop: '1px solid #f1f5f9', overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead><tr style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
+                        <th style={th}>Order</th><th style={th}>Part #</th><th style={th}>Description</th>
+                        <th style={th}>Month</th><th style={{ ...th, textAlign: 'right' }}>Ext. Cost</th>
+                        <th style={{ ...th, textAlign: 'right' }}>Paid</th><th style={{ ...th, textAlign: 'right' }}>Balance</th>
+                        <th style={th}>Pay Due</th><th style={th}>Overdue</th><th style={th}></th>
+                      </tr></thead>
+                      <tbody>
+                        {sup.items.map(r => (
+                          <tr key={r.item_id} style={{ borderBottom: '1px solid #f8fafc' }}>
+                            <td style={{ ...td, fontWeight: 600, color: '#0f172a' }}>{r.order_number}</td>
+                            <td style={{ ...td, fontWeight: 600 }}>{r.part_number || '—'}</td>
+                            <td style={{ ...td, color: '#475569', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.description || '—'}</td>
+                            <td style={{ ...td, color: '#64748b' }}>{r.reporting_period || '—'}</td>
+                            <td style={{ ...td, textAlign: 'right' }}>{fmt(r.ext_cost)}</td>
+                            <td style={{ ...td, textAlign: 'right', color: '#10b981' }}>{fmt(r.paid)}</td>
+                            <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: '#f59e0b' }}>{fmt(r.balance)}</td>
+                            <td style={{ ...td, color: '#64748b' }}>{fmtDate(r.payment_due)}</td>
+                            <td style={{ ...td, color: r.od > 60 ? '#dc2626' : r.od > 0 ? '#ea580c' : '#94a3b8', fontWeight: r.od > 0 ? 700 : 400 }}>{r.od > 0 ? `${r.od}d` : '—'}</td>
+                            <td style={{ ...td }}>
+                              <button className="btn btn-secondary btn-sm" style={{ fontSize: 11, padding: '3px 8px' }}
+                                onClick={() => setSupPayItem({ id: r.item_id, order_number: r.order_number, part_number: r.part_number, description: r.description, ext_total_buying: r.ext_cost, paid_to_supplier: r.paid, payment_due: r.payment_due, supplier_terms: r.supplier_terms })}>
+                                <DollarSign size={11} /> Pay
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Receivables (AR) tab — open customer balances with aging ──────────────────
 function ReceivablesTab({ onOpenOrder }) {
   const [rows, setRows] = useState([])
@@ -2171,17 +2438,20 @@ export default function Operations() {
   const [dashNavLeadSource, setDashNavLeadSource] = useState(undefined)
   const [dashNavPayment, setDashNavPayment] = useState(undefined)
   const [overdueCount, setOverdueCount] = useState(0)
+  const [overduePayCount, setOverduePayCount] = useState(0)
 
   useEffect(() => {
     operationsApi.getStats().then(s => { setStats(s); setPendingCount(s.pending_orders || 0) }).catch(() => {})
   }, [])
 
-  // Overdue receivables count for the Receivables tab badge. Refreshed when navigating tabs
-  // (so recording a payment elsewhere clears it on return).
+  // Overdue AR/AP counts for tab badges. Refreshed when navigating tabs.
   useEffect(() => {
     const today = new Date().toISOString().slice(0, 10)
     operationsApi.getReceivables()
       .then(rows => setOverdueCount((rows || []).filter(r => r.due_date && r.due_date < today && (Number(r.charged) - Number(r.received)) > 0.005).length))
+      .catch(() => {})
+    operationsApi.getPayables()
+      .then(rows => setOverduePayCount((rows || []).filter(r => r.payment_due && r.payment_due < today).length))
       .catch(() => {})
   }, [tab])
 
@@ -2209,6 +2479,7 @@ export default function Operations() {
     { key: 'suppliers',   label: 'Suppliers',   icon: Truck },
     { key: 'rma',         label: 'RMA',         icon: RotateCcw },
     { key: 'receivables', label: 'Receivables', icon: DollarSign },
+    { key: 'payables',    label: 'Payables',    icon: CreditCard },
     { key: 'dashboard',   label: 'Dashboard',   icon: ClipboardList },
   ]
 
@@ -2285,6 +2556,9 @@ export default function Operations() {
             {key === 'receivables' && overdueCount > 0 && (
               <span style={{ minWidth: 16, height: 16, padding: '0 5px', borderRadius: 100, background: '#dc2626', color: '#fff', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{overdueCount}</span>
             )}
+            {key === 'payables' && overduePayCount > 0 && (
+              <span style={{ minWidth: 16, height: 16, padding: '0 5px', borderRadius: 100, background: '#dc2626', color: '#fff', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{overduePayCount}</span>
+            )}
           </button>
         ))}
       </div>
@@ -2341,6 +2615,7 @@ export default function Operations() {
         )}
         {tab === 'rma' && <RMATab />}
         {tab === 'receivables' && <ReceivablesTab onOpenOrder={handleOpenOrderFromItems} />}
+        {tab === 'payables' && <PayablesTab />}
       </div>
 
       {showImport && (

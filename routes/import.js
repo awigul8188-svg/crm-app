@@ -830,6 +830,31 @@ function importWorkbook(wb, db, options = {}) {
       })();
     } catch(e) { stats.errors.push('Due-date backfill: ' + e.message); }
 
+    // ── Backfill supplier (AP) payments from the sheet ───────────────────────
+    // The "Paid to vendor" column says whether each line was paid. For lines classified 'paid',
+    // create a supplier payment record for the full line cost so paid_to_supplier = full, balance = 0.
+    // Idempotent; partial/pending/na lines are left for manual entry.
+    try {
+      const paidItems = db.prepare(`
+        SELECT i.id, o.order_date,
+          (i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid) AS ext_cost
+        FROM op_order_items i JOIN op_orders o ON o.id = i.order_id
+        WHERE i.ap_status = 'paid' AND COALESCE(i.paid_to_supplier,0) = 0
+          AND NOT EXISTS (SELECT 1 FROM op_item_payments p WHERE p.order_item_id = i.id)
+      `).all();
+      const insP = db.prepare(`INSERT INTO op_item_payments (order_item_id,amount,payment_date,method,reference,notes) VALUES (?,?,?,?,?,?)`);
+      const updP = db.prepare(`UPDATE op_order_items SET paid_to_supplier=? WHERE id=?`);
+      db.transaction(() => {
+        for (const it of paidItems) {
+          const amt = Math.round((Number(it.ext_cost) || 0) * 100) / 100;
+          if (amt <= 0) continue;
+          insP.run(it.id, amt, it.order_date || null, '', null, 'Imported from sheet');
+          updP.run(amt, it.id);
+          stats.apPayments = (stats.apPayments || 0) + 1;
+        }
+      })();
+    } catch(e) { stats.errors.push('AP backfill: ' + e.message); }
+
     return stats;
 }
 

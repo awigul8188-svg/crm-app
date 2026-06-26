@@ -320,6 +320,25 @@ function runOperationsMigrations() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
   } catch(e) {}
+
+  // v10 — supplier (AP) payment terms on a line item. Used to auto-fill payment_due
+  // (= order date + N days) so AP aging / overdue-to-pay works, mirroring the AR side.
+  try { db.exec(`ALTER TABLE op_order_items ADD COLUMN supplier_terms TEXT`); } catch(e) {}
+
+  // v11 — supplier payment records (AP disbursements). A line item's paid_to_supplier is kept in
+  // sync as the SUM of these rows, so "Paid" / balance / status derive from the payment log.
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS op_item_payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_item_id INTEGER NOT NULL REFERENCES op_order_items(id) ON DELETE CASCADE,
+      amount REAL DEFAULT 0,
+      payment_date DATE,
+      method TEXT,
+      reference TEXT,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+  } catch(e) {}
 }
 
 module.exports = { initializeDB, getDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations };
