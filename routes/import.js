@@ -356,6 +356,24 @@ router.delete('/operations/clear', (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Clear all CRM data (leads/repeat/orders + everything tied to them) before a fresh import.
+// User accounts and Operations data are preserved. Mirrors the Operations clear step.
+router.delete('/clear', (req, res) => {
+  try {
+    const db = getDB();
+    // Child tables first (FK order). inquiry_views has no FK but is per-inquiry, so clear it too.
+    const tables = [
+      'part_comments', 'purchaser_followups', 'purchase_quotes', 'purchase_assignments',
+      'inquiry_views', 'followups', 'requirements', 'inquiries', 'activity_log',
+      'notifications', 'customers',
+    ];
+    db.transaction(() => {
+      tables.forEach(t => { try { db.exec(`DELETE FROM ${t}`); } catch (e) { /* table may not exist yet */ } });
+    })();
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Month-based reporting period ranges (1-based Excel row numbers)
 const MONTH_RANGES = [
   { period: 'Jan-26', start: 977,  end: 1063 },

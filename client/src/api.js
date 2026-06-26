@@ -188,6 +188,12 @@ export const importApi = {
     headers: { ...(localStorage.getItem('crm_token') ? { Authorization: `Bearer ${localStorage.getItem('crm_token')}` } : {}) },
   }).then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Clear failed'); return d; }),
 
+  // Clear all CRM data (leads/repeat/orders + related); user accounts preserved.
+  clearCrm: () => fetch('/api/import/clear', {
+    method: 'DELETE',
+    headers: { ...(localStorage.getItem('crm_token') ? { Authorization: `Bearer ${localStorage.getItem('crm_token')}` } : {}) },
+  }).then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Clear failed'); return d; }),
+
   importOperations: (file) => {
     const form = new FormData();
     form.append('file', file);
