@@ -1,7 +1,7 @@
 ﻿import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 
-export default function Modal({ title, onClose, children, wide }) {
+export default function Modal({ title, onClose, children, wide, zIndex = 99999 }) {
   useEffect(() => {
     const handler = (e) => { if (e.key === 'Escape') onClose() }
     document.addEventListener('keydown', handler)
@@ -15,7 +15,7 @@ export default function Modal({ title, onClose, children, wide }) {
   return createPortal(
     <div
       style={{
-        position: 'fixed', inset: 0, zIndex: 99999,
+        position: 'fixed', inset: 0, zIndex,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: '16px',
         background: 'rgba(10,10,10,0.22)',

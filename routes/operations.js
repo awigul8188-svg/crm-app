@@ -581,11 +581,22 @@ router.get('/items', (req, res) => {
 
 // ── CRM → Operations: silent draft order creation ────────────────────────────
 
+// Create a PENDING Operations order from a Closed-Won CRM inquiry. The rep fills the
+// sales side (customer, line items, selling). The buying/AP side is left for the buyer/ops.
+// Deduped by crm_inquiry_id so re-triggering Closed Won never creates a second order.
 router.post('/from-crm', authenticate, (req, res) => {
   try {
     const db = getDB();
     const { customer_name, customer_email, customer_phone, lead_source, rep,
-            crm_inquiry_id, requirements = [] } = req.body;
+            crm_inquiry_id, buyer, payment_status, net, due_date,
+            tax_charged, shipping_charged, cc_charges, notes,
+            items, requirements = [] } = req.body;
+
+    // Dedupe: an order already exists for this inquiry → return it instead of duplicating.
+    if (crm_inquiry_id) {
+      const existing = db.prepare(`SELECT id, order_number FROM op_orders WHERE crm_inquiry_id = ?`).get(crm_inquiry_id);
+      if (existing) return res.json({ ok: true, existing: true, order_id: existing.id, order_number: existing.order_number });
+    }
 
     // Find or create op_customer
     let customer = db.prepare(`SELECT id FROM op_customers WHERE LOWER(name)=LOWER(?) OR (email=? AND email != '')`).get(customer_name||'', customer_email||'');
@@ -594,23 +605,27 @@ router.post('/from-crm', authenticate, (req, res) => {
       customer = { id: r.lastInsertRowid };
     }
 
-    // Create draft order
+    const num = (v) => { const n = parseFloat(String(v ?? '').replace(/[$,\s]/g,'')); return isNaN(n) ? 0 : n; };
     const orderNum = `PENDING-${Date.now().toString().slice(-6)}`;
     const result = db.prepare(`
-      INSERT INTO op_orders (order_number, order_date, customer_id, email, lead_source, rep, order_status, pending, crm_inquiry_id)
-      VALUES (?, date('now'), ?, ?, ?, ?, 'Order placed', 1, ?)
-    `).run(orderNum, customer.id, customer_email||'', lead_source||'', rep||'', crm_inquiry_id||null);
-
+      INSERT INTO op_orders (order_number, order_date, customer_id, email, lead_source, rep, buyer,
+        payment_status, net, due_date, tax_charged, shipping_charged, cc_charges, notes, order_status, pending, crm_inquiry_id)
+      VALUES (?, date('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Order placed', 1, ?)
+    `).run(orderNum, customer.id, customer_email||'', lead_source||'', rep||'', buyer||null,
+           payment_status||null, num(net), due_date||null, num(tax_charged), num(shipping_charged), num(cc_charges), notes||null,
+           crm_inquiry_id||null);
     const orderId = result.lastInsertRowid;
 
-    // Create line items from requirements (no pricing)
-    const validReqs = (requirements||[]).filter(r => r.part_number?.trim());
-    for (const req of validReqs) {
-      db.prepare(`INSERT INTO op_order_items (order_id, part_number, quantity, selling, buying) VALUES (?,?,?,0,0)`)
-        .run(orderId, req.part_number, req.quantity||1);
+    // Prefer the rep-entered `items` (with selling); fall back to raw `requirements` (part/qty only).
+    const lines = (items && items.length)
+      ? items.filter(i => i.part_number?.trim() || num(i.selling) > 0)
+      : (requirements||[]).filter(r => r.part_number?.trim()).map(r => ({ part_number: r.part_number, quantity: r.quantity, selling: 0 }));
+    const insItem = db.prepare(`INSERT INTO op_order_items (order_id, part_number, description, quantity, product_condition, selling, buying) VALUES (?,?,?,?,?,?,0)`);
+    for (const it of lines) {
+      insItem.run(orderId, it.part_number||null, it.description||null, num(it.quantity)||1, it.product_condition||null, num(it.selling));
     }
 
-    res.json({ ok: true, order_id: orderId, order_number: orderNum });
+    res.json({ ok: true, order_id: orderId, order_number: orderNum, item_count: lines.length });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

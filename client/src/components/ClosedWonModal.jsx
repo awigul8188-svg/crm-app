@@ -1,145 +1,72 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Modal from './Modal'
 import { operationsApi } from '../api'
-import { CheckCircle, Package } from 'lucide-react'
+import { CheckCircle, Package, Plus, Trash2 } from 'lucide-react'
 
 const BRAND = '#00D4C8'
-const BUYERS = ['Danny', 'Samit', 'Jason', 'Jorge', 'Maqsood']
-const REPS = ['Ethan', 'Eddie', 'Ryan', 'Justin', 'Hector', 'Aman', 'Online']
-const ORDER_STATUSES = ['Order placed', 'In Process', 'Shipped to US', 'Received in US', 'Shipped to customer', 'Delivered', 'Refunded']
 const PAYMENT_STATUSES = ['CC Charged', 'Wire Received', 'Net']
-const SHIPPED_VIA = ['FedEx', 'UPS', 'USPS', 'Customer Account']
+const CONDITIONS = ['', 'NEW', 'REF', 'USED', 'PULL', 'NEW OEM']
 
-function Field({ label, children, half }) {
-  return (
-    <div style={{ flex: half ? '0 0 calc(50% - 6px)' : '1 1 100%', display: 'flex', flexDirection: 'column', gap: 5 }}>
-      <label style={{ fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{label}</label>
-      {children}
-    </div>
-  )
-}
+const money = (n) => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-function ReadOnly({ value }) {
-  return (
-    <div style={{ padding: '8px 12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 13, color: '#475569', fontWeight: 500 }}>
-      {value || '—'}
-    </div>
-  )
-}
-
-export default function ClosedWonModal({ inquiry, requirements, onClose, onCreated }) {
-  // Fields auto-populated from CRM
+// Closed-Won → create a PENDING Operations order. The rep fills the sales side
+// (customer charges + line items + selling). Buying/supplier/AP is left for ops/buyer.
+export default function ClosedWonModal({ inquiry, requirements = [], onClose, onCreated, z = 99999 }) {
   const repName = inquiry.assigned_name || ''
 
-  const [form, setForm] = useState({
-    order_number: '',
-    buyer: '',
-    payment_status: '',
-    order_status: 'Order placed',
-    net: '',
-    due_date: '',
-    tax_charged: '',
-    shipping_charged: '',
-    cc_charges: '',
-    customer_paid: '',
-    shipped_via: '',
-    tracking_to_customer: '',
-    notes: '',
+  const [header, setHeader] = useState({
+    payment_status: '', net: '', due_date: '', tax_charged: '', shipping_charged: '', cc_charges: '', notes: '',
   })
-  const [opCustomers, setOpCustomers] = useState([])
-  const [matchedCustomerId, setMatchedCustomerId] = useState(null)
+  const setH = (k, v) => setHeader(f => ({ ...f, [k]: v }))
+
+  const [items, setItems] = useState(() => {
+    const reqs = (requirements || []).filter(r => r.part_number?.trim())
+    const base = reqs.length ? reqs : [{}]
+    return base.map(r => ({ part_number: r.part_number || '', description: '', quantity: r.quantity || 1, product_condition: '', selling: '' }))
+  })
+  const setItem = (i, k, v) => setItems(list => list.map((it, idx) => idx === i ? { ...it, [k]: v } : it))
+  const addRow = () => setItems(list => [...list, { part_number: '', description: '', quantity: 1, product_condition: '', selling: '' }])
+  const removeRow = (i) => setItems(list => list.length > 1 ? list.filter((_, idx) => idx !== i) : list)
+
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
-  const [done, setDone] = useState(null) // { orderNumber, itemCount }
+  const [done, setDone] = useState(null)
 
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
-
-  // Try to find or suggest a matching customer in op_customers
-  useEffect(() => {
-    operationsApi.getCustomers(inquiry.customer_name || '').then(list => {
-      setOpCustomers(list)
-      const match = list.find(c =>
-        c.name?.toLowerCase() === inquiry.customer_name?.toLowerCase() ||
-        (c.email && c.email === inquiry.customer_email)
-      )
-      if (match) setMatchedCustomerId(match.id)
-    }).catch(() => {})
-  }, [])
+  const totalSelling = items.reduce((s, it) => s + (Number(it.selling) || 0) * (Number(it.quantity) || 0), 0)
 
   const handleCreate = async () => {
-    if (!form.order_number.trim()) { setErr('Order number is required'); return }
+    const lines = items.filter(it => it.part_number?.trim() || Number(it.selling) > 0)
+    if (!lines.length) { setErr('Add at least one line item.'); return }
     setSaving(true); setErr('')
     try {
-      // 1. Find or create op_customer
-      let customerId = matchedCustomerId
-      if (!customerId) {
-        const created = await operationsApi.createCustomer({
-          name: inquiry.customer_name || '',
-          email: inquiry.customer_email || '',
-          phone: inquiry.customer_phone || '',
-        })
-        customerId = created.id
-      }
-
-      // 2. Create the order pre-filled from CRM
-      const order = await operationsApi.createOrder({
-        ...form,
-        customer_id: customerId,
-        email: inquiry.customer_email || '',
-        lead_source: inquiry.lead_source || '',
-        rep: repName,
-        order_date: new Date().toISOString().slice(0, 10),
-        tax_charged: form.tax_charged || 0,
-        shipping_charged: form.shipping_charged || 0,
-        cc_charges: form.cc_charges || 0,
-        customer_paid: form.customer_paid || 0,
+      const res = await operationsApi.createFromCRM({
+        customer_name: inquiry.customer_name, customer_email: inquiry.customer_email, customer_phone: inquiry.customer_phone,
+        lead_source: inquiry.lead_source, rep: repName, crm_inquiry_id: inquiry.id,
+        ...header,
+        items: lines,
       })
-
-      // 3. Pre-create one line item per requirement (part # + qty, no pricing)
-      const reqs = requirements.filter(r => r.part_number?.trim())
-      for (const req of reqs) {
-        await operationsApi.addItem(order.id, {
-          part_number: req.part_number,
-          quantity: req.quantity || 1,
-          selling: 0,
-          buying: 0,
-        })
-      }
-
-      setDone({ orderNumber: order.order_number, itemCount: reqs.length, orderId: order.id })
-    } catch (e) {
-      setErr(e.message)
-    } finally {
-      setSaving(false)
-    }
+      if (onCreated) onCreated(res.order_id)   // signal the inquiry that conversion succeeded
+      setDone({ orderNumber: res.order_number, existing: res.existing, orderId: res.order_id, itemCount: res.item_count })
+    } catch (e) { setErr(e.message) } finally { setSaving(false) }
   }
 
   if (done) {
     return (
-      <Modal title="Order Created" onClose={onClose}>
+      <Modal title="Order Created" onClose={onClose} zIndex={z}>
         <div style={{ textAlign: 'center', padding: '16px 0 8px' }}>
           <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#d1fae5', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
             <CheckCircle size={28} color="#10b981" />
           </div>
           <div style={{ fontSize: 20, fontWeight: 800, color: '#0f172a', fontFamily: '"Bricolage Grotesque", sans-serif', marginBottom: 6 }}>
-            Order {done.orderNumber} created
+            {done.existing ? `Order ${done.orderNumber} already exists` : `Pending order ${done.orderNumber} created`}
           </div>
           <div style={{ fontSize: 13, color: '#64748b', marginBottom: 24 }}>
-            {done.itemCount > 0
-              ? `${done.itemCount} line item${done.itemCount > 1 ? 's' : ''} pre-populated from CRM requirements. Pricing needs to be filled in by the buyer.`
-              : 'No requirements were attached — add line items from the Operations tab.'}
+            {done.existing
+              ? 'This inquiry was already converted to an order — opening the existing one.'
+              : 'It lands as a pending order. The buyer/ops team fills in cost, supplier and AP, then marks it complete.'}
           </div>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-            <button
-              onClick={onClose}
-              style={{ padding: '10px 20px', borderRadius: 12, border: '1px solid #e2e8f0', background: '#fff', color: '#475569', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
-              Stay here
-            </button>
-            <button
-              onClick={() => onCreated(done.orderId)}
-              style={{ padding: '10px 20px', borderRadius: 12, border: 'none', background: BRAND, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
-              Open in Operations →
-            </button>
+            <button onClick={onClose} style={{ padding: '10px 24px', borderRadius: 12, border: 'none', background: BRAND, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Done</button>
           </div>
         </div>
       </Modal>
@@ -147,140 +74,91 @@ export default function ClosedWonModal({ inquiry, requirements, onClose, onCreat
   }
 
   return (
-    <Modal title="🎉 Closed Won — Create Order" onClose={onClose} wide>
+    <Modal title="Closed Won — Create Order" onClose={onClose} wide zIndex={z}>
       {/* CRM data summary — read only */}
-      <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '14px 16px', marginBottom: 20 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: '#065f46', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>
-          Auto-filled from CRM
-        </div>
+      <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '14px 16px', marginBottom: 18 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#065f46', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>Auto-filled from CRM</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 24px', fontSize: 13 }}>
-          {[
-            ['Customer',   inquiry.customer_name],
-            ['Email',      inquiry.customer_email],
-            ['Phone',      inquiry.customer_phone],
-            ['Lead Source',inquiry.lead_source],
-            ['Rep',        repName],
-            ['Order Date', new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })],
-          ].map(([k, v]) => v ? (
-            <div key={k}>
-              <span style={{ color: '#6ee7b7', fontWeight: 600 }}>{k}: </span>
-              <span style={{ color: '#064e3b', fontWeight: 700 }}>{v}</span>
-            </div>
+          {[['Customer', inquiry.customer_name], ['Email', inquiry.customer_email], ['Phone', inquiry.customer_phone], ['Lead Source', inquiry.lead_source], ['Rep', repName]].map(([k, v]) => v ? (
+            <div key={k}><span style={{ color: '#10b981', fontWeight: 600 }}>{k}: </span><span style={{ color: '#064e3b', fontWeight: 700 }}>{v}</span></div>
           ) : null)}
         </div>
-        {requirements.filter(r => r.part_number?.trim()).length > 0 && (
-          <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #bbf7d0' }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#065f46', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
-              <Package size={12} /> Parts from Requirements
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {requirements.filter(r => r.part_number?.trim()).map((r, i) => (
-                <span key={i} style={{ background: '#d1fae5', color: '#064e3b', borderRadius: 8, padding: '3px 10px', fontSize: 12, fontWeight: 600 }}>
-                  {r.part_number} × {r.quantity || 1}
-                </span>
+      </div>
+
+      {/* Line items the rep confirms / fills */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.1em', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Package size={13} /> Line items
+        </div>
+        <button onClick={addRow} className="btn btn-secondary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Plus size={13} /> Add line</button>
+      </div>
+      <div style={{ overflowX: 'auto', border: '1px solid #f1f5f9', borderRadius: 10, marginBottom: 18 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
+          <thead>
+            <tr style={{ background: '#f8fafc' }}>
+              {['Part #', 'Description', 'Qty', 'Condition', 'Selling/unit', ''].map((h, i) => (
+                <th key={h} style={{ textAlign: i === 2 || i === 4 ? 'right' : 'left', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', padding: '8px 10px', whiteSpace: 'nowrap' }}>{h}</th>
               ))}
-            </div>
-          </div>
-        )}
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((it, i) => (
+              <tr key={i} style={{ borderTop: '1px solid #f1f5f9' }}>
+                <td style={{ padding: '6px 8px' }}><input className="input" value={it.part_number} onChange={e => setItem(i, 'part_number', e.target.value)} placeholder="ABC-123" style={{ minWidth: 110 }} /></td>
+                <td style={{ padding: '6px 8px' }}><input className="input" value={it.description} onChange={e => setItem(i, 'description', e.target.value)} placeholder="optional" style={{ minWidth: 120 }} /></td>
+                <td style={{ padding: '6px 8px' }}><input className="input" type="number" min="1" value={it.quantity} onChange={e => setItem(i, 'quantity', e.target.value)} style={{ width: 64, textAlign: 'right' }} /></td>
+                <td style={{ padding: '6px 8px' }}>
+                  <select className="input" value={it.product_condition} onChange={e => setItem(i, 'product_condition', e.target.value)} style={{ width: 100 }}>
+                    {CONDITIONS.map(c => <option key={c} value={c}>{c || '—'}</option>)}
+                  </select>
+                </td>
+                <td style={{ padding: '6px 8px' }}><input className="input" type="number" value={it.selling} onChange={e => setItem(i, 'selling', e.target.value)} placeholder="0.00" style={{ width: 90, textAlign: 'right' }} /></td>
+                <td style={{ padding: '6px 8px' }}><button onClick={() => removeRow(i)} title="Remove" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', display: 'flex', padding: 4 }}><Trash2 size={14} /></button></td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr style={{ background: '#f8fafc', borderTop: '2px solid #e2e8f0' }}>
+              <td colSpan={4} style={{ padding: '8px 10px', fontWeight: 700, color: '#475569', fontSize: 12 }}>{items.length} line{items.length === 1 ? '' : 's'}</td>
+              <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: BRAND, fontVariantNumeric: 'tabular-nums' }}>{money(totalSelling)}</td>
+              <td />
+            </tr>
+          </tfoot>
+        </table>
       </div>
 
-      {/* Op customer match */}
-      {matchedCustomerId ? (
-        <div style={{ fontSize: 12, color: '#10b981', fontWeight: 600, marginBottom: 14 }}>
-          ✓ Matched to existing Operations customer record
-        </div>
-      ) : (
-        <div style={{ fontSize: 12, color: '#f59e0b', fontWeight: 600, marginBottom: 14 }}>
-          ⚠ Customer not found in Operations — a new customer record will be created automatically
-        </div>
-      )}
-
-      {/* Operator fills in */}
-      <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12 }}>
-        Operator fills in
-      </div>
-
+      {/* Sales-side header fields */}
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>Charges &amp; terms (optional)</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-        <Field label="Order Number *">
-          <input className="input" value={form.order_number} onChange={e => set('order_number', e.target.value)}
-            placeholder="TA001234" style={{ borderColor: !form.order_number ? '#fca5a5' : undefined }} />
-        </Field>
-
-        <Field label="Buyer" half>
-          <select className="input" value={form.buyer} onChange={e => set('buyer', e.target.value)}>
-            <option value="">— select buyer —</option>
-            {BUYERS.map(b => <option key={b}>{b}</option>)}
-          </select>
-        </Field>
-
         <Field label="Payment Status" half>
-          <select className="input" value={form.payment_status} onChange={e => set('payment_status', e.target.value)}>
-            <option value="">—</option>
-            {PAYMENT_STATUSES.map(s => <option key={s}>{s}</option>)}
+          <select className="input" value={header.payment_status} onChange={e => setH('payment_status', e.target.value)}>
+            <option value="">—</option>{PAYMENT_STATUSES.map(s => <option key={s}>{s}</option>)}
           </select>
         </Field>
-
-        <Field label="Order Status" half>
-          <select className="input" value={form.order_status} onChange={e => set('order_status', e.target.value)}>
-            {ORDER_STATUSES.map(s => <option key={s}>{s}</option>)}
-          </select>
-        </Field>
-
-        <Field label="Net (terms)" half>
-          <input className="input" value={form.net} onChange={e => set('net', e.target.value)} placeholder="Net 30, Net 15…" />
-        </Field>
-
-        <Field label="Due Date" half>
-          <input className="input" type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} />
-        </Field>
-
-        <div style={{ flex: '1 1 100%', borderTop: '1px solid #f1f5f9', paddingTop: 12 }} />
-
-        <Field label="Tax Charged ($)" half>
-          <input className="input" type="number" value={form.tax_charged} onChange={e => set('tax_charged', e.target.value)} placeholder="0.00" />
-        </Field>
-        <Field label="Shipping Charged ($)" half>
-          <input className="input" type="number" value={form.shipping_charged} onChange={e => set('shipping_charged', e.target.value)} placeholder="0.00" />
-        </Field>
-        <Field label="CC Charges ($)" half>
-          <input className="input" type="number" value={form.cc_charges} onChange={e => set('cc_charges', e.target.value)} placeholder="0.00" />
-        </Field>
-        <Field label="Customer Paid ($)" half>
-          <input className="input" type="number" value={form.customer_paid} onChange={e => set('customer_paid', e.target.value)} placeholder="0.00" />
-        </Field>
-
-        <div style={{ flex: '1 1 100%', borderTop: '1px solid #f1f5f9', paddingTop: 12 }} />
-
-        <Field label="Shipped Via" half>
-          <select className="input" value={form.shipped_via} onChange={e => set('shipped_via', e.target.value)}>
-            <option value="">—</option>
-            {SHIPPED_VIA.map(s => <option key={s}>{s}</option>)}
-          </select>
-        </Field>
-        <Field label="Tracking to Customer" half>
-          <input className="input" value={form.tracking_to_customer} onChange={e => set('tracking_to_customer', e.target.value)} placeholder="1Z999…" />
-        </Field>
-
-        <Field label="Notes">
-          <textarea className="input" value={form.notes} onChange={e => set('notes', e.target.value)}
-            rows={2} placeholder="Internal notes…" style={{ resize: 'vertical' }} />
-        </Field>
+        <Field label="Net (terms)" half><input className="input" value={header.net} onChange={e => setH('net', e.target.value)} placeholder="Net 30…" /></Field>
+        <Field label="Due Date" half><input className="input" type="date" value={header.due_date} onChange={e => setH('due_date', e.target.value)} /></Field>
+        <Field label="Tax Charged ($)" half><input className="input" type="number" value={header.tax_charged} onChange={e => setH('tax_charged', e.target.value)} placeholder="0.00" /></Field>
+        <Field label="Shipping Charged ($)" half><input className="input" type="number" value={header.shipping_charged} onChange={e => setH('shipping_charged', e.target.value)} placeholder="0.00" /></Field>
+        <Field label="CC Charges ($)" half><input className="input" type="number" value={header.cc_charges} onChange={e => setH('cc_charges', e.target.value)} placeholder="0.00" /></Field>
+        <Field label="Notes"><textarea className="input" value={header.notes} onChange={e => setH('notes', e.target.value)} rows={2} style={{ resize: 'vertical' }} placeholder="Internal notes…" /></Field>
       </div>
 
-      {err && (
-        <div style={{ background: '#fee2e2', color: '#dc2626', borderRadius: 10, padding: '10px 14px', fontSize: 13, marginTop: 12 }}>{err}</div>
-      )}
-
+      {err && <div style={{ background: '#fee2e2', color: '#dc2626', borderRadius: 10, padding: '10px 14px', fontSize: 13, marginTop: 12 }}>{err}</div>}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-        <button onClick={onClose}
-          style={{ padding: '10px 20px', borderRadius: 12, border: '1px solid #e2e8f0', background: '#fff', color: '#475569', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
-          Cancel
-        </button>
-        <button onClick={handleCreate} disabled={saving}
-          style={{ padding: '10px 24px', borderRadius: 12, border: 'none', background: BRAND, color: '#fff', fontWeight: 700, fontSize: 13, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
-          {saving ? 'Creating…' : 'Create Order in Operations'}
+        <button onClick={onClose} style={{ padding: '10px 20px', borderRadius: 12, border: '1px solid #e2e8f0', background: '#fff', color: '#475569', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+        <button onClick={handleCreate} disabled={saving} style={{ padding: '10px 24px', borderRadius: 12, border: 'none', background: BRAND, color: '#fff', fontWeight: 700, fontSize: 13, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+          {saving ? 'Creating…' : 'Create Pending Order'}
         </button>
       </div>
     </Modal>
+  )
+}
+
+function Field({ label, children, half }) {
+  return (
+    <div style={{ flex: half ? '0 0 calc(50% - 6px)' : '1 1 100%', display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <label style={{ fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{label}</label>
+      {children}
+    </div>
   )
 }

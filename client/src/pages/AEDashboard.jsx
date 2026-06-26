@@ -6,6 +6,7 @@ import { useNav } from '../App'
 import { useAuth } from '../App'
 import { formatDate, formatDateShort, timeAgo, DispositionBadge, DISPOSITIONS, PPC_OPTIONS, VERIFICATION_OPTIONS, ORDER_SOURCES, LEAD_SOURCES } from '../components/Badges'
 import NewInquiryModal from '../components/NewInquiryModal'
+import ClosedWonModal from '../components/ClosedWonModal'
 
 const BRAND = '#00D4C8'
 const C = ['#00D4C8','#3b82f6','#6366f1','#f59e0b','#ef4444','#10b981','#8b5cf6','#f97316','#ec4899','#84cc16']
@@ -258,6 +259,9 @@ function InquiryQuickEditModal({ id, onClose, onSaved }) {
   const [ppcOrOutbound, setPpcOrOutbound] = useState('')
   const [orderAmount, setOrderAmount] = useState('')
   const [orderRef, setOrderRef] = useState('')
+  const [closedWonOpen, setClosedWonOpen] = useState(false)
+  const [cwPrevDisp, setCwPrevDisp] = useState('')
+  const [cwCreated, setCwCreated] = useState(false)
 
   const load = () => {
     fetch(`/api/inquiries/${id}`, { headers: { Authorization:`Bearer ${localStorage.getItem('crm_token')}` } })
@@ -341,9 +345,23 @@ function InquiryQuickEditModal({ id, onClose, onSaved }) {
               </div>
               <div>
                 <div style={{ fontSize:11, fontWeight:700, color:'#64748b', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>{inquiry?.type === 'online_order' ? 'Status' : 'Disposition'}</div>
-                <select value={disposition} onChange={e => setDisposition(e.target.value)} style={{ ...inp, cursor:'pointer' }}>
+                <select value={disposition} onChange={e => {
+                    const val = e.target.value
+                    if (val === 'Closed Won' && disposition !== 'Closed Won') {
+                      setCwPrevDisp(disposition); setCwCreated(false); setDisposition(val); setClosedWonOpen(true)
+                    } else { setDisposition(val) }
+                  }} style={{ ...inp, cursor:'pointer' }}>
                   {dispositionsForType.map(d => <option key={d}>{d}</option>)}
                 </select>
+                {closedWonOpen && (
+                  <ClosedWonModal
+                    inquiry={inquiry}
+                    requirements={requirements}
+                    z={1000001}
+                    onCreated={() => setCwCreated(true)}
+                    onClose={() => { setClosedWonOpen(false); if (!cwCreated) setDisposition(cwPrevDisp || '') }}
+                  />
+                )}
               </div>
             </div>
 

@@ -4,6 +4,7 @@ import { api } from '../api'
 import { useAuth } from '../App'
 import { useNav } from '../App'
 import { DispositionBadge, TypeBadge, DISPOSITIONS, PPC_OPTIONS, ORDER_SOURCES, VERIFICATION_OPTIONS, timeAgo, formatDate } from '../components/Badges'
+import ClosedWonModal from '../components/ClosedWonModal'
 
 export default function InquiryDetail({ id }) {
   const { user } = useAuth()
@@ -21,6 +22,9 @@ export default function InquiryDetail({ id }) {
   const [editForm, setEditForm] = useState({})
   const [requirements, setRequirements] = useState([])
   const [activeTab, setActiveTab] = useState('activity')
+  const [closedWonOpen, setClosedWonOpen] = useState(false)
+  const [cwPrevDisp, setCwPrevDisp] = useState('')
+  const [cwCreated, setCwCreated] = useState(false)
 
   const load = () => {
     Promise.all([api.getInquiry(id), api.getUsers()]).then(([inq, us]) => {
@@ -222,20 +226,14 @@ export default function InquiryDetail({ id }) {
                 {editMode
                   ? <select className="input" value={editForm.disposition} onChange={e => {
                       const val = e.target.value
-                      setEF('disposition', val)
-                      if (val === 'Closed Won') {
-                        // Silently queue in Operations when saved
-                        import('../api').then(({ operationsApi }) => {
-                          operationsApi.createFromCRM({
-                            customer_name: inquiry.customer_name,
-                            customer_email: inquiry.customer_email,
-                            customer_phone: inquiry.customer_phone,
-                            lead_source: inquiry.lead_source,
-                            rep: inquiry.assigned_name,
-                            crm_inquiry_id: inquiry.id,
-                            requirements: requirements || [],
-                          }).catch(() => {});
-                        });
+                      // Marking Closed Won opens the order form; the order is created only on Save there.
+                      if (val === 'Closed Won' && editForm.disposition !== 'Closed Won') {
+                        setCwPrevDisp(editForm.disposition || 'Initial Contact')
+                        setCwCreated(false)
+                        setEF('disposition', val)
+                        setClosedWonOpen(true)
+                      } else {
+                        setEF('disposition', val)
                       }
                     }}>
                       {dispositionsForType.map(d=><option key={d}>{d}</option>)}
@@ -285,6 +283,17 @@ export default function InquiryDetail({ id }) {
         </div>
       </div>
 
+      {closedWonOpen && (
+        <ClosedWonModal
+          inquiry={inquiry}
+          requirements={requirements}
+          onCreated={() => setCwCreated(true)}
+          onClose={() => {
+            setClosedWonOpen(false)
+            if (!cwCreated) setEF('disposition', cwPrevDisp || 'Initial Contact')
+          }}
+        />
+      )}
     </div>
   )
 }
