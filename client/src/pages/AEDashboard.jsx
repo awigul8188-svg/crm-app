@@ -263,32 +263,50 @@ function InquiryQuickEditModal({ id, onClose, onSaved }) {
   const [closedWonOpen, setClosedWonOpen] = useState(false)
   const [cwPrevDisp, setCwPrevDisp] = useState('')
   const [cwCreated, setCwCreated] = useState(false)
+  const [initial, setInitial] = useState(null)   // snapshot for unsaved-change detection
+  const [confirmClose, setConfirmClose] = useState(false)
 
   const load = () => {
     fetch(`/api/inquiries/${id}`, { headers: { Authorization:`Bearer ${localStorage.getItem('crm_token')}` } })
       .then(r => r.json()).then(d => {
         setInquiry(d)
-        setDisposition(d.disposition || '')
-        setNotes(d.notes || '')
-        setCustomDate(d.created_at ? d.created_at.split('T')[0] : '')
-        setRequirements(d.requirements || [])
-        setPpcOrOutbound(d.ppc_or_outbound || '')
-        setOrderAmount(d.order_amount || '')
-        setOrderRef(d.order_ref || '')
+        const snap = {
+          disposition: d.disposition || '',
+          notes: d.notes || '',
+          customDate: d.created_at ? d.created_at.split('T')[0] : '',
+          requirements: d.requirements || [],
+          ppcOrOutbound: d.ppc_or_outbound || '',
+          orderAmount: d.order_amount || '',
+          orderRef: d.order_ref || '',
+        }
+        setDisposition(snap.disposition)
+        setNotes(snap.notes)
+        setCustomDate(snap.customDate)
+        setRequirements(snap.requirements)
+        setPpcOrOutbound(snap.ppcOrOutbound)
+        setOrderAmount(snap.orderAmount)
+        setOrderRef(snap.orderRef)
+        setInitial(snap)
         setLoading(false)
       }).catch(() => setLoading(false))
   }
 
   useEffect(() => { load() }, [id])
 
+  const dirty = !!initial && JSON.stringify({ disposition, notes, customDate, requirements, ppcOrOutbound, orderAmount, orderRef })
+    !== JSON.stringify(initial)
+  const attemptClose = () => { if (dirty) setConfirmClose(true); else onClose() }
+
   const handleSave = async () => {
+    if (!disposition) { setError('Please select a disposition before saving.'); return }
     setSaving(true); setError('')
     try {
-      await fetch(`/api/inquiries/${id}`, {
+      const r = await fetch(`/api/inquiries/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type':'application/json', Authorization:`Bearer ${localStorage.getItem('crm_token')}` },
         body: JSON.stringify({ disposition, notes, ppc_or_outbound: ppcOrOutbound, order_amount: orderAmount, order_ref: orderRef, requirements, custom_date: customDate, assigned_to: inquiry.assigned_to })
       })
+      if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || 'Save failed') }
       onSaved()
       onClose()
     } catch(e) { setError(e.message) }
@@ -317,9 +335,21 @@ function InquiryQuickEditModal({ id, onClose, onSaved }) {
     : DISPOSITIONS.filter(d => d !== 'Processed' && d !== 'Cancelled')
 
   return createPortal(
-    <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:999999, background:'rgba(0,0,0,0.6)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background:'#fff', borderRadius:20, boxShadow:'0 32px 100px rgba(0,0,0,0.3)', width:'100%', maxWidth:660, maxHeight:'90vh', overflowY:'auto', animation:'modalIn 0.18s ease-out', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>
+    <div onClick={attemptClose} style={{ position:'fixed', inset:0, zIndex:999999, background:'rgba(0,0,0,0.6)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ position:'relative', background:'#fff', borderRadius:20, boxShadow:'0 32px 100px rgba(0,0,0,0.3)', width:'100%', maxWidth:660, maxHeight:'90vh', overflowY:'auto', animation:'modalIn 0.18s ease-out', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>
         <style>{`@keyframes modalIn{from{opacity:0;transform:scale(0.96) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
+        {confirmClose && (
+          <div onClick={e => e.stopPropagation()} style={{ position:'absolute', inset:0, zIndex:30, background:'rgba(255,255,255,0.85)', backdropFilter:'blur(2px)', display:'flex', alignItems:'center', justifyContent:'center', borderRadius:20 }}>
+            <div style={{ background:'#fff', borderRadius:16, boxShadow:'0 20px 60px rgba(0,0,0,0.2)', border:'1px solid #f1f5f9', padding:'22px 24px', width:320, textAlign:'center' }}>
+              <div style={{ fontFamily:'"Bricolage Grotesque",sans-serif', fontWeight:700, fontSize:15, color:'#0f172a', marginBottom:6 }}>Discard changes?</div>
+              <div style={{ fontSize:13, color:'#64748b', marginBottom:16 }}>You have unsaved edits on this inquiry.</div>
+              <div style={{ display:'flex', gap:8 }}>
+                <button onClick={() => setConfirmClose(false)} style={{ flex:1, padding:'10px', borderRadius:10, border:'1px solid #e2e8f0', background:'#fff', color:'#475569', fontWeight:700, fontSize:13, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>Keep editing</button>
+                <button onClick={() => { setConfirmClose(false); onClose() }} style={{ flex:1, padding:'10px', borderRadius:10, border:'none', background:'#ef4444', color:'#fff', fontWeight:700, fontSize:13, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>Discard</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Header */}
         <div style={{ padding:'18px 24px', borderBottom:'1px solid #f1f5f9', display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, background:'#fff', zIndex:10, borderRadius:'20px 20px 0 0' }}>
@@ -333,7 +363,7 @@ function InquiryQuickEditModal({ id, onClose, onSaved }) {
               {inquiry?.customer_company && <div style={{ fontSize:12, color:'#94a3b8' }}>{inquiry?.customer_company}</div>}
             </div>
           )}
-          <button onClick={onClose} style={{ width:32, height:32, borderRadius:10, border:'none', background:'#f1f5f9', cursor:'pointer', fontSize:18, color:'#64748b', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>×</button>
+          <button onClick={attemptClose} style={{ width:32, height:32, borderRadius:10, border:'none', background:'#f1f5f9', cursor:'pointer', fontSize:18, color:'#64748b', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>×</button>
         </div>
 
         {loading ? <Loader /> : (
@@ -353,6 +383,7 @@ function InquiryQuickEditModal({ id, onClose, onSaved }) {
                       setCwPrevDisp(disposition); setCwCreated(false); setDisposition(val); setClosedWonOpen(true)
                     } else { setDisposition(val) }
                   }} style={{ ...inp, cursor:'pointer' }}>
+                  {!dispositionsForType.includes(disposition) && <option value="">— Select —</option>}
                   {dispositionsForType.map(d => <option key={d}>{d}</option>)}
                 </select>
                 {closedWonOpen && (
@@ -797,7 +828,7 @@ function AEOrdersTab({ dateFilters, onDrilldown, newAssigned = [], onOpenOrder, 
             {(data.bySource||[]).filter(s=>s.source).map((s,i) => (
               <div key={s.source} onClick={() => drill(`Source: ${s.source}`)} style={{ cursor:'pointer' }}>
                 <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:3 }}><span style={{ color:'#475569' }}>{s.source}</span><span style={{ fontWeight:700 }}>{s.count}</span></div>
-                <div style={{ height:5, background:'#f1f5f9', borderRadius:4 }}><div style={{ height:'100%', borderRadius:4, background:C[i], width:`${p.total>0?Math.round(s.count/p.total*100):0}%` }} /></div>
+                <div style={{ height:5, background:'#f1f5f9', borderRadius:4 }}><div style={{ height:'100%', borderRadius:4, background:C[i%C.length], width:`${p.total>0?Math.round(s.count/p.total*100):0}%` }} /></div>
               </div>
             ))}
           </div>
@@ -875,7 +906,7 @@ function AEOverviewTab({ data, loading, dateFilters, onDrilldown, onNavigate }) 
         <div style={{ background:'#fff', borderRadius:14, border:'1px solid #f1f5f9', padding:18 }}>
           <STitle>⚠️ Needs Attention <span style={{ fontSize:12, color:'#94a3b8', fontWeight:400 }}>No activity 7+ days</span></STitle>
           {!data.untouched?.length ? <div style={{ textAlign:'center', color:'#94a3b8', padding:'20px 0', fontSize:13 }}>✅ All up to date!</div> : data.untouched.map(inq => (
-            <div key={inq.id} onClick={() => onDrilldown({ title:'Needs Attention', type:inq.type, filters:{ disposition: inq.disposition } })}
+            <div key={inq.id} onClick={() => onNavigate('inquiry-detail', { id: inq.id })}
               style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:'1px solid #f8fafc', cursor:'pointer' }}>
               <div style={{ width:32, height:32, borderRadius:8, background:`${TYPE_COLORS[inq.type]}18`, color:TYPE_COLORS[inq.type], display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, flexShrink:0 }}>{TYPE_ICONS[inq.type]}</div>
               <div style={{ flex:1, minWidth:0 }}>
@@ -977,8 +1008,8 @@ export default function AEDashboard() {
         </div>
       </div>
 
-      {/* Date filter — always visible */}
-      <DateBar preset={preset} setPreset={setPreset} customFrom={customFrom} setCustomFrom={setCustomFrom} customTo={customTo} setCustomTo={setCustomTo} />
+      {/* Date filter — hidden on Overview (that tab is all-time / fixed period and ignores the range) */}
+      {activeTab !== 'overview' && <DateBar preset={preset} setPreset={setPreset} customFrom={customFrom} setCustomFrom={setCustomFrom} customTo={customTo} setCustomTo={setCustomTo} />}
 
       {/* Tabs */}
       <div style={{ display:'flex', gap:2, background:'#f1f5f9', borderRadius:14, padding:4, marginBottom:24, width:'fit-content' }}>

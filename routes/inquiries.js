@@ -47,7 +47,7 @@ function buildInFilter(column, value) {
 
 router.get('/', (req, res) => {
   const db = getDB();
-  const { type, disposition, lead_source } = req.query;
+  const { type, disposition, lead_source, from, to } = req.query;
   let query = `
     SELECT i.*, c.name as customer_name, c.email as customer_email, c.company as customer_company,
       c.phone as customer_phone, c.lead_source, u.name as assigned_name
@@ -60,6 +60,8 @@ router.get('/', (req, res) => {
   if (type) { query += ' AND i.type = ?'; params.push(type); }
   if (disposition) { const f = buildInFilter('i.disposition', disposition); if (f) { query += ` AND ${f.sql}`; params.push(...f.params); } }
   if (lead_source) { const f = buildInFilter('c.lead_source', lead_source); if (f) { query += ` AND ${f.sql}`; params.push(...f.params); } }
+  if (from) { query += ' AND date(i.created_at) >= ?'; params.push(from); }
+  if (to)   { query += ' AND date(i.created_at) <= ?'; params.push(to); }
   query += ' ORDER BY i.created_at DESC';
   
   try {
@@ -129,6 +131,7 @@ router.get('/:id', (req, res) => {
   try {
     const inquiry = db.prepare(`SELECT i.*, c.name as customer_name, c.email as customer_email, c.phone as customer_phone, c.company as customer_company, c.lead_source, u.name as assigned_name FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id LEFT JOIN users u ON i.assigned_to = u.id WHERE i.id = ?`).get(req.params.id);
     if (!inquiry) return res.status(404).json({ error: 'Not found' });
+    if (req.user.role === 'ae' && inquiry.assigned_to !== req.user.id) return res.status(403).json({ error: 'Not authorized' });
     const requirements = db.prepare('SELECT * FROM requirements WHERE inquiry_id = ? ORDER BY id').all(req.params.id);
     const followups = db.prepare(`SELECT f.*, u.name as created_by_name FROM followups f LEFT JOIN users u ON f.created_by = u.id WHERE f.inquiry_id = ? ORDER BY f.created_at DESC`).all(req.params.id);
     const activity = db.prepare("SELECT * FROM activity_log WHERE entity_type='inquiry' AND entity_id=? ORDER BY created_at DESC").all(req.params.id);
@@ -139,13 +142,19 @@ router.get('/:id', (req, res) => {
 });
 
 router.put('/:id', (req, res) => {
-  const { disposition, assigned_to, notes, requirements, ppc_or_outbound, order_amount, order_ref } = req.body;
+  const { disposition, assigned_to, notes, requirements, ppc_or_outbound, order_amount, order_ref, custom_date } = req.body;
   const db = getDB();
 
   try {
-    const inquiry = db.prepare('SELECT i.type, c.name as customer_name FROM inquiries i JOIN customers c ON i.customer_id = c.id WHERE i.id = ?').get(req.params.id);
+    const inquiry = db.prepare('SELECT i.type, i.disposition as old_disposition, i.assigned_to, c.name as customer_name FROM inquiries i JOIN customers c ON i.customer_id = c.id WHERE i.id = ?').get(req.params.id);
+    if (!inquiry) return res.status(404).json({ error: 'Not found' });
+    // AEs may only edit their own inquiries, and cannot reassign them.
+    if (req.user.role === 'ae' && inquiry.assigned_to !== req.user.id) return res.status(403).json({ error: 'Not authorized' });
+    const newAssignee = req.user.role === 'ae' ? inquiry.assigned_to : assigned_to;
+    const createdAt = custom_date ? new Date(custom_date).toISOString() : null;
+    const dispositionChanged = disposition !== inquiry.old_disposition;
 
-    db.prepare('UPDATE inquiries SET disposition=?, assigned_to=?, notes=?, ppc_or_outbound=?, order_amount=?, order_ref=?, updated_at=CURRENT_TIMESTAMP WHERE id=?').run(disposition, assigned_to, notes, ppc_or_outbound || null, order_amount || null, order_ref || null, req.params.id);
+    db.prepare(`UPDATE inquiries SET disposition=?, assigned_to=?, notes=?, ppc_or_outbound=?, order_amount=?, order_ref=?, created_at=COALESCE(?, created_at), updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(disposition, newAssignee, notes, ppc_or_outbound || null, order_amount || null, order_ref || null, createdAt, req.params.id);
     let addedParts = [];
     if (requirements !== undefined) {
       // Capture the existing part numbers so we only notify PMs about NEWLY added parts (not every edit).
@@ -158,15 +167,17 @@ router.put('/:id', (req, res) => {
     logActivity(db, req.params.id, req.user, 'Inquiry updated');
     if (addedParts.length) notifyPurchasingManagers(db, { inquiry_id: parseInt(req.params.id), type: inquiry?.type, customer_name: inquiry?.customer_name || 'Unknown', actor_name: req.user.name, partNumbers: addedParts });
 
-    notifyManagers(db, {
-      inquiry_id: parseInt(req.params.id),
-      inquiry_type: inquiry?.type,
-      customer_name: inquiry?.customer_name || 'Unknown',
-      actor_name: req.user.name,
-      actor_role: req.user.role,
-      action: `Disposition changed to "${disposition}"`,
-      comment: null,
-    });
+    if (dispositionChanged) {
+      notifyManagers(db, {
+        inquiry_id: parseInt(req.params.id),
+        inquiry_type: inquiry?.type,
+        customer_name: inquiry?.customer_name || 'Unknown',
+        actor_name: req.user.name,
+        actor_role: req.user.role,
+        action: `Disposition changed to "${disposition}"`,
+        comment: null,
+      });
+    }
 
     res.json({ success: true });
   } catch (err) {
