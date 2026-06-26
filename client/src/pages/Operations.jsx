@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { operationsApi, api } from '../api'
 import Modal from '../components/Modal'
 import ImportModal from '../components/ImportModal'
+import SearchableSelect from '../components/SearchableSelect'
+import MultiSelect from '../components/MultiSelect'
 import { Search, Plus, Edit2, Trash2, Package, Users, Truck, RotateCcw, ChevronRight, X, AlertCircle, List, ClipboardList, Upload } from 'lucide-react'
 
 const BRAND = '#00D4C8'
@@ -98,6 +100,8 @@ function OrderForm({ order, customers: customersProp, onSave, onClose, isPending
   const [form, setForm] = useState(order ? { ...blank, ...order, customer_id: order.customer_id || '', due_date: order.due_date?.slice(0,10)||'', order_date: order.order_date?.slice(0,10)||'', rma_amount: order.rma_amount||'', net: order.net||'' } : blank)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
+  // Advanced financial fields hidden by default (auto-open when editing an order that has any set)
+  const [showMore, setShowMore] = useState(!!(order && (order.tax_charged || order.shipping_charged || order.cc_charges || order.customer_paid || order.rma_amount || order.net)))
 
   // Customer lists
   const [opsCustomers, setOpsCustomers] = useState(customersProp || [])
@@ -157,100 +161,133 @@ function OrderForm({ order, customers: customersProp, onSave, onClose, isPending
 
   return (
     <Modal title={isPending ? `Complete Order — ${order?.order_number}` : order ? `Edit ${order.order_number}` : 'New Order'} onClose={onClose} wide>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-        <FF label="Order Number" half><input className="input" value={form.order_number} onChange={e => set('order_number', e.target.value)} placeholder="TA001234" /></FF>
-        <FF label="Order Date" half><input className="input" type="date" value={form.order_date} onChange={e => set('order_date', e.target.value)} /></FF>
-        <FF label="Due Date" half><input className="input" type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} /></FF>
-        <FF label="Email" half><input className="input" type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="customer@email.com" /></FF>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-        <FF label="Customer">
-          {addingCustomer ? (
-            <div style={{ border: '1px solid #00D4C8', borderRadius: 10, padding: '10px 12px', background: '#f0fffe', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: BRAND, textTransform: 'uppercase', letterSpacing: '0.08em' }}>New Customer</div>
-              <input className="input" placeholder="Name *" value={newCust.name} onChange={e => setNewCust(p => ({...p, name: e.target.value}))} autoFocus />
-              <input className="input" placeholder="Email" value={newCust.email} onChange={e => setNewCust(p => ({...p, email: e.target.value}))} />
-              <input className="input" placeholder="Phone" value={newCust.phone} onChange={e => setNewCust(p => ({...p, phone: e.target.value}))} />
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn-primary" style={{ flex: 1, padding: '6px 0', fontSize: 12 }} onClick={handleAddCustomer} disabled={custSaving || !newCust.name.trim()}>{custSaving ? 'Saving…' : 'Add Customer'}</button>
-                <button className="btn-secondary" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => setAddingCustomer(false)}>Cancel</button>
-              </div>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', gap: 8 }}>
-              <select className="input" style={{ flex: 1 }} value={form.customer_id} onChange={e => handleCustomerSelect(e.target.value)}>
-                <option value="">— select customer —</option>
-                {opsCustomers.length > 0 && <optgroup label="Operations Customers">
-                  {opsCustomers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </optgroup>}
-                {crmCustomers.filter(c => !opsCustomers.some(o => o.email && o.email === c.email)).length > 0 && (
-                  <optgroup label="CRM Customers (click to import)">
-                    {crmCustomers.filter(c => !opsCustomers.some(o => o.email && o.email === c.email)).map(c => (
-                      <option key={`crm_${c.id}`} value={`crm_${c.id}`}>{c.name}{c.email ? ` — ${c.email}` : ''}</option>
-                    ))}
-                  </optgroup>
-                )}
+        {/* Order */}
+        <div>
+          <SectionLabel>Order</SectionLabel>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+            <FF label="Order Number" third><input className="input" value={form.order_number} onChange={e => set('order_number', e.target.value)} placeholder="TA001234" /></FF>
+            <FF label="Order Date" third><input className="input" type="date" value={form.order_date} onChange={e => set('order_date', e.target.value)} /></FF>
+            <FF label="Due Date" third><input className="input" type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} /></FF>
+          </div>
+        </div>
+
+        {/* Customer */}
+        <div>
+          <SectionLabel>Customer</SectionLabel>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+            <FF label="Customer" half>
+              {addingCustomer ? (
+                <div style={{ border: '1px solid #00D4C8', borderRadius: 10, padding: '10px 12px', background: '#f0fffe', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: BRAND, textTransform: 'uppercase', letterSpacing: '0.08em' }}>New Customer</div>
+                  <input className="input" placeholder="Name *" value={newCust.name} onChange={e => setNewCust(p => ({...p, name: e.target.value}))} autoFocus />
+                  <input className="input" placeholder="Email" value={newCust.email} onChange={e => setNewCust(p => ({...p, email: e.target.value}))} />
+                  <input className="input" placeholder="Phone" value={newCust.phone} onChange={e => setNewCust(p => ({...p, phone: e.target.value}))} />
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn-primary" style={{ flex: 1, padding: '6px 0', fontSize: 12 }} onClick={handleAddCustomer} disabled={custSaving || !newCust.name.trim()}>{custSaving ? 'Saving…' : 'Add Customer'}</button>
+                    <button className="btn-secondary" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => setAddingCustomer(false)}>Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <SearchableSelect
+                      items={[
+                        ...opsCustomers.map(c => ({ value: String(c.id), label: c.name, sub: c.email || '', group: 'Operations Customers' })),
+                        ...crmCustomers.filter(c => !opsCustomers.some(o => o.email && o.email === c.email))
+                          .map(c => ({ value: `crm_${c.id}`, label: c.name, sub: c.email || '', group: 'CRM Customers (import on select)' })),
+                      ]}
+                      value={form.customer_id}
+                      onChange={v => handleCustomerSelect(v)}
+                      placeholder="— select customer —"
+                      emptyText="No customers"
+                    />
+                  </div>
+                  <button type="button" title="Add new customer" onClick={() => setAddingCustomer(true)}
+                    style={{ padding: '0 12px', background: BRAND, border: 'none', borderRadius: 8, cursor: 'pointer', color: '#fff', fontWeight: 700, fontSize: 18, flexShrink: 0 }}>+</button>
+                </div>
+              )}
+            </FF>
+            <FF label="Email" half><input className="input" type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="customer@email.com" /></FF>
+          </div>
+        </div>
+
+        {/* Status & Routing */}
+        <div>
+          <SectionLabel>Status &amp; Routing</SectionLabel>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+            <FF label="Rep" third>
+              <select className="input" value={form.rep} onChange={e => set('rep', e.target.value)}>
+                <option value="">—</option>
+                {REPS.map(r => <option key={r}>{r}</option>)}
               </select>
-              <button type="button" title="Add new customer" onClick={() => setAddingCustomer(true)}
-                style={{ padding: '0 10px', background: BRAND, border: 'none', borderRadius: 8, cursor: 'pointer', color: '#fff', fontWeight: 700, fontSize: 18, flexShrink: 0 }}>+</button>
+            </FF>
+            <FF label="PPC Order Rep" third>
+              <select className="input" value={form.ppc_order_rep} onChange={e => set('ppc_order_rep', e.target.value)}>
+                <option value="">—</option>
+                {REPS.filter(r => r !== 'Online').map(r => <option key={r}>{r}</option>)}
+              </select>
+            </FF>
+            <FF label="Buyer" third>
+              <select className="input" value={form.buyer} onChange={e => set('buyer', e.target.value)}>
+                <option value="">—</option>
+                {BUYERS.map(b => <option key={b}>{b}</option>)}
+              </select>
+            </FF>
+            <FF label="Lead Source" third>
+              <select className="input" value={form.lead_source} onChange={e => set('lead_source', e.target.value)}>
+                <option value="">—</option>
+                {LEAD_SOURCES.map(s => <option key={s}>{s}</option>)}
+              </select>
+            </FF>
+            <FF label="Order Status" third>
+              <select className="input" value={form.order_status} onChange={e => set('order_status', e.target.value)}>
+                {ORDER_STATUSES.map(s => <option key={s}>{s}</option>)}
+              </select>
+            </FF>
+            <FF label="Payment Status" third>
+              <select className="input" value={form.payment_status} onChange={e => set('payment_status', e.target.value)}>
+                <option value="">—</option>
+                {PAYMENT_STATUSES.map(s => <option key={s}>{s}</option>)}
+              </select>
+            </FF>
+          </div>
+        </div>
+
+        {/* Shipping */}
+        <div>
+          <SectionLabel>Shipping</SectionLabel>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+            <FF label="Shipped Via" half>
+              <select className="input" value={form.shipped_via} onChange={e => set('shipped_via', e.target.value)}>
+                <option value="">—</option>
+                {SHIPPED_VIA.map(s => <option key={s}>{s}</option>)}
+              </select>
+            </FF>
+            <FF label="Tracking to Customer" half><input className="input" value={form.tracking_to_customer} onChange={e => set('tracking_to_customer', e.target.value)} placeholder="1Z999..." /></FF>
+          </div>
+        </div>
+
+        {/* Advanced financial details — hidden by default */}
+        <div>
+          <button type="button" onClick={() => setShowMore(s => !s)}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 12, fontWeight: 700, color: BRAND, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            {showMore ? '▾ Hide financial details' : '▸ More details — charges, terms, RMA'}
+          </button>
+          {showMore && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 14 }}>
+              <FF label="Net (terms)" third><input className="input" value={form.net} onChange={e => set('net', e.target.value)} placeholder="e.g. Net 30" /></FF>
+              <FF label="Tax Charged ($)" third><input className="input" type="number" value={form.tax_charged} onChange={e => set('tax_charged', e.target.value)} placeholder="0.00" /></FF>
+              <FF label="Shipping Charged ($)" third><input className="input" type="number" value={form.shipping_charged} onChange={e => set('shipping_charged', e.target.value)} placeholder="0.00" /></FF>
+              <FF label="CC Charges ($)" third><input className="input" type="number" value={form.cc_charges} onChange={e => set('cc_charges', e.target.value)} placeholder="0.00" /></FF>
+              <FF label="Customer Paid ($)" third><input className="input" type="number" value={form.customer_paid} onChange={e => set('customer_paid', e.target.value)} placeholder="0.00" /></FF>
+              <FF label="RMA Amount ($)" third><input className="input" type="number" value={form.rma_amount} onChange={e => set('rma_amount', e.target.value)} placeholder="0.00" /></FF>
             </div>
           )}
-        </FF>
+        </div>
 
-        <FF label="Lead Source" half>
-          <select className="input" value={form.lead_source} onChange={e => set('lead_source', e.target.value)}>
-            <option value="">—</option>
-            {LEAD_SOURCES.map(s => <option key={s}>{s}</option>)}
-          </select>
-        </FF>
-        <FF label="Rep" half>
-          <select className="input" value={form.rep} onChange={e => set('rep', e.target.value)}>
-            <option value="">—</option>
-            {REPS.map(r => <option key={r}>{r}</option>)}
-          </select>
-        </FF>
-        <FF label="PPC Order Rep" half>
-          <select className="input" value={form.ppc_order_rep} onChange={e => set('ppc_order_rep', e.target.value)}>
-            <option value="">—</option>
-            {REPS.filter(r => r !== 'Online').map(r => <option key={r}>{r}</option>)}
-          </select>
-        </FF>
-        <FF label="Buyer" half>
-          <select className="input" value={form.buyer} onChange={e => set('buyer', e.target.value)}>
-            <option value="">—</option>
-            {BUYERS.map(b => <option key={b}>{b}</option>)}
-          </select>
-        </FF>
-        <FF label="Order Status" half>
-          <select className="input" value={form.order_status} onChange={e => set('order_status', e.target.value)}>
-            {ORDER_STATUSES.map(s => <option key={s}>{s}</option>)}
-          </select>
-        </FF>
-        <FF label="Payment Status" half>
-          <select className="input" value={form.payment_status} onChange={e => set('payment_status', e.target.value)}>
-            <option value="">—</option>
-            {PAYMENT_STATUSES.map(s => <option key={s}>{s}</option>)}
-          </select>
-        </FF>
-        <FF label="Net (terms)" half><input className="input" value={form.net} onChange={e => set('net', e.target.value)} placeholder="e.g. Net 30, Net 15" /></FF>
-
-        <div style={{ flex: '1 1 100%', borderTop: '1px solid #f1f5f9', paddingTop: 12 }} />
-
-        <FF label="Tax Charged ($)" third><input className="input" type="number" value={form.tax_charged} onChange={e => set('tax_charged', e.target.value)} placeholder="0.00" /></FF>
-        <FF label="Shipping Charged ($)" third><input className="input" type="number" value={form.shipping_charged} onChange={e => set('shipping_charged', e.target.value)} placeholder="0.00" /></FF>
-        <FF label="CC Charges ($)" third><input className="input" type="number" value={form.cc_charges} onChange={e => set('cc_charges', e.target.value)} placeholder="0.00" /></FF>
-        <FF label="Customer Paid ($)" half><input className="input" type="number" value={form.customer_paid} onChange={e => set('customer_paid', e.target.value)} placeholder="0.00" /></FF>
-        <FF label="RMA Amount ($)" half><input className="input" type="number" value={form.rma_amount} onChange={e => set('rma_amount', e.target.value)} placeholder="0.00" /></FF>
-
-        <div style={{ flex: '1 1 100%', borderTop: '1px solid #f1f5f9', paddingTop: 12 }} />
-
-        <FF label="Shipped Via" half>
-          <select className="input" value={form.shipped_via} onChange={e => set('shipped_via', e.target.value)}>
-            <option value="">—</option>
-            {SHIPPED_VIA.map(s => <option key={s}>{s}</option>)}
-          </select>
-        </FF>
-        <FF label="Tracking to Customer" half><input className="input" value={form.tracking_to_customer} onChange={e => set('tracking_to_customer', e.target.value)} placeholder="1Z999..." /></FF>
-
+        {/* Notes */}
         <FF label="Notes"><textarea className="input" value={form.notes} onChange={e => set('notes', e.target.value)} rows={3} placeholder="Internal notes..." style={{ resize: 'vertical' }} /></FF>
       </div>
 
@@ -346,12 +383,17 @@ function ItemForm({ item, orderId, suppliers: suppliersProp, onSave, onClose }) 
             </div>
           ) : (
             <div style={{ display: 'flex', gap: 8 }}>
-              <select className="input" style={{ flex: 1 }} value={form.supplier_id} onChange={e => set('supplier_id', e.target.value)}>
-                <option value="">— select supplier —</option>
-                {localSuppliers.map(s => <option key={s.id} value={s.id}>{s.company}</option>)}
-              </select>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <SearchableSelect
+                  items={localSuppliers.map(s => ({ value: s.id, label: s.company, sub: s.email || s.rep_name || '' }))}
+                  value={form.supplier_id}
+                  onChange={v => set('supplier_id', v)}
+                  placeholder="— select supplier —"
+                  emptyText="No suppliers"
+                />
+              </div>
               <button type="button" title="Add new supplier" onClick={() => setAddingSupplier(true)}
-                style={{ padding: '0 10px', background: BRAND, border: 'none', borderRadius: 8, cursor: 'pointer', color: '#fff', fontWeight: 700, fontSize: 18, flexShrink: 0 }}>+</button>
+                style={{ padding: '0 12px', background: BRAND, border: 'none', borderRadius: 8, cursor: 'pointer', color: '#fff', fontWeight: 700, fontSize: 18, flexShrink: 0 }}>+</button>
             </div>
           )}
         </FF>
@@ -1404,15 +1446,6 @@ function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
 
   useEffect(() => { load('', '', []) }, [])
 
-  const toggleMonth = (period) => {
-    const next = selectedMonths.includes(period)
-      ? selectedMonths.filter(m => m !== period)
-      : [...selectedMonths, period]
-    setSelectedMonths(next)
-    setDateFrom(''); setDateTo('')
-    load('', '', next)
-  }
-
   // Quarters derived from the available reporting periods (e.g. Apr-26/May-26/Jun-26 → Q2-26).
   const QUARTER_OF = { Jan: 'Q1', Feb: 'Q1', Mar: 'Q1', Apr: 'Q2', May: 'Q2', Jun: 'Q2',
     Jul: 'Q3', Aug: 'Q3', Sep: 'Q3', Oct: 'Q4', Nov: 'Q4', Dec: 'Q4' }
@@ -1426,11 +1459,18 @@ function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
     })
     return Object.entries(map).map(([label, months]) => ({ label, months })).sort((a, b) => a.label.localeCompare(b.label))
   })()
-  const quarterActive = (months) => months.length === selectedMonths.length && months.every(m => selectedMonths.includes(m))
-  const selectQuarter = (months) => {
-    const next = quarterActive(months) ? [] : months
-    setSelectedMonths(next); setDateFrom(''); setDateTo('')
-    load('', '', next)
+  // Quarter labels currently fully covered by the month selection (drives the Quarters dropdown).
+  const selectedQuarterLabels = quarters.filter(q => q.months.length && q.months.every(m => selectedMonths.includes(m))).map(q => q.label)
+  const applyMonths = (months) => { setSelectedMonths(months); setDateFrom(''); setDateTo(''); load('', '', months) }
+  const onQuartersChange = (newLabels) => {
+    const added = newLabels.filter(l => !selectedQuarterLabels.includes(l))
+    const removed = selectedQuarterLabels.filter(l => !newLabels.includes(l))
+    let months = [...selectedMonths]
+    quarters.forEach(q => {
+      if (added.includes(q.label)) months = [...new Set([...months, ...q.months])]
+      if (removed.includes(q.label)) months = months.filter(m => !q.months.includes(m))
+    })
+    applyMonths(months)
   }
 
   const handleApply = () => load(dateFrom, dateTo, [])
@@ -1489,41 +1529,24 @@ function DashboardTab({ onNavigateOrders, onDateFilterChange }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Filter bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: '#fff', border: '1px solid #f1f5f9', borderRadius: 14, padding: '12px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-        {/* Quarter chips — select all months in the quarter */}
-        {quarters.length > 0 && <>
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap', marginRight: 4 }}>Quarter</span>
-          {quarters.map(q => {
-            const active = quarterActive(q.months)
-            return (
-              <button key={q.label} onClick={() => selectQuarter(q.months)} style={{
-                padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none',
-                background: active ? '#0f172a' : '#f8fafc', color: active ? '#fff' : '#334155',
-                outline: active ? 'none' : '1.5px solid #e2e8f0', transition: 'all 0.15s',
-              }}>
-                {q.label}
-              </button>
-            )
-          })}
-          <span style={{ color: '#e2e8f0', fontSize: 18, margin: '0 4px' }}>|</span>
-        </>}
+        {/* Quarters dropdown — selecting a quarter toggles its months */}
+        {quarters.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Quarter</span>
+            <MultiSelect options={quarters.map(q => q.label)} selected={selectedQuarterLabels} onChange={onQuartersChange} placeholder="All quarters" />
+          </div>
+        )}
 
-        <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap', marginRight: 4 }}>Month</span>
-
-        {/* Month chips */}
-        {periods.map(p => {
-          const active = selectedMonths.includes(p.reporting_period)
-          return (
-            <button key={p.reporting_period} onClick={() => toggleMonth(p.reporting_period)} style={{
-              padding: '5px 11px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none',
-              background: active ? '#00D4C8' : p.closed ? '#f1f5f9' : '#f8fafc',
-              color: active ? '#fff' : p.closed ? '#64748b' : '#334155',
-              outline: active ? 'none' : p.closed ? '1.5px solid #e2e8f0' : '1.5px solid #e2e8f0',
-              transition: 'all 0.15s',
-            }}>
-              {p.closed ? '🔒 ' : ''}{p.reporting_period}
-            </button>
-          )
-        })}
+        {/* Months dropdown — multi-select */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Month</span>
+          <MultiSelect
+            options={periods.map(p => ({ value: p.reporting_period, label: `${p.closed ? '🔒 ' : ''}${p.reporting_period}` }))}
+            selected={selectedMonths}
+            onChange={applyMonths}
+            placeholder="All months"
+          />
+        </div>
 
         {periods.length > 0 && <span style={{ color: '#e2e8f0', fontSize: 18, margin: '0 4px' }}>|</span>}
 
