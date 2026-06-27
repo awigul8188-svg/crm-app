@@ -3,7 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
-const { initializeDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations, runInquiryViewsMigration, runBuyerMigration } = require('./database');
+const { initializeDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations, runInquiryViewsMigration, runBuyerMigration, runQuoteEntriesMigration } = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -103,4 +103,5 @@ runPurchasingV2Migrations();
 runOperationsMigrations();
 runInquiryViewsMigration();
 runBuyerMigration();
+runQuoteEntriesMigration();
 server.listen(PORT, () => console.log(`CRM running on port ${PORT}`));

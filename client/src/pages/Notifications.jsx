@@ -207,6 +207,9 @@ function PurchaserNotifications() {
 
   const empty = (msg) => <div className="card p-16 text-center"><Bell size={40} className="mx-auto mb-3 text-ink-200" /><div className="font-display font-bold text-ink-400 text-lg">{msg}</div></div>
 
+  // Open a part full-page (in-flow, sidebar stays) instead of a popup.
+  if (openPartId) return <PartDetailModal page assignmentId={openPartId} onClose={() => setOpenPartId(null)} onSaved={load} />
+
   return (
     <div className="page-wrap max-w-3xl">
       <PageHeader
@@ -250,7 +253,6 @@ function PurchaserNotifications() {
         </>
       )}
 
-      {openPartId && <PartDetailModal assignmentId={openPartId} onClose={() => setOpenPartId(null)} onSaved={load} />}
     </div>
   )
 }

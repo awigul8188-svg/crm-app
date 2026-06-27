@@ -51,6 +51,12 @@ function isOverSelling(price, quantity, selling_price, type) {
   const sp = num(selling_price);
   return !isNaN(cost) && !isNaN(sp) && cost > sp;
 }
+// Multi-entry: total buying cost across all sourcing entries (already summed) vs the sale price.
+function isOverSellingTotal(totalCost, selling_price, type) {
+  if (type !== 'online_order' || !selling_price) return false;
+  const sp = num(selling_price);
+  return !isNaN(sp) && sp > 0 && (Number(totalCost) || 0) > sp;
+}
 
 const PART_SELECT = `
   SELECT r.id as requirement_id, r.part_number, r.quantity,
@@ -62,14 +68,19 @@ const PART_SELECT = `
     pa.urgency, pa.pm_notes, pa.purchaser_notes, pa.not_in_stock,
     pu.id as purchaser_id, pu.name as purchaser_name,
     pq.id as quote_id, pq.price, pq.condition, pq.lead_time,
-    pq.supplier_name, pq.notes as quote_notes, pq.updated_at as quoted_at
+    pq.supplier_name, pq.notes as quote_notes, pq.updated_at as quoted_at,
+    (SELECT COUNT(*) FROM purchase_quotes q WHERE q.assignment_id = pa.id) as quote_count,
+    (SELECT COALESCE(SUM(COALESCE(q.quantity,0)),0) FROM purchase_quotes q WHERE q.assignment_id = pa.id) as quoted_qty,
+    (SELECT COALESCE(SUM(CAST(REPLACE(REPLACE(IFNULL(q.price,'0'),'$',''),',','') AS REAL) * COALESCE(q.quantity,0)),0)
+       FROM purchase_quotes q WHERE q.assignment_id = pa.id) as quoted_total_cost,
+    (SELECT GROUP_CONCAT(q.supplier_name, ', ') FROM purchase_quotes q WHERE q.assignment_id = pa.id AND q.supplier_name IS NOT NULL AND q.supplier_name != '') as quote_suppliers
   FROM requirements r
   JOIN inquiries i ON r.inquiry_id = i.id
   JOIN customers c ON i.customer_id = c.id
   LEFT JOIN users ae ON i.assigned_to = ae.id
   LEFT JOIN purchase_assignments pa ON pa.requirement_id = r.id
   LEFT JOIN users pu ON pa.purchaser_id = pu.id
-  LEFT JOIN purchase_quotes pq ON pq.assignment_id = pa.id
+  LEFT JOIN purchase_quotes pq ON pq.id = (SELECT MIN(id) FROM purchase_quotes WHERE assignment_id = pa.id)
 `;
 
 // ── Parts list (PM, paginated) ─────────────────────────────────
@@ -100,7 +111,8 @@ router.get('/parts', canManage, (req, res) => {
         ? workingDaysSince(p.assigned_at) : 0,
       is_delayed: p.assignment_id && p.assignment_status === 'pending'
         ? workingDaysSince(p.assigned_at) >= 4 : false,
-      is_over_selling: p.quote_id ? isOverSelling(p.price, p.quantity, p.selling_price, p.inquiry_type) : false,
+      shortfall: Math.max(0, (parseFloat(p.quantity) || 0) - (Number(p.quoted_qty) || 0)),
+      is_over_selling: p.quote_count > 0 ? isOverSellingTotal(p.quoted_total_cost, p.selling_price, p.inquiry_type) : false,
     }));
 
     res.json({ parts: enriched, total, pages: Math.ceil(total / PAGE_SIZE), page: parseInt(page) });
@@ -270,13 +282,17 @@ router.get('/part/:assignmentId', (req, res) => {
       return res.status(403).json({ error: 'Not authorized for this part' });
     const comments = db.prepare('SELECT * FROM part_comments WHERE assignment_id=? ORDER BY created_at ASC').all(req.params.assignmentId);
     const followups = db.prepare('SELECT * FROM purchaser_followups WHERE assignment_id=? ORDER BY follow_up_date ASC, id ASC').all(req.params.assignmentId);
+    // All sourcing entries (multi-supplier / partial). One row per supplier line.
+    const quotes = db.prepare('SELECT * FROM purchase_quotes WHERE assignment_id=? ORDER BY id').all(req.params.assignmentId);
     res.json({
       ...part,
       working_days_pending: part.assignment_status === 'pending' && !part.not_in_stock ? workingDaysSince(part.assigned_at) : 0,
       is_delayed: part.assignment_status === 'pending' && !part.not_in_stock ? workingDaysSince(part.assigned_at) >= 4 : false,
-      is_over_selling: part.quote_id ? isOverSelling(part.price, part.quantity, part.selling_price, part.inquiry_type) : false,
+      shortfall: Math.max(0, (parseFloat(part.quantity) || 0) - (Number(part.quoted_qty) || 0)),
+      is_over_selling: part.quote_count > 0 ? isOverSellingTotal(part.quoted_total_cost, part.selling_price, part.inquiry_type) : false,
       comments,
       followups,
+      quotes,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -285,7 +301,7 @@ router.get('/part/:assignmentId', (req, res) => {
 
 // ── Submit / update quote ─────────────────────────────────────
 router.post('/quote', (req, res) => {
-  const { assignment_id, price, condition, lead_time, supplier_name, notes } = req.body;
+  const { assignment_id, entries, price, condition, lead_time, supplier_name, notes } = req.body;
   if (!assignment_id) return res.status(400).json({ error: 'assignment_id required' });
   const db = getDB();
 
@@ -294,27 +310,37 @@ router.post('/quote', (req, res) => {
     if (!a) return res.status(404).json({ error: 'Assignment not found' });
     if (!isMgr(req.user.role) && a.purchaser_id !== req.user.id) return res.status(403).json({ error: 'Not your assignment' });
 
-    const existing = db.prepare('SELECT id FROM purchase_quotes WHERE assignment_id=?').get(assignment_id);
-    if (existing) {
-      db.prepare('UPDATE purchase_quotes SET price=?,condition=?,lead_time=?,supplier_name=?,notes=?,updated_at=CURRENT_TIMESTAMP WHERE assignment_id=?')
-        .run(price, condition, lead_time, supplier_name, notes, assignment_id);
-    } else {
-      db.prepare('INSERT INTO purchase_quotes (assignment_id,requirement_id,purchaser_id,price,condition,lead_time,supplier_name,notes) VALUES (?,?,?,?,?,?,?,?)')
-        .run(assignment_id, a.requirement_id, req.user.id, price, condition, lead_time, supplier_name, notes);
-    }
-    db.prepare("UPDATE purchase_assignments SET status='quoted' WHERE id=?").run(assignment_id);
+    // Accept multiple sourcing entries (supplier/qty/price); fall back to the legacy single-quote shape.
+    const list = Array.isArray(entries) ? entries
+      : [{ supplier_name, quantity: a.quantity, price, condition, lead_time, notes }];
+    const clean = list.filter(e => (e.supplier_name && String(e.supplier_name).trim()) || e.price || e.quantity);
 
-    // Flag if buying cost (per-unit price × qty) is over the website selling price
-    const isOver = isOverSelling(price, a.quantity, a.selling_price, a.inquiry_type);
+    db.transaction(() => {
+      db.prepare('DELETE FROM purchase_quotes WHERE assignment_id=?').run(assignment_id);
+      const ins = db.prepare('INSERT INTO purchase_quotes (assignment_id,requirement_id,purchaser_id,price,condition,lead_time,supplier_name,notes,quantity) VALUES (?,?,?,?,?,?,?,?,?)');
+      clean.forEach(e => ins.run(assignment_id, a.requirement_id, req.user.id,
+        e.price ?? null, e.condition ?? null, e.lead_time ?? null, e.supplier_name ?? null, e.notes ?? null,
+        e.quantity != null && e.quantity !== '' ? Number(e.quantity) : null));
+      db.prepare("UPDATE purchase_assignments SET status=? WHERE id=?").run(clean.length ? 'quoted' : 'pending', assignment_id);
+    })();
+
+    // Totals across entries for the over-selling check + notification summary.
+    const totalCost = clean.reduce((s, e) => s + num(e.price) * (Number(e.quantity) || 0), 0);
+    const quotedQty = clean.reduce((s, e) => s + (Number(e.quantity) || 0), 0);
+    const reqQty = parseFloat(a.quantity) || 0;
+    const short = Math.max(0, reqQty - quotedQty);
+    const isOver = isOverSellingTotal(totalCost, a.selling_price, a.inquiry_type);
+    const suppliers = [...new Set(clean.map(e => e.supplier_name).filter(Boolean))].join(', ');
     const overMsg = isOver ? ` ⚠️ OVER selling price ($${a.selling_price})` : '';
-    const msg = `${a.part_number} — ${condition ? condition+', ' : ''}$${price}${lead_time ? ', '+lead_time : ''}${overMsg}`;
+    const shortMsg = short > 0 ? `, ${short} short` : '';
+    const msg = `${a.part_number} — ${quotedQty}/${reqQty} sourced${shortMsg}${suppliers ? ` · ${suppliers}` : ''}${overMsg}`;
 
     const notifyUsers = db.prepare("SELECT id FROM users WHERE role IN ('manager','purchasing_manager') OR id=?").all(a.ae_id);
-    // assignment_id lets the AE/Manager click the notification straight into the part/quote detail.
-    const ins = db.prepare("INSERT INTO notifications (user_id,inquiry_id,inquiry_type,customer_name,actor_name,action,comment,assignment_id) VALUES (?,?,?,?,?,?,?,?)");
-    notifyUsers.forEach(u => ins.run(u.id, a.inquiry_id, 'quote', a.customer_name, req.user.name, isOver ? '⚠️ Quote over selling price' : 'Quote submitted', msg, assignment_id));
+    // assignment_id lets the AE/Manager click the notification straight into the record.
+    const insN = db.prepare("INSERT INTO notifications (user_id,inquiry_id,inquiry_type,customer_name,actor_name,action,comment,assignment_id) VALUES (?,?,?,?,?,?,?,?)");
+    notifyUsers.forEach(u => insN.run(u.id, a.inquiry_id, 'quote', a.customer_name, req.user.name, isOver ? '⚠️ Quote over selling price' : 'Quote submitted', msg, assignment_id));
 
-    res.json({ success: true, is_over_selling: isOver });
+    res.json({ success: true, is_over_selling: isOver, quoted_qty: quotedQty, shortfall: short });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -379,7 +405,7 @@ router.get('/quotes', canManage, (req, res) => {
   try {
     const total = db.prepare(`SELECT COUNT(*) as c FROM purchase_quotes pq JOIN requirements r ON pq.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id WHERE ${where}`).get(...params).c;
     const quotes = db.prepare(`
-      SELECT pq.*, r.part_number, r.quantity, pu.name as purchaser_name,
+      SELECT pq.*, r.part_number, r.quantity as line_quantity, pu.name as purchaser_name,
         c.name as customer_name, c.company as customer_company,
         i.type as inquiry_type, ae.name as ae_name, i.order_amount as selling_price,
         pa.urgency, pa.pm_notes
@@ -428,18 +454,20 @@ router.get('/stats', (req, res) => {
         .filter(r => workingDaysSince(r.assigned_at) >= 4).length;
 
       // Financial
-      const allQuotes = db.prepare("SELECT pq.price, r.quantity, i.order_amount as selling_price, i.type FROM purchase_quotes pq JOIN purchase_assignments pa ON pq.assignment_id=pa.id JOIN requirements r ON pa.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id").all();
+      // One row per assignment: total buying cost = Σ(entry price × entry qty) across its sourcing entries.
+      const allQuotes = db.prepare(`SELECT pa.id, i.order_amount as selling_price, i.type,
+        SUM(CAST(REPLACE(REPLACE(IFNULL(pq.price,'0'),'$',''),',','') AS REAL) * COALESCE(pq.quantity,0)) as total_cost
+        FROM purchase_quotes pq JOIN purchase_assignments pa ON pq.assignment_id=pa.id JOIN requirements r ON pa.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id GROUP BY pa.id`).all();
       let totalQuotedValue = 0, overSellingCount = 0;
       allQuotes.forEach(q => {
-        const p = num(q.price);
-        if (!isNaN(p)) totalQuotedValue += p;
-        if (isOverSelling(q.price, q.quantity, q.selling_price, q.type)) overSellingCount++;
+        totalQuotedValue += (Number(q.total_cost) || 0);
+        if (isOverSellingTotal(q.total_cost, q.selling_price, q.type)) overSellingCount++;
       });
       const avgQuotePrice = allQuotes.length > 0 ? (totalQuotedValue / allQuotes.length).toFixed(2) : 0;
 
       const byType = db.prepare(`SELECT i.type, COUNT(*) as total, SUM(CASE WHEN pa.id IS NULL THEN 1 ELSE 0 END) as unassigned, SUM(CASE WHEN pa.status='pending' AND pa.not_in_stock=0 THEN 1 ELSE 0 END) as pending, SUM(CASE WHEN pa.status='quoted' THEN 1 ELSE 0 END) as quoted, SUM(CASE WHEN pa.not_in_stock=1 THEN 1 ELSE 0 END) as not_in_stock FROM requirements r JOIN inquiries i ON r.inquiry_id=i.id LEFT JOIN purchase_assignments pa ON pa.requirement_id=r.id WHERE r.part_number!='' GROUP BY i.type`).all();
       const byPurchaser = db.prepare(`SELECT u.id, u.name, COUNT(*) as assigned, SUM(CASE WHEN pa.status='quoted' THEN 1 ELSE 0 END) as quoted_count, SUM(CASE WHEN pa.status='pending' AND pa.not_in_stock=0 THEN 1 ELSE 0 END) as pending_count, SUM(CASE WHEN pa.not_in_stock=1 THEN 1 ELSE 0 END) as not_in_stock FROM purchase_assignments pa JOIN users u ON pa.purchaser_id=u.id GROUP BY pa.purchaser_id ORDER BY assigned DESC`).all();
-      const recentQuotes = db.prepare(`SELECT pq.price, pq.condition, pq.updated_at, r.part_number, r.quantity, pu.name as purchaser_name, c.name as customer_name, i.type as inquiry_type, i.order_amount as selling_price FROM purchase_quotes pq JOIN requirements r ON pq.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id JOIN customers c ON i.customer_id=c.id LEFT JOIN users pu ON pq.purchaser_id=pu.id ORDER BY pq.updated_at DESC LIMIT 10`)
+      const recentQuotes = db.prepare(`SELECT pq.price, pq.condition, pq.updated_at, pq.quantity, r.part_number, pu.name as purchaser_name, c.name as customer_name, i.type as inquiry_type, i.order_amount as selling_price FROM purchase_quotes pq JOIN requirements r ON pq.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id JOIN customers c ON i.customer_id=c.id LEFT JOIN users pu ON pq.purchaser_id=pu.id ORDER BY pq.updated_at DESC LIMIT 10`)
         .all().map(q => ({ ...q, is_over_selling: isOverSelling(q.price, q.quantity, q.selling_price, q.inquiry_type) }));
       const urgencyCounts = db.prepare("SELECT urgency, COUNT(*) as count FROM purchase_assignments WHERE status='pending' GROUP BY urgency").all();
 
@@ -468,8 +496,10 @@ router.get('/stats', (req, res) => {
       const onTimeRate = quoteTimes.length > 0 ? Math.round(quoteTimes.filter(q => q.hours <= 96).length / quoteTimes.length * 100) : null;
 
       // Over-selling: this purchaser's quotes whose buying cost (price × qty) exceeds the website sell price
-      const myQuoteRows = db.prepare(`SELECT pq.price, r.quantity, i.order_amount as selling_price, i.type FROM purchase_quotes pq JOIN purchase_assignments pa ON pq.assignment_id=pa.id JOIN requirements r ON pa.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id WHERE pq.purchaser_id=?`).all(userId);
-      const myOverSelling = myQuoteRows.filter(q => isOverSelling(q.price, q.quantity, q.selling_price, q.type)).length;
+      const myQuoteRows = db.prepare(`SELECT pa.id, i.order_amount as selling_price, i.type,
+        SUM(CAST(REPLACE(REPLACE(IFNULL(pq.price,'0'),'$',''),',','') AS REAL) * COALESCE(pq.quantity,0)) as total_cost
+        FROM purchase_quotes pq JOIN purchase_assignments pa ON pq.assignment_id=pa.id JOIN requirements r ON pa.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id WHERE pq.purchaser_id=? GROUP BY pa.id`).all(userId);
+      const myOverSelling = myQuoteRows.filter(q => isOverSellingTotal(q.total_cost, q.selling_price, q.type)).length;
 
       // My followups
       const overdueFollowups = db.prepare(`SELECT pf.*, r.part_number FROM purchaser_followups pf JOIN purchase_assignments pa ON pf.assignment_id=pa.id JOIN requirements r ON pa.requirement_id=r.id WHERE pf.purchaser_id=? AND pf.completed=0 AND pf.follow_up_date < ? ORDER BY pf.follow_up_date ASC LIMIT 10`).all(userId, today);

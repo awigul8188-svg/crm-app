@@ -126,23 +126,31 @@ export default function InquiryDetail({ id }) {
                 <thead><tr className="text-xs text-ink-400 border-b">
                   <th className="text-left pb-2 font-semibold">Part Number</th>
                   <th className="text-left pb-2 font-semibold">Quantity</th>
-                  <th className="text-left pb-2 font-semibold">Quoted Price</th>
+                  <th className="text-left pb-2 font-semibold">Sourcing</th>
                 </tr></thead>
                 <tbody className="divide-y divide-slate-50">
                   {requirements.map((r,i) => {
-                    const hasQuote = r.quote_price !== null && r.quote_price !== undefined && r.quote_price !== ''
-                    const meta = [r.quote_condition, r.quote_lead_time, r.quote_supplier].filter(Boolean).join(' · ')
+                    const qs = r.quotes || []
+                    const sourced = Number(r.quoted_qty) || 0
+                    const short = Number(r.shortfall) || 0
                     return (
                       <tr key={r.id||i} className="align-top">
                         <td className="py-2 font-mono text-sm text-ink-800">{r.part_number}</td>
                         <td className="py-2 text-ink-600">{r.quantity}</td>
                         <td className="py-2">
-                          {hasQuote ? (
-                            <div>
-                              <span className="font-bold text-green-700">${r.quote_price}</span>
-                              {(meta || r.quote_purchaser) && (
-                                <div className="text-[11px] text-ink-400 leading-snug">{meta}{r.quote_purchaser ? `${meta ? ' — ' : ''}by ${r.quote_purchaser}` : ''}</div>
-                              )}
+                          {qs.length ? (
+                            <div className="space-y-0.5">
+                              {qs.map((q, qi) => (
+                                <div key={qi} className="text-[12px] text-ink-700">
+                                  <span className="font-semibold">{q.quantity ?? '—'} ×</span> <span className="font-bold text-green-700">${q.price}</span>
+                                  {q.supplier_name ? <span className="text-ink-500"> — {q.supplier_name}</span> : ''}
+                                  {q.condition ? <span className="text-ink-400"> ({q.condition}{q.lead_time ? `, ${q.lead_time}` : ''})</span> : q.lead_time ? <span className="text-ink-400"> ({q.lead_time})</span> : ''}
+                                </div>
+                              ))}
+                              <div className="text-[11px] text-ink-400">
+                                {sourced}/{r.quantity} sourced
+                                {short > 0 && <span className="text-amber-600 font-semibold"> · ⚠ {short} short</span>}
+                              </div>
                             </div>
                           ) : r.not_in_stock ? <span className="text-xs font-semibold text-amber-600">Not in stock</span>
                             : r.assignment_status === 'pending' ? <span className="text-xs text-ink-400">Awaiting quote…</span>

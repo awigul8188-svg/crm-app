@@ -430,4 +430,15 @@ function runBuyerMigration() {
   }
 }
 
-module.exports = { initializeDB, getDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations, runInquiryViewsMigration, runBuyerMigration };
+// Multi-supplier sourcing: a line item can now have MULTIPLE quote entries, each with its own
+// quantity (split across suppliers / partial availability). Adds quantity to purchase_quotes.
+function runQuoteEntriesMigration() {
+  const db = getDB();
+  try { db.exec('ALTER TABLE purchase_quotes ADD COLUMN quantity REAL'); } catch(e) {}
+  // Existing single quotes represented the whole line → backfill quantity = requirement quantity.
+  // Only fills NULLs, so it's safe on every boot (new multi-entries always set quantity).
+  try { db.prepare(`UPDATE purchase_quotes SET quantity = (SELECT r.quantity FROM requirements r WHERE r.id = purchase_quotes.requirement_id) WHERE quantity IS NULL`).run(); }
+  catch(e) { console.log('quote quantity backfill note:', e.message); }
+}
+
+module.exports = { initializeDB, getDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations, runInquiryViewsMigration, runBuyerMigration, runQuoteEntriesMigration };

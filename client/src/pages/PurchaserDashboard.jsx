@@ -52,12 +52,12 @@ function Pagination({ page, pages, onChange }) {
 
 // Full part detail modal. `fullPage` renders it as a standalone full-screen view (used by the
 // popped-out browser tab) instead of a centered modal over a dimmed backdrop.
-export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = false }) {
+export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = false, page = false }) {
   const { user } = useAuth()
   const [part, setPart] = useState(null)
   const [tab, setTab] = useState('quote')
-  const [price, setPrice] = useState(''); const [condition, setCondition] = useState(''); const [customCond, setCustomCond] = useState('')
-  const [leadTime, setLeadTime] = useState(''); const [supplier, setSupplier] = useState(''); const [quoteNotes, setQuoteNotes] = useState('')
+  // Multi-supplier sourcing: one or more entries, each supplier/qty/price/condition/lead time.
+  const [entries, setEntries] = useState([])
   const [purchaserNotes, setPurchaserNotes] = useState(''); const [savingNotes, setSavingNotes] = useState(false)
   const [comment, setComment] = useState(''); const [sendingComment, setSendingComment] = useState(false)
   const [followupNote, setFollowupNote] = useState(''); const [followupDate, setFollowupDate] = useState(''); const [savingFollowup, setSavingFollowup] = useState(false)
@@ -71,7 +71,10 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
   const load = () => {
     fetch(`/api/purchasing/part/${assignmentId}`, { headers:{ Authorization:`Bearer ${localStorage.getItem('crm_token')}` } })
       .then(r=>r.json()).then(d => {
-        setPart(d); setPrice(d.price||''); setCondition(d.condition||''); setLeadTime(d.lead_time||''); setSupplier(d.supplier_name||''); setQuoteNotes(d.quote_notes||''); setPurchaserNotes(d.purchaser_notes||''); setDirty(false)
+        setPart(d)
+        const qs = (d.quotes || []).map(q => ({ supplier_name:q.supplier_name||'', quantity:q.quantity ?? '', price:q.price ?? '', condition:q.condition||'', lead_time:q.lead_time||'' }))
+        setEntries(qs.length ? qs : [{ supplier_name:'', quantity:d.quantity ?? '', price:'', condition:'', lead_time:'' }])
+        setPurchaserNotes(d.purchaser_notes||''); setDirty(false)
       })
       .catch(() => showFlash('err','Could not load part'))
   }
@@ -84,8 +87,8 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
     try {
       const created = await purchasingApi.createSupplier(newSup)
       setSuppliers(prev => prev.some(s => s.id === created.id) ? prev : [...prev, created])
-      setSupplier(created.company); setDirty(true)
       setAddingSupplier(false); setNewSup({ company:'', rep_name:'', email:'' })
+      showFlash('ok', `Supplier "${created.company}" added — pick it in any line`)
     } catch(e) { showFlash('err', e.message || 'Could not add supplier') }
     setSupSaving(false)
   }
@@ -93,13 +96,21 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
   // Backdrop / × close — warn if there are unsaved quote or notes edits.
   const attemptClose = () => { if (dirty && !window.confirm('Discard unsaved changes?')) return; onClose() }
 
+  const numV = (v) => { const n = parseFloat(String(v ?? '').replace(/[$,]/g, '')); return isNaN(n) ? 0 : n }
+  const updateEntry = (i, k, v) => { setEntries(es => es.map((e, idx) => idx === i ? { ...e, [k]: v } : e)); setDirty(true) }
+  const addEntry = () => { setEntries(es => [...es, { supplier_name:'', quantity:'', price:'', condition:'', lead_time:'' }]); setDirty(true) }
+  const removeEntry = (i) => { setEntries(es => es.filter((_, idx) => idx !== i)); setDirty(true) }
+
   const handleQuoteSubmit = async () => {
-    if (!price) return setError('Price is required')
-    if (!condition) return setError('Select a condition')
-    const finalCond = condition==='Other' ? customCond : condition
+    const clean = entries.filter(e => (e.supplier_name && e.supplier_name.trim()) || e.price || e.quantity)
+    if (!clean.length) return setError('Add at least one supplier line')
+    for (const e of clean) {
+      if (!e.price) return setError('Each line needs a price')
+      if (!e.quantity) return setError('Each line needs a quantity')
+    }
     setSaving(true); setError('')
     try {
-      const res = await purchasingApi.submitQuote({ assignment_id: assignmentId, price, condition:finalCond, lead_time:leadTime, supplier_name:supplier, notes:quoteNotes })
+      const res = await purchasingApi.submitQuote({ assignment_id: assignmentId, entries: clean })
       if (res.error) setError(res.error)
       else { showFlash('ok','Quote saved'); load(); onSaved() }
     } catch(e) { setError(e.message || 'Could not save quote') }
@@ -156,20 +167,24 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
 
   // Supplier options for the searchable picker. If the saved supplier isn't a known op_supplier
   // (legacy free-text quotes), surface it so the current value still shows selected.
-  const supplierItems = (() => {
+  const supplierItemsFor = (val) => {
     const items = suppliers.map(s => ({ value: s.company, label: s.company, sub: s.rep_name || '' }))
-    if (supplier && !items.some(i => String(i.value) === String(supplier))) items.unshift({ value: supplier, label: supplier, sub: '(current)' })
+    if (val && !items.some(i => String(i.value) === String(val))) items.unshift({ value: val, label: val, sub: '(current)' })
     return items
-  })()
+  }
 
   // Backdrop (dimmed overlay) vs full-page (plain white, fills the tab). Card adapts to match.
   const backdropStyle = fullPage
     ? { position:'fixed', inset:0, zIndex:99999, background:'#f8fafc', display:'flex', alignItems:'stretch', justifyContent:'center' }
     : { position:'fixed', inset:0, zIndex:99999, background:'rgba(0,0,0,0.55)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', padding:16 }
-  const cardStyle = fullPage
+  const cardStyle = page
+    ? { background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', width:'100%', display:'flex', flexDirection:'column', fontFamily:'"Plus Jakarta Sans",sans-serif' }
+    : fullPage
     ? { background:'#fff', width:'100%', maxWidth:820, maxHeight:'100vh', display:'flex', flexDirection:'column', fontFamily:'"Plus Jakarta Sans",sans-serif' }
     : { background:'#fff', borderRadius:20, boxShadow:'0 24px 80px rgba(0,0,0,0.25)', width:'100%', maxWidth:640, maxHeight:'92vh', display:'flex', flexDirection:'column', fontFamily:'"Plus Jakarta Sans",sans-serif' }
 
+  // `page` mode renders in-flow inside the app Layout (sidebar visible) like the lead/order pages.
+  if (page && !part) return <div className="page-wrap" style={{ maxWidth:900 }}><div style={{ padding:40, color:'#94a3b8' }}>Loading…</div></div>
   if (!part) return createPortal(
     <div style={fullPage ? backdropStyle : { position:'fixed', inset:0, zIndex:99999, background:'rgba(0,0,0,0.5)', display:'flex', alignItems:'center', justifyContent:'center' }}>
       <div style={{ background:'#fff', borderRadius:fullPage?0:20, padding:40, color:'#94a3b8', margin:'auto' }}>Loading...</div>
@@ -182,8 +197,7 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
   // In full-page mode the whole surface is the card — backdrop clicks must NOT close it.
   const openFullPage = () => window.open(`${window.location.origin}/?part=${assignmentId}`, '_blank')
 
-  return createPortal(
-    <div onClick={fullPage ? undefined : attemptClose} style={backdropStyle}>
+  const card = (
       <div onClick={e=>e.stopPropagation()} style={cardStyle}>
         <style>{`@keyframes modalIn{from{opacity:0;transform:scale(0.96) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
@@ -203,7 +217,7 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
               {part.inquiry_type==='online_order' && Number(part.selling_price) > 0 && (
                 <div style={{ fontSize:12, fontWeight:700, color:isOver?'#dc2626':'#10b981', marginTop:3 }}>
                   {isOver
-                    ? `⚠️ OVER — buying ${money(part.price)}${part.quantity>1?` × ${part.quantity}`:''} exceeds selling ${money(part.selling_price)}`
+                    ? `⚠️ OVER — total buying ${money(part.quoted_total_cost)} exceeds selling ${money(part.selling_price)}`
                     : `Selling price: ${money(part.selling_price)}`}
                 </div>
               )}
@@ -218,7 +232,7 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
                 style={{ padding:'6px 12px', borderRadius:10, border:`1px solid ${part.not_in_stock?'#10b981':'#ef4444'}`, background:part.not_in_stock?'#f0fdf4':'#fef2f2', color:part.not_in_stock?'#10b981':'#ef4444', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', whiteSpace:'nowrap' }}>
                 {part.not_in_stock?'✓ Mark In Stock':'❌ Not In Stock'}
               </button>
-              {!fullPage && (
+              {!fullPage && !page && (
                 <button onClick={openFullPage} title="Open in a new tab (full page)"
                   style={{ width:32, height:32, borderRadius:10, border:'1px solid #e2e8f0', background:'#fff', cursor:'pointer', fontSize:14, color:'#64748b', display:'flex', alignItems:'center', justifyContent:'center' }}>⤢</button>
               )}
@@ -235,58 +249,78 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
         </div>
 
         <div onInput={()=>setDirty(true)} style={{ overflowY:'auto', flex:1, padding:'18px 22px' }}>
-          {/* Quote tab */}
-          {tab==='quote' && (
+          {/* Quote tab — multi-supplier sourcing */}
+          {tab==='quote' && (() => {
+            const sourcedQty = entries.reduce((s,e)=> s + (Number(e.quantity)||0), 0)
+            const totalCost = entries.reduce((s,e)=> s + numV(e.price)*(Number(e.quantity)||0), 0)
+            const reqQty = Number(part.quantity)||0
+            const shortQty = Math.max(0, reqQty - sourcedQty)
+            const over = part.inquiry_type==='online_order' && Number(part.selling_price)>0 && totalCost > numV(part.selling_price)
+            const ri = { boxSizing:'border-box', width:'100%', border:'1px solid #e2e8f0', borderRadius:8, padding:'7px 9px', fontSize:12, outline:'none', fontFamily:'"Plus Jakarta Sans",sans-serif' }
+            const rl = { fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:3 }
+            return (
             <div>
-              <div style={{ marginBottom:12 }}>
-                <div style={{ fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6 }}>Price *</div>
-                <SInput value={price} onChange={e=>setPrice(e.target.value)} placeholder="e.g. 250.00" />
+              {/* Sourced summary */}
+              <div style={{ display:'flex', alignItems:'center', gap:16, flexWrap:'wrap', marginBottom:14, background:'#f8fafc', border:'1px solid #f1f5f9', borderRadius:12, padding:'10px 14px', fontSize:13 }}>
+                <span style={{ color:'#64748b' }}>Required <b style={{ color:'#0f172a' }}>{reqQty}</b></span>
+                <span style={{ color:'#64748b' }}>Sourced <b style={{ color: sourcedQty>=reqQty&&reqQty>0?'#10b981':'#0f172a' }}>{sourcedQty}</b></span>
+                {shortQty>0
+                  ? <span style={{ color:'#dc2626', fontWeight:700 }}>⚠ {shortQty} short</span>
+                  : reqQty>0 && <span style={{ color:'#10b981', fontWeight:700 }}>✓ fully sourced</span>}
+                <span style={{ marginLeft:'auto', color:'#64748b' }}>Total cost <b style={{ color: over?'#dc2626':'#0f172a' }}>{money(totalCost)}{over?' ⚠️':''}</b></span>
               </div>
-              <div style={{ marginBottom:12 }}>
-                <div style={{ fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6 }}>Condition *</div>
-                <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:condition==='Other'?8:0 }}>
-                  {CONDITIONS.map(c => <button key={c} type="button" onClick={()=>setCondition(c)} style={{ padding:'6px 12px', borderRadius:10, border:`2px solid ${condition===c?BRAND:'#e2e8f0'}`, background:condition===c?`${BRAND}12`:'#fff', color:condition===c?'#00b8ad':'#64748b', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', transition:'all 0.15s' }}>{c}</button>)}
-                </div>
-                {condition==='Other' && <SInput value={customCond} onChange={e=>setCustomCond(e.target.value)} placeholder="Specify condition..." />}
+              {over && <div style={{ background:'#fef2f2', border:'1px solid #fecaca', borderRadius:10, padding:'8px 12px', fontSize:12, color:'#dc2626', marginBottom:12 }}>⚠️ Total buying cost exceeds the selling price ({money(part.selling_price)}).</div>}
+
+              {/* Add a supplier to the master list */}
+              <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:8 }}>
+                {!addingSupplier && <button type="button" onClick={()=>setAddingSupplier(true)} style={{ fontSize:11, fontWeight:700, color:BRAND, background:'none', border:'none', cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>+ New supplier</button>}
               </div>
-              <div style={{ marginBottom:12 }}>
-                <div style={{ fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6 }}>Lead Time</div>
-                <SInput value={leadTime} onChange={e=>setLeadTime(e.target.value)} placeholder="e.g. 3-5 days" />
-              </div>
-              <div style={{ marginBottom:12 }}>
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
-                  <div style={{ fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.08em' }}>Supplier</div>
-                  {!addingSupplier && <button type="button" onClick={()=>setAddingSupplier(true)} style={{ fontSize:11, fontWeight:700, color:BRAND, background:'none', border:'none', cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>+ New supplier</button>}
-                </div>
-                {addingSupplier ? (
-                  <div style={{ border:`1px solid ${BRAND}`, borderRadius:12, padding:'10px 12px', background:'#f0fffe', display:'flex', flexDirection:'column', gap:8 }}>
-                    <div style={{ fontSize:10, fontWeight:700, color:BRAND, textTransform:'uppercase', letterSpacing:'0.08em' }}>New Supplier</div>
-                    <input value={newSup.company} onChange={e=>setNewSup(p=>({...p, company:e.target.value}))} placeholder="Company *" autoFocus style={{ ...inp, padding:'8px 12px' }} />
-                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-                      <input value={newSup.rep_name} onChange={e=>setNewSup(p=>({...p, rep_name:e.target.value}))} placeholder="Rep name" style={{ ...inp, padding:'8px 12px' }} />
-                      <input value={newSup.email} onChange={e=>setNewSup(p=>({...p, email:e.target.value}))} placeholder="Email" style={{ ...inp, padding:'8px 12px' }} />
-                    </div>
-                    <div style={{ display:'flex', gap:8 }}>
-                      <button type="button" onClick={handleAddSupplier} disabled={supSaving||!newSup.company.trim()} style={{ padding:'7px 14px', borderRadius:10, border:'none', background:newSup.company.trim()?BRAND:'#cbd5e1', color:'#0d0d0d', fontWeight:700, fontSize:12, cursor:newSup.company.trim()?'pointer':'not-allowed', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>{supSaving?'Saving…':'Add & select'}</button>
-                      <button type="button" onClick={()=>{ setAddingSupplier(false); setNewSup({ company:'', rep_name:'', email:'' }) }} style={{ padding:'7px 14px', borderRadius:10, border:'1px solid #e2e8f0', background:'#fff', color:'#64748b', fontWeight:600, fontSize:12, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>Cancel</button>
-                    </div>
+              {addingSupplier && (
+                <div style={{ border:`1px solid ${BRAND}`, borderRadius:12, padding:'10px 12px', background:'#f0fffe', display:'flex', flexDirection:'column', gap:8, marginBottom:12 }}>
+                  <div style={{ fontSize:10, fontWeight:700, color:BRAND, textTransform:'uppercase', letterSpacing:'0.08em' }}>New Supplier</div>
+                  <input value={newSup.company} onChange={e=>setNewSup(p=>({...p, company:e.target.value}))} placeholder="Company *" autoFocus style={{ ...inp, padding:'8px 12px' }} />
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                    <input value={newSup.rep_name} onChange={e=>setNewSup(p=>({...p, rep_name:e.target.value}))} placeholder="Rep name" style={{ ...inp, padding:'8px 12px' }} />
+                    <input value={newSup.email} onChange={e=>setNewSup(p=>({...p, email:e.target.value}))} placeholder="Email" style={{ ...inp, padding:'8px 12px' }} />
                   </div>
-                ) : (
-                  <SearchableSelect items={supplierItems} value={supplier} onChange={(v)=>{ setSupplier(v||''); setDirty(true) }} placeholder="Search suppliers…" emptyText="No suppliers — add one above" />
-                )}
-              </div>
-              <div style={{ marginBottom:16 }}><div style={{ fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6 }}>Quote Notes</div><STextarea value={quoteNotes} onChange={e=>setQuoteNotes(e.target.value)} placeholder="Additional notes about this quote..." /></div>
-              {error && <div style={{ background:'#fef2f2', border:'1px solid #fecaca', borderRadius:10, padding:'10px 14px', fontSize:13, color:'#dc2626', marginBottom:12 }}>⚠ {error}</div>}
-              <button onClick={handleQuoteSubmit} disabled={saving} style={{ width:'100%', padding:12, borderRadius:12, border:'none', background:saving?'#94a3b8':BRAND, color:'#0d0d0d', fontWeight:700, fontSize:14, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
-                {saving?<><div style={{ width:14, height:14, borderRadius:'50%', border:'2px solid #0d0d0d', borderTopColor:'transparent', animation:'spin 0.8s linear infinite' }} />Saving...</>:(part.quote_id?'↻ Update Quote':'✓ Submit Quote')}
-              </button>
-              {part.quote_id && (
-                <div style={{ marginTop:12, background:'#f0fdf4', borderRadius:10, padding:'10px 14px', border:'1px solid #bbf7d0', fontSize:12, color:'#16a34a' }}>
-                  ✓ Last quoted: {money(part.price)} · {part.condition} · {part.lead_time||'—'} · {timeAgo(part.quoted_at)}
+                  <div style={{ display:'flex', gap:8 }}>
+                    <button type="button" onClick={handleAddSupplier} disabled={supSaving||!newSup.company.trim()} style={{ padding:'7px 14px', borderRadius:10, border:'none', background:newSup.company.trim()?BRAND:'#cbd5e1', color:'#0d0d0d', fontWeight:700, fontSize:12, cursor:newSup.company.trim()?'pointer':'not-allowed', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>{supSaving?'Saving…':'Add supplier'}</button>
+                    <button type="button" onClick={()=>{ setAddingSupplier(false); setNewSup({ company:'', rep_name:'', email:'' }) }} style={{ padding:'7px 14px', borderRadius:10, border:'1px solid #e2e8f0', background:'#fff', color:'#64748b', fontWeight:600, fontSize:12, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>Cancel</button>
+                  </div>
                 </div>
               )}
+
+              {/* Supplier lines */}
+              {entries.map((e,i) => (
+                <div key={i} style={{ border:'1px solid #f1f5f9', borderRadius:12, padding:12, marginBottom:10, background:'#fafbfc' }}>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+                    <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8' }}>Supplier line {i+1}</div>
+                    {entries.length>1 && <button type="button" onClick={()=>removeEntry(i)} style={{ fontSize:11, color:'#ef4444', background:'none', border:'none', cursor:'pointer', fontWeight:600 }}>✕ remove</button>}
+                  </div>
+                  <div style={{ marginBottom:8 }}>
+                    <div style={rl}>Supplier</div>
+                    <SearchableSelect items={supplierItemsFor(e.supplier_name)} value={e.supplier_name} onChange={(v)=>updateEntry(i,'supplier_name',v||'')} placeholder="Search suppliers…" emptyText="No suppliers — add one above" />
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
+                    <div><div style={rl}>Qty *</div><input style={ri} value={e.quantity} onChange={ev=>updateEntry(i,'quantity',ev.target.value)} placeholder={reqQty?`of ${reqQty}`:'qty'} /></div>
+                    <div><div style={rl}>Unit price *</div><input style={ri} value={e.price} onChange={ev=>updateEntry(i,'price',ev.target.value)} placeholder="$" /></div>
+                    <div><div style={rl}>Condition</div><select style={{ ...ri, cursor:'pointer' }} value={e.condition} onChange={ev=>updateEntry(i,'condition',ev.target.value)}><option value="">—</option>{CONDITIONS.map(c=><option key={c}>{c}</option>)}</select></div>
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginTop:8, alignItems:'end' }}>
+                    <div><div style={rl}>Lead time</div><input style={ri} value={e.lead_time} onChange={ev=>updateEntry(i,'lead_time',ev.target.value)} placeholder="e.g. 3-5 days" /></div>
+                    <div style={{ fontSize:11, color:'#64748b', textAlign:'right' }}>Line cost: <b style={{ color:'#0f172a' }}>{money(numV(e.price)*(Number(e.quantity)||0))}</b></div>
+                  </div>
+                </div>
+              ))}
+              <button type="button" onClick={addEntry} style={{ width:'100%', padding:'9px', borderRadius:10, border:`1.5px dashed ${BRAND}80`, background:`${BRAND}08`, color:'#0f766e', fontWeight:700, fontSize:12, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', marginBottom:14 }}>+ Add another supplier line</button>
+
+              {error && <div style={{ background:'#fef2f2', border:'1px solid #fecaca', borderRadius:10, padding:'10px 14px', fontSize:13, color:'#dc2626', marginBottom:12 }}>⚠ {error}</div>}
+              <button onClick={handleQuoteSubmit} disabled={saving} style={{ width:'100%', padding:12, borderRadius:12, border:'none', background:saving?'#94a3b8':BRAND, color:'#0d0d0d', fontWeight:700, fontSize:14, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+                {saving?<><div style={{ width:14, height:14, borderRadius:'50%', border:'2px solid #0d0d0d', borderTopColor:'transparent', animation:'spin 0.8s linear infinite' }} />Saving...</>:(part.quote_count?'↻ Update Sourcing':'✓ Submit Sourcing')}
+              </button>
             </div>
-          )}
+            )
+          })()}
 
           {/* My Notes tab */}
           {tab==='notes' && (
@@ -361,12 +395,21 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
           )}
         </div>
       </div>
-      {flash && (
-        <div style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', zIndex:100000, background:flash.type==='ok'?'#0f172a':'#dc2626', color:'#fff', padding:'10px 18px', borderRadius:10, fontSize:13, fontWeight:600, boxShadow:'0 8px 24px rgba(0,0,0,0.25)' }}>
-          {flash.type==='ok'?'✓ ':'⚠ '}{flash.msg}
-        </div>
-      )}
-    </div>,
+  )
+  const flashEl = flash ? (
+    <div style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', zIndex:100000, background:flash.type==='ok'?'#0f172a':'#dc2626', color:'#fff', padding:'10px 18px', borderRadius:10, fontSize:13, fontWeight:600, boxShadow:'0 8px 24px rgba(0,0,0,0.25)' }}>
+      {flash.type==='ok'?'✓ ':'⚠ '}{flash.msg}
+    </div>
+  ) : null
+
+  if (page) return (
+    <div className="page-wrap" style={{ maxWidth:900 }}>
+      <button onClick={onClose} style={{ display:'flex', alignItems:'center', gap:4, fontSize:13, color:'#64748b', background:'none', border:'none', cursor:'pointer', fontWeight:600, marginBottom:14, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>← Back</button>
+      {card}{flashEl}
+    </div>
+  )
+  return createPortal(
+    <div onClick={fullPage ? undefined : attemptClose} style={backdropStyle}>{card}{flashEl}</div>,
     document.body
   )
 }
@@ -463,6 +506,9 @@ export function PurchaserParts() {
   )
   const fStyle = { padding:'6px 8px', border:'1px solid #e2e8f0', borderRadius:8, fontSize:12, outline:'none', width:'100%', boxSizing:'border-box', background:'#fff', fontFamily:'"Plus Jakarta Sans",sans-serif' }
 
+  // Open a part as a full page (in-flow, sidebar stays) instead of a popup.
+  if (openPartId) return <PartDetailModal page assignmentId={openPartId} onClose={()=>setOpenPartId(null)} onSaved={load} />
+
   return (
     <div style={{ padding:28, maxWidth:1200, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>
       <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
@@ -513,7 +559,6 @@ export function PurchaserParts() {
           </table>
         </div>
       </div>
-      {openPartId && <PartDetailModal assignmentId={openPartId} onClose={()=>setOpenPartId(null)} onSaved={load} />}
     </div>
   )
 }
@@ -549,6 +594,9 @@ export default function PurchaserDashboard() {
     { key:'repeat',    label:`↻ Repeat (${getTypeStats('repeat').total})` },
     { key:'online_order', label:`◈ Orders (${getTypeStats('online_order').total})` },
   ]
+
+  // Open a part as a full page (in-flow, sidebar stays) instead of a popup.
+  if (openPartId) return <PartDetailModal page assignmentId={openPartId} onClose={()=>setOpenPartId(null)} onSaved={()=>{ loadStats(); loadParts() }} />
 
   return (
     <div style={{ padding:28, maxWidth:1200, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>
@@ -716,7 +764,6 @@ export default function PurchaserDashboard() {
         </div>
       )}
 
-      {openPartId && <PartDetailModal assignmentId={openPartId} onClose={() => setOpenPartId(null)} onSaved={() => { loadStats(); loadParts() }} />}
     </div>
   )
 }
