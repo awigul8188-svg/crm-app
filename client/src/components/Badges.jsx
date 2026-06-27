@@ -20,6 +20,10 @@ export const PPC_OPTIONS = ['PPC', 'Outbound Repeat']
 
 export const VERIFICATION_OPTIONS = ['Verified', 'Not Verified']
 
+// Canonical product-condition vocabulary, shared by Operations line items, the purchaser quote, and
+// Closed-Won order creation so the condition carries cleanly end to end.
+export const OP_CONDITIONS = ['New', 'Refurbished', 'Used', 'Open Box', 'REF']
+
 const DISPOSITION_COLORS = {
   'Closed Won':    'bg-green-100 text-green-700',
   'Processed':     'bg-green-100 text-green-700',

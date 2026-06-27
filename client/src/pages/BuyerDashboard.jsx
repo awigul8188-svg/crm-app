@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Package, Truck, CheckCircle2, ClipboardList } from 'lucide-react'
 import { operationsApi } from '../api'
 import { useAuth } from '../App'
+import { OP_CONDITIONS } from '../components/Badges'
 import SearchableSelect from '../components/SearchableSelect'
 
 const BRAND = '#00D4C8'
@@ -67,7 +68,8 @@ function VendorModal({ id, suppliers, onAddSupplier, onClose, onSaved }) {
     try {
       await operationsApi.buyerSaveOrder(id, {
         items: items.map(it => ({
-          id: it.id, supplier_id: it.supplier_id, buying: it.buying, cc_paid: it.cc_paid, tax_paid: it.tax_paid,
+          id: it.id, part_number: it.part_number, quantity: it.quantity, product_condition: it.product_condition, selling: it.selling,
+          supplier_id: it.supplier_id, buying: it.buying, cc_paid: it.cc_paid, tax_paid: it.tax_paid,
           shipping_paid: it.shipping_paid, duty_paid: it.duty_paid, payment_method: it.payment_method,
           payment_due: it.payment_due, supplier_terms: it.supplier_terms, ta_po_number: it.ta_po_number,
           tracking_to_warehouse: it.tracking_to_warehouse, serials: it.serials,
@@ -106,9 +108,21 @@ function VendorModal({ id, suppliers, onAddSupplier, onClose, onSaved }) {
             {/* Per-item vendor fields */}
             {items.map((it, i) => (
               <div key={it.id} style={{ border: '1px solid #f1f5f9', borderRadius: 14, padding: 16, marginBottom: 14, background: '#fafbfc' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
-                  <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: '#0f172a' }}>{it.part_number || '(no part #)'}</div>
-                  <div style={{ fontSize: 12, color: '#64748b' }}>Qty {it.quantity} · Sell {money(it.selling)}</div>
+                {/* Sales side — editable so the buyer can fix AE typos */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Sales side</span>
+                  {it.sourced_by && <span style={{ fontSize: 11, color: '#94a3b8' }}>Sourced by {it.sourced_by}</span>}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1.2fr 1fr', gap: 10, marginBottom: 12 }}>
+                  <Field label="Part #"><input value={it.part_number || ''} onChange={e => setItem(i, 'part_number', e.target.value)} placeholder="Part #" style={inp} /></Field>
+                  <Field label="Qty"><input value={it.quantity ?? ''} onChange={e => setItem(i, 'quantity', e.target.value)} placeholder="0" style={inp} /></Field>
+                  <Field label="Condition">
+                    <select value={it.product_condition || ''} onChange={e => setItem(i, 'product_condition', e.target.value)} style={{ ...inp, cursor: 'pointer' }}>
+                      <option value="">—</option>
+                      {[...OP_CONDITIONS, ...(it.product_condition && !OP_CONDITIONS.includes(it.product_condition) ? [it.product_condition] : [])].map(c => <option key={c}>{c}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Selling (unit)"><input value={it.selling ?? ''} onChange={e => setItem(i, 'selling', e.target.value)} placeholder="0" style={inp} /></Field>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10, marginBottom: 10 }}>

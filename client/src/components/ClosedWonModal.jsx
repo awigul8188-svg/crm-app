@@ -2,10 +2,11 @@ import { useState } from 'react'
 import Modal from './Modal'
 import { operationsApi } from '../api'
 import { CheckCircle, Package, Plus, Trash2 } from 'lucide-react'
+import { OP_CONDITIONS } from './Badges'
 
 const BRAND = '#00D4C8'
 const PAYMENT_STATUSES = ['CC Charged', 'Wire Received', 'Net']
-const CONDITIONS = ['', 'NEW', 'REF', 'USED', 'PULL', 'NEW OEM']
+const CONDITIONS = ['', ...OP_CONDITIONS]
 const NET_TERMS = [
   { label: 'Due on receipt', days: 0 }, { label: 'Net 7', days: 7 }, { label: 'Net 10', days: 10 },
   { label: 'Net 15', days: 15 }, { label: 'Net 30', days: 30 }, { label: 'Net 45', days: 45 }, { label: 'Net 60', days: 60 },
@@ -39,13 +40,31 @@ export default function ClosedWonModal({ inquiry, requirements = [], onClose, on
     return { ...f, net: label, due_date: (days !== undefined) ? addDays(today, days) : f.due_date }
   })
 
+  // Pre-fill from the purchaser's sourcing: one line per supplier entry (carrying supplier, buying,
+  // condition, and who sourced it). Parts with no quote fall back to a single blank-cost line.
+  const blankLine = () => ({ part_number: '', description: '', quantity: 1, product_condition: '', supplier_name: '', buying: '', sourced_by: '', selling: '' })
   const [items, setItems] = useState(() => {
-    const reqs = (requirements || []).filter(r => r.part_number?.trim())
-    const base = reqs.length ? reqs : [{}]
-    return base.map(r => ({ part_number: r.part_number || '', description: '', quantity: r.quantity || 1, product_condition: '', selling: '' }))
+    const lines = []
+    ;(requirements || []).filter(r => r.part_number?.trim()).forEach(r => {
+      const qs = r.quotes || []
+      if (qs.length) {
+        qs.forEach(q => lines.push({
+          part_number: r.part_number || '', description: '',
+          quantity: q.quantity ?? r.quantity ?? 1,
+          product_condition: q.condition || '',
+          supplier_name: q.supplier_name || '',
+          buying: q.price ?? '',
+          sourced_by: q.purchaser_name || '',
+          selling: '',
+        }))
+      } else {
+        lines.push({ ...blankLine(), part_number: r.part_number || '', quantity: r.quantity || 1 })
+      }
+    })
+    return lines.length ? lines : [blankLine()]
   })
   const setItem = (i, k, v) => setItems(list => list.map((it, idx) => idx === i ? { ...it, [k]: v } : it))
-  const addRow = () => setItems(list => [...list, { part_number: '', description: '', quantity: 1, product_condition: '', selling: '' }])
+  const addRow = () => setItems(list => [...list, blankLine()])
   const removeRow = (i) => setItems(list => list.length > 1 ? list.filter((_, idx) => idx !== i) : list)
 
   const [saving, setSaving] = useState(false)
@@ -53,6 +72,7 @@ export default function ClosedWonModal({ inquiry, requirements = [], onClose, on
   const [done, setDone] = useState(null)
 
   const totalSelling = items.reduce((s, it) => s + (Number(it.selling) || 0) * (Number(it.quantity) || 0), 0)
+  const totalBuying = items.reduce((s, it) => s + (Number(it.buying) || 0) * (Number(it.quantity) || 0), 0)
 
   const handleCreate = async () => {
     const lines = items.filter(it => it.part_number?.trim() || Number(it.selling) > 0)
@@ -116,25 +136,29 @@ export default function ClosedWonModal({ inquiry, requirements = [], onClose, on
         <button onClick={addRow} className="btn btn-secondary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Plus size={13} /> Add line</button>
       </div>
       <div style={{ overflowX: 'auto', border: '1px solid #f1f5f9', borderRadius: 10, marginBottom: 18 }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
           <thead>
             <tr style={{ background: '#f8fafc' }}>
-              {['Part #', 'Description', 'Qty', 'Condition', 'Selling/unit', ''].map((h, i) => (
-                <th key={h} style={{ textAlign: i === 2 || i === 4 ? 'right' : 'left', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', padding: '8px 10px', whiteSpace: 'nowrap' }}>{h}</th>
+              {['Part #', 'Qty', 'Condition', 'Supplier', 'Buy/unit', 'Sell/unit', ''].map((h) => (
+                <th key={h} style={{ textAlign: (h === 'Qty' || h === 'Buy/unit' || h === 'Sell/unit') ? 'right' : 'left', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', padding: '8px 10px', whiteSpace: 'nowrap' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {items.map((it, i) => (
               <tr key={i} style={{ borderTop: '1px solid #f1f5f9' }}>
-                <td style={{ padding: '6px 8px' }}><input className="input" value={it.part_number} onChange={e => setItem(i, 'part_number', e.target.value)} placeholder="ABC-123" style={{ minWidth: 110 }} /></td>
-                <td style={{ padding: '6px 8px' }}><input className="input" value={it.description} onChange={e => setItem(i, 'description', e.target.value)} placeholder="optional" style={{ minWidth: 120 }} /></td>
+                <td style={{ padding: '6px 8px' }}>
+                  <input className="input" value={it.part_number} onChange={e => setItem(i, 'part_number', e.target.value)} placeholder="ABC-123" style={{ minWidth: 110 }} />
+                  {it.sourced_by && <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>Sourced by {it.sourced_by}</div>}
+                </td>
                 <td style={{ padding: '6px 8px' }}><input className="input" type="number" min="1" value={it.quantity} onChange={e => setItem(i, 'quantity', e.target.value)} style={{ width: 64, textAlign: 'right' }} /></td>
                 <td style={{ padding: '6px 8px' }}>
                   <select className="input" value={it.product_condition} onChange={e => setItem(i, 'product_condition', e.target.value)} style={{ width: 100 }}>
-                    {CONDITIONS.map(c => <option key={c} value={c}>{c || '—'}</option>)}
+                    {[...CONDITIONS, ...(it.product_condition && !CONDITIONS.includes(it.product_condition) ? [it.product_condition] : [])].map(c => <option key={c} value={c}>{c || '—'}</option>)}
                   </select>
                 </td>
+                <td style={{ padding: '6px 8px' }}><input className="input" value={it.supplier_name} onChange={e => setItem(i, 'supplier_name', e.target.value)} placeholder="—" style={{ minWidth: 130 }} /></td>
+                <td style={{ padding: '6px 8px' }}><input className="input" type="number" value={it.buying} onChange={e => setItem(i, 'buying', e.target.value)} placeholder="0.00" style={{ width: 90, textAlign: 'right' }} /></td>
                 <td style={{ padding: '6px 8px' }}><input className="input" type="number" value={it.selling} onChange={e => setItem(i, 'selling', e.target.value)} placeholder="0.00" style={{ width: 90, textAlign: 'right' }} /></td>
                 <td style={{ padding: '6px 8px' }}><button onClick={() => removeRow(i)} title="Remove" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', display: 'flex', padding: 4 }}><Trash2 size={14} /></button></td>
               </tr>
@@ -143,6 +167,7 @@ export default function ClosedWonModal({ inquiry, requirements = [], onClose, on
           <tfoot>
             <tr style={{ background: '#f8fafc', borderTop: '2px solid #e2e8f0' }}>
               <td colSpan={4} style={{ padding: '8px 10px', fontWeight: 700, color: '#475569', fontSize: 12 }}>{items.length} line{items.length === 1 ? '' : 's'}</td>
+              <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: '#64748b', fontVariantNumeric: 'tabular-nums' }}>{money(totalBuying)}</td>
               <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: BRAND, fontVariantNumeric: 'tabular-nums' }}>{money(totalSelling)}</td>
               <td />
             </tr>

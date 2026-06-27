@@ -422,6 +422,8 @@ function runBuyerMigration() {
     "vendor_completed_by INTEGER",
   ];
   cols.forEach(c => { try { db.exec(`ALTER TABLE op_orders ADD COLUMN ${c}`); } catch(e) {} });
+  // Per-line "sourced by" — the purchaser who quoted this supplier line (carried from the quote at Closed Won).
+  try { db.exec('ALTER TABLE op_order_items ADD COLUMN sourced_by TEXT'); } catch(e) {}
   if (!hadFlag) {
     // First run: everything already finalized (non-pending) is treated as done so the queue isn't
     // flooded with historical orders. Currently-pending orders stay in the queue (need vendor work).

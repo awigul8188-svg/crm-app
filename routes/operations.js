@@ -617,13 +617,21 @@ router.post('/from-crm', authenticate, (req, res) => {
            crm_inquiry_id||null);
     const orderId = result.lastInsertRowid;
 
-    // Prefer the rep-entered `items` (with selling); fall back to raw `requirements` (part/qty only).
+    // Prefer the rep-entered `items` (with selling + sourced supplier/buying from the quote); fall back
+    // to raw `requirements` (part/qty only) for parts that never went through purchasing.
     const lines = (items && items.length)
       ? items.filter(i => i.part_number?.trim() || num(i.selling) > 0)
       : (requirements||[]).filter(r => r.part_number?.trim()).map(r => ({ part_number: r.part_number, quantity: r.quantity, selling: 0 }));
-    const insItem = db.prepare(`INSERT INTO op_order_items (order_id, part_number, description, quantity, product_condition, selling, buying) VALUES (?,?,?,?,?,?,0)`);
+    // Resolve a supplier name (from the purchaser's quote) to an op_supplier, creating it if new.
+    const supplierIdFor = (name) => {
+      if (!name || !String(name).trim()) return null;
+      const ex = db.prepare(`SELECT id FROM op_suppliers WHERE LOWER(company)=LOWER(?)`).get(String(name).trim());
+      if (ex) return ex.id;
+      return db.prepare(`INSERT INTO op_suppliers (company) VALUES (?)`).run(String(name).trim()).lastInsertRowid;
+    };
+    const insItem = db.prepare(`INSERT INTO op_order_items (order_id, part_number, description, quantity, product_condition, selling, buying, supplier_id, sourced_by) VALUES (?,?,?,?,?,?,?,?,?)`);
     for (const it of lines) {
-      insItem.run(orderId, it.part_number||null, it.description||null, num(it.quantity)||1, it.product_condition||null, num(it.selling));
+      insItem.run(orderId, it.part_number||null, it.description||null, num(it.quantity)||1, it.product_condition||null, num(it.selling), num(it.buying), supplierIdFor(it.supplier_name), it.sourced_by||null);
     }
 
     res.json({ ok: true, order_id: orderId, order_number: orderNum, item_count: lines.length });
@@ -733,8 +741,10 @@ router.patch('/buyer/order/:id', requireBuyerAccess, (req, res) => {
     if (!db.prepare('SELECT id FROM op_orders WHERE id=?').get(id)) return res.status(404).json({ error: 'Not found' });
     const { items = [], fulfillment_status, shipped_via, tracking_to_customer, buyer, notes } = req.body;
     const num = (v) => { const n = parseFloat(String(v ?? '').replace(/[$,\s]/g, '')); return isNaN(n) ? 0 : n; };
+    // Buyer can also fix sales-side line fields (part#, qty, condition, selling) — e.g. an AE typo.
     const upItem = db.prepare(`
       UPDATE op_order_items SET
+        part_number=?, quantity=?, product_condition=?, selling=?,
         supplier_id=?, buying=?, cc_paid=?, tax_paid=?, shipping_paid=?, duty_paid=?,
         payment_method=?, payment_due=?, supplier_terms=?, ta_po_number=?, tracking_to_warehouse=?, serials=?,
         updated_at=CURRENT_TIMESTAMP
@@ -743,6 +753,7 @@ router.patch('/buyer/order/:id', requireBuyerAccess, (req, res) => {
     db.transaction(() => {
       for (const it of items) {
         upItem.run(
+          it.part_number ?? null, num(it.quantity) || 1, it.product_condition ?? null, num(it.selling),
           it.supplier_id || null, num(it.buying), num(it.cc_paid), num(it.tax_paid), num(it.shipping_paid), num(it.duty_paid),
           it.payment_method || null, it.payment_due || null, it.supplier_terms || null, it.ta_po_number || null,
           it.tracking_to_warehouse || null, it.serials || null, it.id, id

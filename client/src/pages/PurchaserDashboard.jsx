@@ -2,14 +2,14 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { purchasingApi } from '../api'
 import { useAuth } from '../App'
-import { formatDate, formatDateShort, timeAgo } from '../components/Badges'
+import { formatDate, formatDateShort, timeAgo, OP_CONDITIONS } from '../components/Badges'
 import SearchableSelect from '../components/SearchableSelect'
 import { ColumnPicker, useColumnPrefs } from '../components/ColumnPicker'
 
 const BRAND = '#00D4C8'
 const T = { lead:{ icon:'◎', label:'Lead', color:'#3b82f6' }, repeat:{ icon:'↻', label:'Repeat', color:'#6366f1' }, online_order:{ icon:'◈', label:'Order', color:'#f59e0b' } }
 const URGENCY = { critical:{ label:'Critical', color:'#ef4444', bg:'#fef2f2', border:'#fecaca' }, high:{ label:'High', color:'#f97316', bg:'#fff7ed', border:'#fed7aa' }, normal:{ label:'Normal', color:'#64748b', bg:'#f8fafc', border:'#e2e8f0' }, low:{ label:'Low', color:'#10b981', bg:'#f0fdf4', border:'#bbf7d0' } }
-const CONDITIONS = ['New','Used','Refurbished','For Parts','Other']
+const CONDITIONS = OP_CONDITIONS
 const inp = { width:'100%', boxSizing:'border-box', background:'#fff', border:'1px solid #e2e8f0', borderRadius:'12px', padding:'10px 14px', fontSize:'13px', color:'#0f172a', fontFamily:'"Plus Jakarta Sans",sans-serif', outline:'none', transition:'border 0.15s' }
 const inpF = { border:`1px solid ${BRAND}`, boxShadow:`0 0 0 3px rgba(0,212,200,0.12)` }
 
@@ -304,7 +304,7 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
                     <div><div style={rl}>Qty *</div><input style={ri} value={e.quantity} onChange={ev=>updateEntry(i,'quantity',ev.target.value)} placeholder={reqQty?`of ${reqQty}`:'qty'} /></div>
                     <div><div style={rl}>Unit price *</div><input style={ri} value={e.price} onChange={ev=>updateEntry(i,'price',ev.target.value)} placeholder="$" /></div>
-                    <div><div style={rl}>Condition</div><select style={{ ...ri, cursor:'pointer' }} value={e.condition} onChange={ev=>updateEntry(i,'condition',ev.target.value)}><option value="">—</option>{CONDITIONS.map(c=><option key={c}>{c}</option>)}</select></div>
+                    <div><div style={rl}>Condition</div><select style={{ ...ri, cursor:'pointer' }} value={e.condition} onChange={ev=>updateEntry(i,'condition',ev.target.value)}><option value="">—</option>{[...CONDITIONS, ...(e.condition && !CONDITIONS.includes(e.condition) ? [e.condition] : [])].map(c=><option key={c}>{c}</option>)}</select></div>
                   </div>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginTop:8, alignItems:'end' }}>
                     <div><div style={rl}>Lead time</div><input style={ri} value={e.lead_time} onChange={ev=>updateEntry(i,'lead_time',ev.target.value)} placeholder="e.g. 3-5 days" /></div>
