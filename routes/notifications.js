@@ -8,9 +8,9 @@ router.use(authenticate);
 // Get all notifications for current user
 router.get('/', (req, res) => {
   const db = getDB();
-  // purchaser has no CRM follow-ups/activity here (they use /purchasing/stats). Everyone else
-  // (manager, purchasing_manager, ae) gets the CRM feed below.
-  if (req.user.role === 'purchaser') {
+  // purchaser/buyer have no CRM follow-ups/activity here (they use their own dashboards). Everyone
+  // else (manager, purchasing_manager, ae) gets the CRM feed below.
+  if (['purchaser', 'buyer'].includes(req.user.role)) {
     return res.json({ followups: { overdue: [], today: [], upcoming: [] }, activity: [], total: 0, unreadActivity: 0 });
   }
   const userId = req.user.role === 'ae' ? req.user.id : null;

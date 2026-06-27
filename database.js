@@ -410,4 +410,24 @@ function runInquiryViewsMigration() {
   }
 }
 
-module.exports = { initializeDB, getDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations, runInquiryViewsMigration };
+// Vendor/fulfillment workflow (the "Buyer" role, e.g. Kevin) — adds order-level fulfillment
+// tracking + a per-order "vendor side complete" flag so closed-won orders surface in his queue.
+function runBuyerMigration() {
+  const db = getDB();
+  const hadFlag = db.prepare("PRAGMA table_info(op_orders)").all().some(c => c.name === 'vendor_complete');
+  const cols = [
+    "fulfillment_status TEXT",        // Awaiting PO | PO Placed | Shipped to Warehouse | Received | Shipped to Customer | Delivered
+    "vendor_complete INTEGER DEFAULT 0",
+    "vendor_completed_at DATETIME",
+    "vendor_completed_by INTEGER",
+  ];
+  cols.forEach(c => { try { db.exec(`ALTER TABLE op_orders ADD COLUMN ${c}`); } catch(e) {} });
+  if (!hadFlag) {
+    // First run: everything already finalized (non-pending) is treated as done so the queue isn't
+    // flooded with historical orders. Currently-pending orders stay in the queue (need vendor work).
+    try { db.prepare("UPDATE op_orders SET vendor_complete = 1 WHERE pending IS NULL OR pending = 0").run(); }
+    catch(e) { console.log('buyer backfill note:', e.message); }
+  }
+}
+
+module.exports = { initializeDB, getDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations, runInquiryViewsMigration, runBuyerMigration };

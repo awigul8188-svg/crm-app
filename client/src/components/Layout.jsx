@@ -106,6 +106,7 @@ export default function Layout({ children }) {
                 {user.role === 'manager' ? 'Manager'
                   : user.role === 'purchasing_manager' ? 'Purchasing Mgr'
                   : user.role === 'purchaser' ? 'Purchaser'
+                  : user.role === 'buyer' ? 'Buyer'
                   : 'Account Executive'}
               </div>
             </div>

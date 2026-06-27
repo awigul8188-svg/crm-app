@@ -119,6 +119,13 @@ export const operationsApi = {
   updateCustomer: (id, data) => req('PUT', `/operations/customers/${id}`, data),
   deleteCustomer: (id)     => req('DELETE', `/operations/customers/${id}`),
 
+  // Buyer / fulfillment (vendor side)
+  buyerOrders:    (scope)  => req('GET', `/operations/buyer/orders${scope ? `?scope=${scope}` : ''}`),
+  buyerStats:     ()       => req('GET', '/operations/buyer/stats'),
+  buyerOrder:     (id)     => req('GET', `/operations/buyer/order/${id}`),
+  buyerSaveOrder: (id, data) => req('PATCH', `/operations/buyer/order/${id}`, data),
+  buyerSetComplete: (id, complete) => req('POST', `/operations/buyer/order/${id}/complete`, { complete }),
+
   // Suppliers
   getSuppliers:   (search) => req('GET', `/operations/suppliers${search ? `?search=${encodeURIComponent(search)}` : ''}`),
   createSupplier: (data)   => req('POST', '/operations/suppliers', data),

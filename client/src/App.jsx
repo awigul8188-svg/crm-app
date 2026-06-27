@@ -11,6 +11,7 @@ import Users from './pages/Users'
 import ImportData from './pages/ImportData'
 import Notifications from './pages/Notifications'
 import AEDashboard from './pages/AEDashboard'
+import BuyerDashboard from './pages/BuyerDashboard'
 import PurchasingManagerView from './pages/PurchasingManagerView'
 import PurchaserDashboard, { PartDetailModal, PurchaserParts } from './pages/PurchaserDashboard'
 import Operations from './pages/Operations'
@@ -130,6 +131,7 @@ export default function App() {
   const home = () => {
     if (user.role === 'ae') return <AEDashboard />
     if (user.role === 'purchaser') return <PurchaserDashboard />
+    if (user.role === 'buyer') return <BuyerDashboard />
     return <Dashboard />
   }
 

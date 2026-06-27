@@ -19,6 +19,7 @@ const ROLE_INFO = {
   ae:                 { label:'Account Executive',    color:'#16a34a', bg:'#f0fdf4', border:'#bbf7d0' },
   purchasing_manager: { label:'Purchasing Manager',   color:'#d97706', bg:'#fff7ed', border:'#fed7aa' },
   purchaser:          { label:'Purchaser',            color:'#0891b2', bg:'#ecfeff', border:'#a5f3fc' },
+  buyer:              { label:'Buyer',                color:'#0d9488', bg:'#f0fdfa', border:'#99f6e4' },
 }
 
 const SECTIONS = [
@@ -26,6 +27,7 @@ const SECTIONS = [
   { role: 'ae',                 title: 'Account Executives',    icon: '◈' },
   { role: 'purchasing_manager', title: 'Purchasing Managers',   icon: '◉' },
   { role: 'purchaser',          title: 'Purchasers',            icon: '◎' },
+  { role: 'buyer',              title: 'Buyers',                icon: '◍' },
 ]
 
 function RoleBadge({ role }) {
@@ -162,7 +164,7 @@ export default function Users() {
   const isMgr = ['manager', 'purchasing_manager'].includes(user.role)
   const canManageRole = () => isMgr
   const canCreateRole = () => isMgr
-  const availableRoles = ['ae','manager','purchasing_manager','purchaser']
+  const availableRoles = ['ae','manager','purchasing_manager','purchaser','buyer']
 
   const visibleSections = SECTIONS.filter(s =>
     users.some(u => u.role === s.role) || (s.role === 'ae' || canManageRole(s.role))

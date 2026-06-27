@@ -309,7 +309,7 @@ router.get('/suppliers', (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/suppliers', requireManager, (req, res) => {
+router.post('/suppliers', requireBuyerAccess, (req, res) => {
   try {
     const db = getDB();
     const { company, email, phone, rep_name, notes } = req.body;
@@ -655,6 +655,116 @@ router.get('/pending', (req, res) => {
     });
 
     res.json(withItems);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Buyer / Fulfillment (vendor side — e.g. Kevin) ────────────────────────────
+// The buyer fills supplier/buying/PO/tracking on closed-won orders and advances fulfillment.
+const FULFILLMENT_STAGES = ['Awaiting PO', 'PO Placed', 'Shipped to Warehouse', 'Received', 'Shipped to Customer', 'Delivered'];
+
+function requireBuyerAccess(req, res, next) {
+  if (['buyer', 'manager', 'purchasing_manager'].includes(req.user?.role)) return next();
+  return res.status(403).json({ error: 'Not authorized' });
+}
+
+function loadBuyerOrder(db, id) {
+  const order = db.prepare(`
+    SELECT o.*, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone
+    FROM op_orders o LEFT JOIN op_customers c ON o.customer_id = c.id WHERE o.id = ?
+  `).get(id);
+  if (!order) return null;
+  const items = db.prepare(`
+    SELECT i.*, s.company AS supplier_name FROM op_order_items i
+    LEFT JOIN op_suppliers s ON s.id = i.supplier_id
+    WHERE i.order_id = ? ORDER BY i.id
+  `).all(id);
+  return { ...order, items };
+}
+
+// Order lists for the buyer dashboard. scope: todo | transit | delivered | all
+router.get('/buyer/orders', requireBuyerAccess, (req, res) => {
+  try {
+    const db = getDB();
+    const { scope } = req.query;
+    let cond = '1=1';
+    if (scope === 'todo') cond = 'COALESCE(o.vendor_complete,0) = 0';
+    else if (scope === 'transit') cond = "COALESCE(o.vendor_complete,0) = 1 AND COALESCE(o.fulfillment_status,'') != 'Delivered'";
+    else if (scope === 'delivered') cond = "o.fulfillment_status = 'Delivered'";
+    const orders = db.prepare(`
+      SELECT o.id, o.order_number, o.order_date, o.rep, o.buyer, o.lead_source, o.order_status,
+             o.fulfillment_status, o.vendor_complete, o.tracking_to_customer, o.shipped_via, o.pending,
+             c.name AS customer_name,
+             COUNT(i.id) AS item_count,
+             SUM(CASE WHEN i.supplier_id IS NOT NULL AND i.buying > 0 THEN 1 ELSE 0 END) AS items_filled,
+             COALESCE(SUM(i.selling * i.quantity), 0) AS order_amount
+      FROM op_orders o
+      LEFT JOIN op_customers c ON o.customer_id = c.id
+      LEFT JOIN op_order_items i ON i.order_id = o.id
+      WHERE ${cond}
+      GROUP BY o.id ORDER BY o.created_at DESC
+    `).all();
+    res.json(orders);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/buyer/stats', requireBuyerAccess, (req, res) => {
+  try {
+    const db = getDB();
+    const todo = db.prepare("SELECT COUNT(*) AS c FROM op_orders WHERE COALESCE(vendor_complete,0)=0").get().c;
+    const transit = db.prepare("SELECT COUNT(*) AS c FROM op_orders WHERE COALESCE(vendor_complete,0)=1 AND COALESCE(fulfillment_status,'') != 'Delivered'").get().c;
+    const delivered = db.prepare("SELECT COUNT(*) AS c FROM op_orders WHERE fulfillment_status='Delivered'").get().c;
+    res.json({ todo, transit, delivered, stages: FULFILLMENT_STAGES });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/buyer/order/:id', requireBuyerAccess, (req, res) => {
+  try {
+    const order = loadBuyerOrder(getDB(), req.params.id);
+    if (!order) return res.status(404).json({ error: 'Not found' });
+    res.json(order);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Save the vendor side: per-item buying details + order-level fulfillment/tracking.
+router.patch('/buyer/order/:id', requireBuyerAccess, (req, res) => {
+  try {
+    const db = getDB();
+    const id = req.params.id;
+    if (!db.prepare('SELECT id FROM op_orders WHERE id=?').get(id)) return res.status(404).json({ error: 'Not found' });
+    const { items = [], fulfillment_status, shipped_via, tracking_to_customer, buyer, notes } = req.body;
+    const num = (v) => { const n = parseFloat(String(v ?? '').replace(/[$,\s]/g, '')); return isNaN(n) ? 0 : n; };
+    const upItem = db.prepare(`
+      UPDATE op_order_items SET
+        supplier_id=?, buying=?, cc_paid=?, tax_paid=?, shipping_paid=?, duty_paid=?,
+        payment_method=?, payment_due=?, supplier_terms=?, ta_po_number=?, tracking_to_warehouse=?, serials=?,
+        updated_at=CURRENT_TIMESTAMP
+      WHERE id=? AND order_id=?
+    `);
+    db.transaction(() => {
+      for (const it of items) {
+        upItem.run(
+          it.supplier_id || null, num(it.buying), num(it.cc_paid), num(it.tax_paid), num(it.shipping_paid), num(it.duty_paid),
+          it.payment_method || null, it.payment_due || null, it.supplier_terms || null, it.ta_po_number || null,
+          it.tracking_to_warehouse || null, it.serials || null, it.id, id
+        );
+      }
+      db.prepare(`UPDATE op_orders SET fulfillment_status=COALESCE(?,fulfillment_status), shipped_via=COALESCE(?,shipped_via),
+        tracking_to_customer=COALESCE(?,tracking_to_customer), buyer=COALESCE(?,buyer), notes=COALESCE(?,notes),
+        updated_at=CURRENT_TIMESTAMP WHERE id=?`)
+        .run(fulfillment_status ?? null, shipped_via ?? null, tracking_to_customer ?? null, buyer ?? null, notes ?? null, id);
+    })();
+    res.json(loadBuyerOrder(db, id));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Toggle the vendor-complete flag (leaves / re-enters the to-do queue).
+router.post('/buyer/order/:id/complete', requireBuyerAccess, (req, res) => {
+  try {
+    const db = getDB();
+    const complete = req.body?.complete === false ? 0 : 1;
+    db.prepare(`UPDATE op_orders SET vendor_complete=?, vendor_completed_at=?, vendor_completed_by=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`)
+      .run(complete, complete ? new Date().toISOString() : null, complete ? req.user.id : null, req.params.id);
+    res.json(loadBuyerOrder(db, req.params.id));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
