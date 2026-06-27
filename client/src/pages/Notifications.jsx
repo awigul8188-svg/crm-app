@@ -58,13 +58,12 @@ function FollowUpCard({ fu, onComplete, onNavigate }) {
   )
 }
 
-function ActivityCard({ notif, onNavigate, onRead, onOpenPart }) {
+function ActivityCard({ notif, onNavigate, onRead }) {
   const handleClick = async () => {
     if (!notif.read) await api.markNotificationRead(notif.id).catch(() => {})
     onRead(notif.id)
-    // Quote notifications carry an assignment_id → open the part/quote detail popup.
-    if (notif.assignment_id) onOpenPart(notif.assignment_id)
-    else if (notif.inquiry_id) onNavigate('inquiry-detail', { id: notif.inquiry_id })
+    // Open the actual lead/repeat/online-order — the quoted price shows on its line items there.
+    if (notif.inquiry_id) onNavigate('inquiry-detail', { id: notif.inquiry_id })
   }
   const typeColor = TYPE_COLORS[notif.inquiry_type] || '#64748b'
 
@@ -106,9 +105,7 @@ function ActivityCard({ notif, onNavigate, onRead, onOpenPart }) {
         )}
         <div className="text-[11px] text-ink-400">
           {timeAgo(notif.created_at)}
-          {notif.assignment_id
-            ? <span className="text-brand-600 ml-2">Open quote →</span>
-            : notif.inquiry_id && <span className="text-brand-600 ml-2">View inquiry →</span>}
+          {notif.inquiry_id && <span className="text-brand-600 ml-2">Open record →</span>}
         </div>
       </div>
     </div>
@@ -263,17 +260,17 @@ function CrmNotifications() {
   const { navigate } = useNav()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('activity')
-  const [localActivity, setLocalActivity] = useState([])
-  const [openPartId, setOpenPartId] = useState(null)
+  // Notifications now carry only submitted quotes + follow-ups. Generic lead/repeat/order activity
+  // lives on the record's own page, not here.
   const ACTIVITY_ROLES = ['manager', 'purchasing_manager', 'ae']
+  const [activeTab, setActiveTab] = useState(ACTIVITY_ROLES.includes(user.role) ? 'quotes' : 'followups')
+  const [localActivity, setLocalActivity] = useState([])
 
   const load = () => {
     setLoading(true)
     api.getNotifications().then(d => {
       setData(d)
       setLocalActivity(d.activity || [])
-      if (user.role === 'ae') setActiveTab('followups')
       setLoading(false)
     }).catch(() => setLoading(false))
   }
@@ -289,11 +286,13 @@ function CrmNotifications() {
     setLocalActivity(prev => prev.map(n => n.id === id ? { ...n, read: 1 } : n))
   }
 
+  const quoteActivity = localActivity
   const followupTotal = data ? data.followups.overdue.length + data.followups.today.length + data.followups.upcoming.length : 0
   const unreadActivity = localActivity.filter(n => !n.read).length
+  const unreadQuotes = unreadActivity
 
   const tabs = [
-    ...(ACTIVITY_ROLES.includes(user.role) ? [{ key: 'activity', label: user.role === 'ae' ? 'Quotes & Activity' : 'Activity', count: unreadActivity }] : []),
+    ...(ACTIVITY_ROLES.includes(user.role) ? [{ key: 'quotes', label: 'Submitted Quotes', count: unreadQuotes }] : []),
     { key: 'followups', label: 'Follow-ups', count: followupTotal },
   ]
 
@@ -317,7 +316,7 @@ function CrmNotifications() {
       <PageHeader
         icon={<Bell size={18} />}
         title="Notifications"
-        subtitle={['manager', 'purchasing_manager'].includes(user.role) ? 'Team activity and follow-up reminders' : 'Your follow-up reminders'}
+        subtitle={ACTIVITY_ROLES.includes(user.role) ? 'Submitted quotes and follow-up reminders' : 'Your follow-up reminders'}
         action={headerActions}
       />
 
@@ -347,16 +346,16 @@ function CrmNotifications() {
         </div>
       ) : (
         <>
-          {/* Activity tab */}
-          {activeTab === 'activity' && ACTIVITY_ROLES.includes(user.role) && (
-            localActivity.length === 0 ? (
+          {/* Submitted Quotes tab */}
+          {activeTab === 'quotes' && ACTIVITY_ROLES.includes(user.role) && (
+            quoteActivity.length === 0 ? (
               <div className="card p-16 text-center">
                 <Bell size={40} className="mx-auto mb-3 text-ink-200" />
-                <div className="font-display font-bold text-ink-400 text-lg">{user.role === 'ae' ? 'No quotes yet' : 'No activity yet'}</div>
-                <div className="text-ink-300 text-sm mt-1">{user.role === 'ae' ? 'Purchaser quotes on your inquiries will appear here' : 'Team actions will appear here'}</div>
+                <div className="font-display font-bold text-ink-400 text-lg">No quotes yet</div>
+                <div className="text-ink-300 text-sm mt-1">Purchaser quotes will appear here — click one to open the record</div>
               </div>
             ) : (
-              <div>{localActivity.map(notif => <ActivityCard key={notif.id} notif={notif} onNavigate={navigate} onRead={handleRead} onOpenPart={setOpenPartId} />)}</div>
+              <div>{quoteActivity.map(notif => <ActivityCard key={notif.id} notif={notif} onNavigate={navigate} onRead={handleRead} />)}</div>
             )
           )}
 
@@ -399,8 +398,6 @@ function CrmNotifications() {
           )}
         </>
       )}
-
-      {openPartId && <PartDetailModal assignmentId={openPartId} onClose={() => setOpenPartId(null)} onSaved={load} />}
     </div>
   )
 }

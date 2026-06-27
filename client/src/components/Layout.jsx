@@ -1,7 +1,27 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../App'
 import { useNav } from '../App'
 import { api, purchasingApi } from '../api'
+
+// Short two-tone "ding" for new-quote alerts (synthesized — no asset needed).
+let _audioCtx = null
+function playQuoteDing() {
+  try {
+    _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)()
+    const ctx = _audioCtx
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {})
+    const now = ctx.currentTime
+    ;[[880, 0], [1318.5, 0.13]].forEach(([freq, t]) => {
+      const osc = ctx.createOscillator(); const gain = ctx.createGain()
+      osc.type = 'sine'; osc.frequency.value = freq
+      gain.gain.setValueAtTime(0.0001, now + t)
+      gain.gain.exponentialRampToValueAtTime(0.25, now + t + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + t + 0.25)
+      osc.connect(gain); gain.connect(ctx.destination)
+      osc.start(now + t); osc.stop(now + t + 0.26)
+    })
+  } catch {}
+}
 import {
   LayoutDashboard, Target, RotateCcw, ShoppingBag, Users,
   Bell, Upload, UserCog, LogOut, Settings2, Package,
@@ -44,6 +64,10 @@ export default function Layout({ children }) {
   const { page, navigate } = useNav()
   const [notifCount, setNotifCount] = useState(0)
   const [avatarUrl, setAvatarUrl] = useState(null)
+  const [quoteRing, setQuoteRing] = useState(false)   // brief bell pulse when a new quote lands
+  // Audible+visual new-quote alert for AE + manager only (NOT purchasing manager).
+  const quoteAlertOn = ['ae', 'manager'].includes(user.role)
+  const lastQuoteMaxRef = useRef(null)
 
   // Purchasers have no CRM notifications — their badge counts unread part notifications + due follow-ups.
   const loadNotifs = () => {
@@ -54,7 +78,20 @@ export default function Layout({ children }) {
         setNotifCount(unread + dueFu)
       }).catch(() => {})
     } else {
-      api.getNotifications().then(n => setNotifCount(n.total)).catch(() => {})
+      api.getNotifications().then(n => {
+        setNotifCount(n.total)
+        if (quoteAlertOn) {
+          const maxQuoteId = (n.activity || []).filter(a => a.inquiry_type === 'quote').reduce((m, q) => Math.max(m, q.id), 0)
+          if (lastQuoteMaxRef.current === null) {
+            lastQuoteMaxRef.current = maxQuoteId            // baseline on first poll — don't ring for old ones
+          } else if (maxQuoteId > lastQuoteMaxRef.current) {
+            lastQuoteMaxRef.current = maxQuoteId
+            playQuoteDing()
+            setQuoteRing(true)
+            setTimeout(() => setQuoteRing(false), 6000)
+          }
+        }
+      }).catch(() => {})
     }
   }
 
@@ -132,10 +169,14 @@ export default function Layout({ children }) {
           ))}
 
           {/* Notifications */}
-          <button onClick={() => navigate('notifications')}
+          <button onClick={() => { setQuoteRing(false); navigate('notifications') }}
             className={`nav-item ${page.name === 'notifications' ? 'nav-active' : 'nav-inactive'}`}>
-            <Bell size={15} className="flex-shrink-0" />
+            <span className="relative flex-shrink-0 flex items-center">
+              <Bell size={15} style={quoteRing ? { color: '#00D4C8', animation: 'quoteSwing 0.6s ease-in-out infinite' } : undefined} />
+              {quoteRing && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full" style={{ background: '#f59e0b', animation: 'quotePulse 1.2s infinite' }} />}
+            </span>
             <span>Notifications</span>
+            {quoteRing && <style>{`@keyframes quoteSwing{0%,100%{transform:rotate(0)}25%{transform:rotate(15deg)}75%{transform:rotate(-15deg)}}@keyframes quotePulse{0%{box-shadow:0 0 0 0 rgba(245,158,11,0.6)}70%{box-shadow:0 0 0 6px rgba(245,158,11,0)}100%{box-shadow:0 0 0 0 rgba(245,158,11,0)}}`}</style>}
             {notifCount > 0 && page.name !== 'notifications' && (
               <span className="ml-auto font-bold leading-none flex-shrink-0"
                 style={{ background: '#00D4C8', color: '#0a0a0a', fontSize: '10px', padding: '2px 7px', borderRadius: '20px', minWidth: '20px', textAlign: 'center' }}>

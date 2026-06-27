@@ -180,7 +180,19 @@ router.get('/:id', (req, res) => {
     const inquiry = db.prepare(`SELECT i.*, c.name as customer_name, c.email as customer_email, c.phone as customer_phone, c.company as customer_company, c.lead_source, u.name as assigned_name FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id LEFT JOIN users u ON i.assigned_to = u.id WHERE i.id = ?`).get(req.params.id);
     if (!inquiry) return res.status(404).json({ error: 'Not found' });
     if (req.user.role === 'ae' && inquiry.assigned_to !== req.user.id) return res.status(403).json({ error: 'Not authorized' });
-    const requirements = db.prepare('SELECT * FROM requirements WHERE inquiry_id = ? ORDER BY id').all(req.params.id);
+    // Enrich each part with its purchaser quote (price/condition/lead time/supplier) so the rep sees
+    // the quoted price right next to the line item. UNIQUE(requirement_id) → at most one quote per part.
+    const requirements = db.prepare(`
+      SELECT r.*, pq.price AS quote_price, pq.condition AS quote_condition,
+             pq.lead_time AS quote_lead_time, pq.supplier_name AS quote_supplier,
+             pq.updated_at AS quoted_at, pu.name AS quote_purchaser,
+             pa.status AS assignment_status, pa.not_in_stock
+      FROM requirements r
+      LEFT JOIN purchase_assignments pa ON pa.requirement_id = r.id
+      LEFT JOIN purchase_quotes pq ON pq.assignment_id = pa.id
+      LEFT JOIN users pu ON pa.purchaser_id = pu.id
+      WHERE r.inquiry_id = ? ORDER BY r.id
+    `).all(req.params.id);
     const followups = db.prepare(`SELECT f.*, u.name as created_by_name FROM followups f LEFT JOIN users u ON f.created_by = u.id WHERE f.inquiry_id = ? ORDER BY f.created_at DESC`).all(req.params.id);
     const activity = db.prepare("SELECT * FROM activity_log WHERE entity_type='inquiry' AND entity_id=? ORDER BY created_at DESC").all(req.params.id);
     res.json({ ...inquiry, requirements, followups, activity });

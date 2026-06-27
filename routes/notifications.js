@@ -37,20 +37,15 @@ router.get('/', (req, res) => {
     const upcoming = db.prepare(`${base} AND f.follow_up_date > ? AND f.follow_up_date <= ? ORDER BY f.follow_up_date ASC LIMIT 50`).all(...params, today, in7days);
 
     // Activity notifications — manager-level (manager + purchasing_manager) get all of theirs; AEs get
-    // theirs too (currently just quote-submitted alerts on their inquiries).
+    // theirs too. Only QUOTE notifications surface here now — generic lead/repeat/order activity
+    // (creates, disposition changes, comments) is shown ONLY on the record's own page, not in notifications.
     let activity = [];
     let unreadActivity = 0;
     if (['manager', 'purchasing_manager', 'ae'].includes(req.user.role)) {
       activity = db.prepare(`
-        SELECT n.*, 
-          CASE n.inquiry_type 
-            WHEN 'lead' THEN '◎'
-            WHEN 'repeat' THEN '↻'
-            WHEN 'online_order' THEN '❖'
-            ELSE '•'
-          END as type_icon
+        SELECT n.*, '$' as type_icon
         FROM notifications n
-        WHERE n.user_id = ?
+        WHERE n.user_id = ? AND n.inquiry_type = 'quote'
         ORDER BY n.created_at DESC
         LIMIT 100
       `).all(req.user.id);

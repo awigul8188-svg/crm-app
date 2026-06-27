@@ -290,7 +290,7 @@ router.post('/quote', (req, res) => {
   const db = getDB();
 
   try {
-    const a = db.prepare(`SELECT pa.*, r.part_number, r.quantity, i.assigned_to as ae_id, i.type as inquiry_type, i.order_amount as selling_price, c.name as customer_name FROM purchase_assignments pa JOIN requirements r ON pa.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id JOIN customers c ON i.customer_id=c.id WHERE pa.id=?`).get(assignment_id);
+    const a = db.prepare(`SELECT pa.*, r.part_number, r.quantity, i.id as inquiry_id, i.assigned_to as ae_id, i.type as inquiry_type, i.order_amount as selling_price, c.name as customer_name FROM purchase_assignments pa JOIN requirements r ON pa.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id JOIN customers c ON i.customer_id=c.id WHERE pa.id=?`).get(assignment_id);
     if (!a) return res.status(404).json({ error: 'Assignment not found' });
     if (!isMgr(req.user.role) && a.purchaser_id !== req.user.id) return res.status(403).json({ error: 'Not your assignment' });
 
@@ -312,7 +312,7 @@ router.post('/quote', (req, res) => {
     const notifyUsers = db.prepare("SELECT id FROM users WHERE role IN ('manager','purchasing_manager') OR id=?").all(a.ae_id);
     // assignment_id lets the AE/Manager click the notification straight into the part/quote detail.
     const ins = db.prepare("INSERT INTO notifications (user_id,inquiry_id,inquiry_type,customer_name,actor_name,action,comment,assignment_id) VALUES (?,?,?,?,?,?,?,?)");
-    notifyUsers.forEach(u => ins.run(u.id, null, 'quote', a.customer_name, req.user.name, isOver ? '⚠️ Quote over selling price' : 'Quote submitted', msg, assignment_id));
+    notifyUsers.forEach(u => ins.run(u.id, a.inquiry_id, 'quote', a.customer_name, req.user.name, isOver ? '⚠️ Quote over selling price' : 'Quote submitted', msg, assignment_id));
 
     res.json({ success: true, is_over_selling: isOver });
   } catch (err) {

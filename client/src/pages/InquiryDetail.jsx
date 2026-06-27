@@ -123,9 +123,34 @@ export default function InquiryDetail({ id }) {
               </div>
             ) : requirements.length ? (
               <table className="w-full">
-                <thead><tr className="text-xs text-ink-400 border-b"><th className="text-left pb-2 font-semibold">Part Number</th><th className="text-left pb-2 font-semibold">Quantity</th></tr></thead>
+                <thead><tr className="text-xs text-ink-400 border-b">
+                  <th className="text-left pb-2 font-semibold">Part Number</th>
+                  <th className="text-left pb-2 font-semibold">Quantity</th>
+                  <th className="text-left pb-2 font-semibold">Quoted Price</th>
+                </tr></thead>
                 <tbody className="divide-y divide-slate-50">
-                  {requirements.map((r,i) => <tr key={r.id||i}><td className="py-2 font-mono text-sm text-ink-800">{r.part_number}</td><td className="py-2 text-ink-600">{r.quantity}</td></tr>)}
+                  {requirements.map((r,i) => {
+                    const hasQuote = r.quote_price !== null && r.quote_price !== undefined && r.quote_price !== ''
+                    const meta = [r.quote_condition, r.quote_lead_time, r.quote_supplier].filter(Boolean).join(' · ')
+                    return (
+                      <tr key={r.id||i} className="align-top">
+                        <td className="py-2 font-mono text-sm text-ink-800">{r.part_number}</td>
+                        <td className="py-2 text-ink-600">{r.quantity}</td>
+                        <td className="py-2">
+                          {hasQuote ? (
+                            <div>
+                              <span className="font-bold text-green-700">${r.quote_price}</span>
+                              {(meta || r.quote_purchaser) && (
+                                <div className="text-[11px] text-ink-400 leading-snug">{meta}{r.quote_purchaser ? `${meta ? ' — ' : ''}by ${r.quote_purchaser}` : ''}</div>
+                              )}
+                            </div>
+                          ) : r.not_in_stock ? <span className="text-xs font-semibold text-amber-600">Not in stock</span>
+                            : r.assignment_status === 'pending' ? <span className="text-xs text-ink-400">Awaiting quote…</span>
+                            : <span className="text-ink-300">—</span>}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             ) : <p className="text-sm text-ink-300">No parts added.</p>}
@@ -156,7 +181,7 @@ export default function InquiryDetail({ id }) {
                     <input className="input flex-1" placeholder="Write a comment..." value={comment} onChange={e => setComment(e.target.value)} onKeyDown={e => e.key==='Enter' && !e.shiftKey && handleComment()} />
                     <button onClick={handleComment} disabled={sending||!comment.trim()} className="btn-primary px-4">{sending ? '...' : 'Send'}</button>
                   </div>
-                  <div className="space-y-4">
+                  <div className="space-y-4 max-h-[460px] overflow-y-auto pr-1 -mr-1">
                     {!inquiry.activity?.length && <p className="text-sm text-ink-300 text-center py-6">No activity yet</p>}
                     {inquiry.activity?.map(a => (
                       <div key={a.id} className="flex gap-3">
