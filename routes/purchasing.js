@@ -310,8 +310,9 @@ router.post('/quote', (req, res) => {
     const msg = `${a.part_number} — ${condition ? condition+', ' : ''}$${price}${lead_time ? ', '+lead_time : ''}${overMsg}`;
 
     const notifyUsers = db.prepare("SELECT id FROM users WHERE role IN ('manager','purchasing_manager') OR id=?").all(a.ae_id);
-    const ins = db.prepare("INSERT INTO notifications (user_id,inquiry_id,inquiry_type,customer_name,actor_name,action,comment) VALUES (?,?,?,?,?,?,?)");
-    notifyUsers.forEach(u => ins.run(u.id, null, 'quote', a.customer_name, req.user.name, isOver ? '⚠️ Quote over selling price' : 'Quote submitted', msg));
+    // assignment_id lets the AE/Manager click the notification straight into the part/quote detail.
+    const ins = db.prepare("INSERT INTO notifications (user_id,inquiry_id,inquiry_type,customer_name,actor_name,action,comment,assignment_id) VALUES (?,?,?,?,?,?,?,?)");
+    notifyUsers.forEach(u => ins.run(u.id, null, 'quote', a.customer_name, req.user.name, isOver ? '⚠️ Quote over selling price' : 'Quote submitted', msg, assignment_id));
 
     res.json({ success: true, is_over_selling: isOver });
   } catch (err) {

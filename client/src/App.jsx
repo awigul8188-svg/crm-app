@@ -107,7 +107,7 @@ export default function App() {
   // Deep link: /?part=<assignmentId> renders a single part full-page (the "Open full page" pop-out).
   // Purchasing roles only; the backend /purchasing/part route still enforces per-record ownership.
   const partParam = new URLSearchParams(window.location.search).get('part')
-  if (partParam && ['purchaser', 'purchasing_manager', 'manager'].includes(user.role)) {
+  if (partParam && ['purchaser', 'purchasing_manager', 'manager', 'ae'].includes(user.role)) {
     return (
       <AuthContext.Provider value={{ user, login, logout }}>
         <PartDetailModal

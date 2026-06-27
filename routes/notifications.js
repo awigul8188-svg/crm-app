@@ -36,10 +36,11 @@ router.get('/', (req, res) => {
     const dueToday = db.prepare(`${base} AND f.follow_up_date = ? ORDER BY f.id ASC LIMIT 50`).all(...params, today);
     const upcoming = db.prepare(`${base} AND f.follow_up_date > ? AND f.follow_up_date <= ? ORDER BY f.follow_up_date ASC LIMIT 50`).all(...params, today, in7days);
 
-    // Activity notifications — manager-level (manager + purchasing_manager)
+    // Activity notifications — manager-level (manager + purchasing_manager) get all of theirs; AEs get
+    // theirs too (currently just quote-submitted alerts on their inquiries).
     let activity = [];
     let unreadActivity = 0;
-    if (['manager', 'purchasing_manager'].includes(req.user.role)) {
+    if (['manager', 'purchasing_manager', 'ae'].includes(req.user.role)) {
       activity = db.prepare(`
         SELECT n.*, 
           CASE n.inquiry_type 

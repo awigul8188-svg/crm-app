@@ -58,11 +58,13 @@ function FollowUpCard({ fu, onComplete, onNavigate }) {
   )
 }
 
-function ActivityCard({ notif, onNavigate, onRead }) {
+function ActivityCard({ notif, onNavigate, onRead, onOpenPart }) {
   const handleClick = async () => {
     if (!notif.read) await api.markNotificationRead(notif.id).catch(() => {})
     onRead(notif.id)
-    if (notif.inquiry_id) onNavigate('inquiry-detail', { id: notif.inquiry_id })
+    // Quote notifications carry an assignment_id → open the part/quote detail popup.
+    if (notif.assignment_id) onOpenPart(notif.assignment_id)
+    else if (notif.inquiry_id) onNavigate('inquiry-detail', { id: notif.inquiry_id })
   }
   const typeColor = TYPE_COLORS[notif.inquiry_type] || '#64748b'
 
@@ -104,7 +106,9 @@ function ActivityCard({ notif, onNavigate, onRead }) {
         )}
         <div className="text-[11px] text-ink-400">
           {timeAgo(notif.created_at)}
-          {notif.inquiry_id && <span className="text-brand-600 ml-2">View inquiry →</span>}
+          {notif.assignment_id
+            ? <span className="text-brand-600 ml-2">Open quote →</span>
+            : notif.inquiry_id && <span className="text-brand-600 ml-2">View inquiry →</span>}
         </div>
       </div>
     </div>
@@ -261,6 +265,8 @@ function CrmNotifications() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('activity')
   const [localActivity, setLocalActivity] = useState([])
+  const [openPartId, setOpenPartId] = useState(null)
+  const ACTIVITY_ROLES = ['manager', 'purchasing_manager', 'ae']
 
   const load = () => {
     setLoading(true)
@@ -287,13 +293,13 @@ function CrmNotifications() {
   const unreadActivity = localActivity.filter(n => !n.read).length
 
   const tabs = [
-    ...(['manager', 'purchasing_manager'].includes(user.role) ? [{ key: 'activity', label: 'Activity', count: unreadActivity }] : []),
+    ...(ACTIVITY_ROLES.includes(user.role) ? [{ key: 'activity', label: user.role === 'ae' ? 'Quotes & Activity' : 'Activity', count: unreadActivity }] : []),
     { key: 'followups', label: 'Follow-ups', count: followupTotal },
   ]
 
   const headerActions = (
     <div className="flex items-center gap-2">
-      {['manager', 'purchasing_manager'].includes(user.role) && unreadActivity > 0 && (
+      {ACTIVITY_ROLES.includes(user.role) && unreadActivity > 0 && (
         <button onClick={handleMarkAllRead}
           className="btn btn-sm border text-brand-600 hover:bg-brand-50"
           style={{ borderColor: `${BRAND}40`, background: `${BRAND}08` }}>
@@ -342,15 +348,15 @@ function CrmNotifications() {
       ) : (
         <>
           {/* Activity tab */}
-          {activeTab === 'activity' && ['manager', 'purchasing_manager'].includes(user.role) && (
+          {activeTab === 'activity' && ACTIVITY_ROLES.includes(user.role) && (
             localActivity.length === 0 ? (
               <div className="card p-16 text-center">
                 <Bell size={40} className="mx-auto mb-3 text-ink-200" />
-                <div className="font-display font-bold text-ink-400 text-lg">No activity yet</div>
-                <div className="text-ink-300 text-sm mt-1">Team actions will appear here</div>
+                <div className="font-display font-bold text-ink-400 text-lg">{user.role === 'ae' ? 'No quotes yet' : 'No activity yet'}</div>
+                <div className="text-ink-300 text-sm mt-1">{user.role === 'ae' ? 'Purchaser quotes on your inquiries will appear here' : 'Team actions will appear here'}</div>
               </div>
             ) : (
-              <div>{localActivity.map(notif => <ActivityCard key={notif.id} notif={notif} onNavigate={navigate} onRead={handleRead} />)}</div>
+              <div>{localActivity.map(notif => <ActivityCard key={notif.id} notif={notif} onNavigate={navigate} onRead={handleRead} onOpenPart={setOpenPartId} />)}</div>
             )
           )}
 
@@ -393,6 +399,8 @@ function CrmNotifications() {
           )}
         </>
       )}
+
+      {openPartId && <PartDetailModal assignmentId={openPartId} onClose={() => setOpenPartId(null)} onSaved={load} />}
     </div>
   )
 }

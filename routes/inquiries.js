@@ -30,7 +30,8 @@ function notifyManagers(db, { inquiry_id, inquiry_type, customer_name, actor_nam
 }
 
 // Notify purchasing managers when parts are added to an inquiry, so they can assign purchasers.
-// inquiry_type is suffixed '_parts' (e.g. 'lead_parts') — the PM "New Parts" tab filters on that.
+// Targets the purchasing_manager role ONLY (per owner's call) — assigning parts is their job, even when
+// a plain manager created the inquiry. inquiry_type is suffixed '_parts' — the PM "New Parts" tab filters on it.
 function notifyPurchasingManagers(db, { inquiry_id, type, customer_name, actor_name, partNumbers }) {
   try {
     if (!partNumbers || !partNumbers.length) return;
