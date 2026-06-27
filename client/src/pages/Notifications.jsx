@@ -286,10 +286,12 @@ function CrmNotifications() {
     setLocalActivity(prev => prev.map(n => n.id === id ? { ...n, read: 1 } : n))
   }
 
-  const quoteActivity = localActivity
+  // PM's activity payload also carries '*_parts' notifications (their New Parts queue, shown in the PM
+  // dashboard) — keep only quote notifications on this Submitted Quotes tab.
+  const quoteActivity = localActivity.filter(n => n.inquiry_type === 'quote')
   const followupTotal = data ? data.followups.overdue.length + data.followups.today.length + data.followups.upcoming.length : 0
   const unreadActivity = localActivity.filter(n => !n.read).length
-  const unreadQuotes = unreadActivity
+  const unreadQuotes = quoteActivity.filter(n => !n.read).length
 
   const tabs = [
     ...(ACTIVITY_ROLES.includes(user.role) ? [{ key: 'quotes', label: 'Submitted Quotes', count: unreadQuotes }] : []),

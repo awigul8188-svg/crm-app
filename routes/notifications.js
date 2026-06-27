@@ -37,15 +37,20 @@ router.get('/', (req, res) => {
     const upcoming = db.prepare(`${base} AND f.follow_up_date > ? AND f.follow_up_date <= ? ORDER BY f.follow_up_date ASC LIMIT 50`).all(...params, today, in7days);
 
     // Activity notifications — manager-level (manager + purchasing_manager) get all of theirs; AEs get
-    // theirs too. Only QUOTE notifications surface here now — generic lead/repeat/order activity
-    // (creates, disposition changes, comments) is shown ONLY on the record's own page, not in notifications.
+    // Quote notifications surface here for manager/PM/AE. The purchasing_manager ALSO gets the
+    // new-parts-to-assign notifications ('*_parts') — those feed the PM dashboard "New Parts" tab.
+    // Generic lead/repeat/order activity (creates, disposition changes, comments) is NOT shown in
+    // notifications for anyone — only on the record's own page.
     let activity = [];
     let unreadActivity = 0;
     if (['manager', 'purchasing_manager', 'ae'].includes(req.user.role)) {
+      const typeCond = req.user.role === 'purchasing_manager'
+        ? "(n.inquiry_type = 'quote' OR n.inquiry_type IN ('lead_parts','repeat_parts','online_order_parts'))"
+        : "n.inquiry_type = 'quote'";
       activity = db.prepare(`
-        SELECT n.*, '$' as type_icon
+        SELECT n.*, CASE WHEN n.inquiry_type = 'quote' THEN '$' ELSE '📦' END as type_icon
         FROM notifications n
-        WHERE n.user_id = ? AND n.inquiry_type = 'quote'
+        WHERE n.user_id = ? AND ${typeCond}
         ORDER BY n.created_at DESC
         LIMIT 100
       `).all(req.user.id);
