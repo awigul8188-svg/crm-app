@@ -159,9 +159,16 @@ router.get('/module', (req, res) => {
       const cold = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'Cold'`).get(...params).c;
       const inProgress = periodTotal - closedWon - closedLost;
 
-      // Per-AE breakdown for the performance table (manager only)
+      // Per-AE breakdown for the performance table (manager only).
       const ms = businessToday().slice(0, 8) + '01';
-      const aeBase = `FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id JOIN users u ON i.assigned_to = u.id WHERE i.type = 'lead' AND u.role = 'ae'`;
+      // aeBaseRaw = all-time (used by the always-"today" per-AE count). aeBase adds the selected
+      // date range so the AE Performance table tracks the dashboard's date filter instead of
+      // always showing all-time totals.
+      const aeBaseRaw = `FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id JOIN users u ON i.assigned_to = u.id WHERE i.type = 'lead' AND u.role = 'ae'`;
+      const aeDateConds = []; const aeDateParams = [];
+      if (from) { aeDateConds.push(`${LD} >= ?`); aeDateParams.push(from); }
+      if (to)   { aeDateConds.push(`${LD} <= ?`); aeDateParams.push(to); }
+      const aeBase = aeBaseRaw + (aeDateConds.length ? ' AND ' + aeDateConds.join(' AND ') : '');
       const aePerformance = db.prepare(`
         SELECT u.id, u.name,
           COUNT(*) as total,
@@ -174,16 +181,17 @@ router.get('/module', (req, res) => {
           SUM(CASE WHEN i.disposition='Fake Lead' THEN 1 ELSE 0 END) as fake,
           SUM(CASE WHEN i.disposition='No response' THEN 1 ELSE 0 END) as no_response,
           SUM(CASE WHEN i.disposition='Cold' THEN 1 ELSE 0 END) as cold
-        ${aeBase} GROUP BY i.assigned_to, u.id, u.name ORDER BY total DESC`).all(today, ms);
+        ${aeBase} GROUP BY i.assigned_to, u.id, u.name ORDER BY total DESC`).all(today, ms, ...aeDateParams);
 
       const aeSourceBreakdown = db.prepare(`
         SELECT u.name as ae_name, c.lead_source as source, COUNT(*) as count
         ${aeBase} AND c.lead_source IS NOT NULL
-        GROUP BY i.assigned_to, u.name, c.lead_source ORDER BY count DESC`).all();
+        GROUP BY i.assigned_to, u.name, c.lead_source ORDER BY count DESC`).all(...aeDateParams);
 
+      // Always today, regardless of the selected period filter.
       const todayPerAE = db.prepare(`
         SELECT u.name, COUNT(*) as count
-        ${aeBase} AND ${LD} = ?
+        ${aeBaseRaw} AND ${LD} = ?
         GROUP BY i.assigned_to, u.name ORDER BY count DESC`).all(today);
 
       res.json({ type, today: { total: todayTotal, perAE: todayPerAE }, period: { total: periodTotal, closed_won: closedWon, closed_lost: closedLost, quoted, bidding, fake, no_response: noResponse, cold, in_progress: inProgress, win_rate: (closedWon + closedLost) > 0 ? Math.round(closedWon / (closedWon + closedLost) * 100) : 0 }, byDisposition, bySource, byPerson, trend, aePerformance, aeSourceBreakdown });
