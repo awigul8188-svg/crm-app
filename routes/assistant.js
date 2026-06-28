@@ -4,9 +4,9 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { authenticate } = require('../middleware/auth');
 const { buildSystemPrompt } = require('../assistantHelp');
 
-// Default to Opus 4.8 (the recommended model); set ANTHROPIC_MODEL=claude-haiku-4-5
-// in the environment for a cheaper, faster help-bot tier.
-const MODEL = process.env.ANTHROPIC_MODEL || 'claude-opus-4-8';
+// Haiku 4.5 — fast + cheap, ideal for a how-to help bot (owner's choice).
+// Override via ANTHROPIC_MODEL (e.g. claude-opus-4-8) for higher-quality answers.
+const MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5';
 const MAX_TURNS = 12;        // keep the last N messages — a help chat doesn't need deep history
 const MAX_CHARS = 4000;      // per-message guard
 
