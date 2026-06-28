@@ -44,7 +44,7 @@ function workingDaysSince(dateStr) {
 // NOTE: order_amount is the whole-order total, so for multi-part orders this only fires when a
 // single line's cost exceeds the entire order — conservative (no false positives, may under-flag).
 // A fully accurate check needs per-part selling prices or an order-level cost rollup.
-const num = (v) => parseFloat(String(v ?? '').replace(/[$,]/g, ''));
+const num = (v) => { const n = parseFloat(String(v ?? '').replace(/[$,]/g, '')); return isNaN(n) ? 0 : n; };
 function isOverSelling(price, quantity, selling_price, type) {
   if (type !== 'online_order' || !selling_price) return false;
   const cost = num(price) * (parseInt(quantity) || 1);
@@ -134,40 +134,49 @@ router.get('/inquiry-parts/:inquiryId', canManage, (req, res) => {
 });
 
 // ── Assign / reassign ──────────────────────────────────────────
+// Create or update an assignment with consistent reassign semantics. Returns {id, prevPurchaser}.
+// - new            → INSERT (urgency defaults to 'normal').
+// - same purchaser → update notes/urgency only; PRESERVE status, assigned_at (delay clock), and quotes
+//                    (a re-save must not reset a Quoted part to pending — that left status≠quote_count).
+// - new purchaser  → reassign: the old purchaser's quotes no longer apply, so clear them and start the
+//                    new purchaser fresh (status pending, clock reset).
+// urgency/pm_notes are COALESCEd (null = keep existing — inline reassign sends neither, so a Critical
+// part keeps its urgency).
+function upsertAssignment(db, { requirement_id, purchaser_id, pm_notes, urgency }, byUserId) {
+  const existing = db.prepare('SELECT id, purchaser_id FROM purchase_assignments WHERE requirement_id=?').get(requirement_id);
+  if (!existing) {
+    const r = db.prepare(`INSERT INTO purchase_assignments (requirement_id, purchaser_id, assigned_by, status, pm_notes, urgency)
+      VALUES (?, ?, ?, 'pending', ?, ?)`).run(requirement_id, purchaser_id, byUserId, pm_notes || null, urgency || 'normal');
+    return { id: r.lastInsertRowid, prevPurchaser: null };
+  }
+  if (String(existing.purchaser_id) === String(purchaser_id)) {
+    db.prepare(`UPDATE purchase_assignments SET assigned_by=?, pm_notes=COALESCE(?, pm_notes), urgency=COALESCE(?, urgency) WHERE id=?`)
+      .run(byUserId, pm_notes || null, urgency || null, existing.id);
+    return { id: existing.id, prevPurchaser: existing.purchaser_id };
+  }
+  db.prepare('DELETE FROM purchase_quotes WHERE assignment_id=?').run(existing.id);
+  db.prepare(`UPDATE purchase_assignments SET purchaser_id=?, assigned_by=?, status='pending', assigned_at=CURRENT_TIMESTAMP,
+    pm_notes=COALESCE(?, pm_notes), urgency=COALESCE(?, urgency) WHERE id=?`)
+    .run(purchaser_id, byUserId, pm_notes || null, urgency || null, existing.id);
+  return { id: existing.id, prevPurchaser: existing.purchaser_id };
+}
+
 router.post('/assign', canManage, (req, res) => {
   const { requirement_id, purchaser_id, pm_notes, urgency } = req.body;
   if (!requirement_id || !purchaser_id) return res.status(400).json({ error: 'requirement_id and purchaser_id required' });
   const db = getDB();
 
   try {
-    const existing = db.prepare('SELECT purchaser_id FROM purchase_assignments WHERE requirement_id=?').get(requirement_id);
-    if (existing) {
-      // Reassign: keep the existing urgency/pm_notes unless the caller explicitly sends a new value.
-      // (The inline AssignCell dropdown sends neither, so a Critical part must NOT drop to Normal.)
-      db.prepare(`
-        UPDATE purchase_assignments SET
-          purchaser_id=?, assigned_by=?, status='pending', assigned_at=CURRENT_TIMESTAMP,
-          pm_notes=COALESCE(?, pm_notes), urgency=COALESCE(?, urgency)
-        WHERE requirement_id=?
-      `).run(purchaser_id, req.user.id, pm_notes || null, urgency || null, requirement_id);
-    } else {
-      // New assignment: default urgency to 'normal' when none provided.
-      db.prepare(`
-        INSERT INTO purchase_assignments (requirement_id, purchaser_id, assigned_by, status, pm_notes, urgency)
-        VALUES (?, ?, ?, 'pending', ?, ?)
-      `).run(requirement_id, purchaser_id, req.user.id, pm_notes || null, urgency || 'normal');
-    }
-
-    // The assignment id lets the purchaser's notification deep-link to the exact part.
-    const assignmentId = db.prepare('SELECT id FROM purchase_assignments WHERE requirement_id=?').get(requirement_id)?.id || null;
+    const { id: assignmentId, prevPurchaser } = upsertAssignment(db, { requirement_id, purchaser_id, pm_notes, urgency }, req.user.id);
+    const existing = prevPurchaser != null ? { purchaser_id: prevPurchaser } : null;
 
     // Notify new purchaser
     const r = db.prepare('SELECT r.part_number, c.name as customer_name, i.type FROM requirements r JOIN inquiries i ON r.inquiry_id=i.id JOIN customers c ON i.customer_id=c.id WHERE r.id=?').get(requirement_id);
     db.prepare("INSERT INTO notifications (user_id, inquiry_id, inquiry_type, customer_name, actor_name, action, comment, assignment_id) VALUES (?,?,?,?,?,?,?,?)")
       .run(purchaser_id, null, 'part_assigned', r?.customer_name || '', req.user.name, 'Part assigned to you', r?.part_number || '', assignmentId);
 
-    // Notify old purchaser if reassigned
-    if (existing && existing.purchaser_id !== purchaser_id) {
+    // Notify old purchaser if reassigned to a different person
+    if (existing && String(existing.purchaser_id) !== String(purchaser_id)) {
       db.prepare("INSERT INTO notifications (user_id, inquiry_id, inquiry_type, customer_name, actor_name, action, comment, assignment_id) VALUES (?,?,?,?,?,?,?,?)")
         .run(existing.purchaser_id, null, 'part_reassigned', r?.customer_name || '', req.user.name, 'Part reassigned away from you', r?.part_number || '', assignmentId);
     }
@@ -184,27 +193,25 @@ router.post('/assign-bulk', canManage, (req, res) => {
   const db = getDB();
   
   try {
-    const stmt = db.prepare(`
-      INSERT INTO purchase_assignments (requirement_id, purchaser_id, assigned_by, status, pm_notes, urgency)
-      VALUES (?, ?, ?, 'pending', ?, ?)
-      ON CONFLICT(requirement_id) DO UPDATE SET
-        purchaser_id=excluded.purchaser_id, assigned_by=excluded.assigned_by,
-        status='pending', assigned_at=CURRENT_TIMESTAMP,
-        pm_notes=COALESCE(excluded.pm_notes, pm_notes),
-        urgency=COALESCE(excluded.urgency, urgency)
-    `);
     const notifStmt = db.prepare("INSERT INTO notifications (user_id, inquiry_id, inquiry_type, customer_name, actor_name, action, comment, assignment_id) VALUES (?,?,?,?,?,?,?,?)");
+    let assigned = 0;
 
     db.transaction(() => {
       assignments.forEach(a => {
         if (!a.purchaser_id) return;
         const r = db.prepare('SELECT r.part_number, c.name as customer_name FROM requirements r JOIN inquiries i ON r.inquiry_id=i.id JOIN customers c ON i.customer_id=c.id WHERE r.id=?').get(a.requirement_id);
-        stmt.run(a.requirement_id, a.purchaser_id, req.user.id, a.pm_notes || null, a.urgency || 'normal');
-        const assignmentId = db.prepare('SELECT id FROM purchase_assignments WHERE requirement_id=?').get(a.requirement_id)?.id || null;
-        notifStmt.run(a.purchaser_id, null, 'part_assigned', r?.customer_name || '', req.user.name, 'Part assigned to you', r?.part_number || '', assignmentId);
+        // Shared semantics: preserves urgency/status on same-purchaser re-save; clears stale quotes on reassign.
+        const { id: assignmentId, prevPurchaser } = upsertAssignment(db, a, req.user.id);
+        assigned++;
+        if (String(prevPurchaser ?? '') !== String(a.purchaser_id)) {
+          notifStmt.run(a.purchaser_id, null, 'part_assigned', r?.customer_name || '', req.user.name, 'Part assigned to you', r?.part_number || '', assignmentId);
+        }
+        if (prevPurchaser != null && String(prevPurchaser) !== String(a.purchaser_id)) {
+          notifStmt.run(prevPurchaser, null, 'part_reassigned', r?.customer_name || '', req.user.name, 'Part reassigned away from you', r?.part_number || '', assignmentId);
+        }
       });
     })();
-    res.json({ success: true });
+    res.json({ success: true, assigned });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -419,7 +426,9 @@ router.get('/quotes', canManage, (req, res) => {
       SELECT pq.*, r.part_number, r.quantity as line_quantity, pu.name as purchaser_name,
         c.name as customer_name, c.company as customer_company,
         i.type as inquiry_type, ae.name as ae_name, i.order_amount as selling_price,
-        pa.urgency, pa.pm_notes
+        pa.urgency, pa.pm_notes,
+        (SELECT COALESCE(SUM(COALESCE(q2.price,0) * COALESCE(q2.quantity,0)), 0)
+           FROM purchase_quotes q2 WHERE q2.assignment_id = pq.assignment_id) AS assignment_total_cost
       FROM purchase_quotes pq
       JOIN purchase_assignments pa ON pq.assignment_id=pa.id
       JOIN requirements r ON pq.requirement_id=r.id
@@ -434,7 +443,10 @@ router.get('/quotes', canManage, (req, res) => {
 
     const enriched = quotes.map(q => ({
       ...q,
-      is_over_selling: isOverSelling(q.price, q.quantity, q.selling_price, q.inquiry_type),
+      // Over-selling is a per-ASSIGNMENT property (Σ cost across all supplier entries vs order total),
+      // consistent with the parts list / stats / part detail. assignment_total_cost lets the client Δ
+      // column compare against the assignment total too.
+      is_over_selling: isOverSellingTotal(q.assignment_total_cost, q.selling_price, q.inquiry_type),
     }));
 
     res.json({ quotes: enriched, total, pages: Math.ceil(total / PAGE_SIZE), page: parseInt(page) });
