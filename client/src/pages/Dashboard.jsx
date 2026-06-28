@@ -159,7 +159,8 @@ function BentoTop({ summary, isManager }) {
           })}
         </div>
         {f.won > 0 && f.total > 0 && (() => {
-          const winPct = Math.round(f.won / f.total * 100)
+          const decided = (f.won || 0) + (f.lost || 0)
+          const winPct = decided > 0 ? Math.round(f.won / decided * 100) : 0
           const r = 22; const circ = 2 * Math.PI * r
           return (
             <div style={{ marginTop:14, paddingTop:12, borderTop:'1px solid #f1f5f9', display:'flex', alignItems:'center', gap:18 }}>
@@ -409,7 +410,9 @@ function OverviewTab({ filters, users, onDrilldown }) {
   if (loading) return <Loader />
   const getTotal = type => data?.totals?.find(t => t.type === type)?.count || 0
   const totalAll = (data?.totals||[]).reduce((s,t) => s + t.count, 0)
-  const wonRate = data?.totalCount > 0 ? Math.round(data.wonCount / data.totalCount * 100) : 0
+  // Win rate = won/(won+lost) — decided deals only (consistent with Leads tab, AE dashboard, Top-AE).
+  const decidedCount = (data?.wonCount || 0) + (data?.lostCount || 0)
+  const wonRate = decidedCount > 0 ? Math.round(data.wonCount / decidedCount * 100) : 0
   const trendDates = [...new Set((data?.trend||[]).map(t => t.date))].sort()
   const trendData = trendDates.map(date => {
     const row = { date: date.slice(5) }
@@ -424,7 +427,7 @@ function OverviewTab({ filters, users, onDrilldown }) {
         <MetricCard label="Total Leads" value={getTotal('lead')} color="#3b82f6" onClick={() => onDrilldown({ title:'All Leads', type:'lead', filters: { from: filters.from, to: filters.to } })} sub={<button onClick={e => { e.stopPropagation(); navigate('leads') }} style={{ color:BRAND, background:'none', border:'none', cursor:'pointer', fontSize:12, padding:0, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>View all →</button>} />
         <MetricCard label="Repeat Inquiries" value={getTotal('repeat')} color="#6366f1" onClick={() => onDrilldown({ title:'All Repeat Inquiries', type:'repeat', filters: { from: filters.from, to: filters.to } })} sub={<button onClick={e => { e.stopPropagation(); navigate('repeat') }} style={{ color:BRAND, background:'none', border:'none', cursor:'pointer', fontSize:12, padding:0, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>View all →</button>} />
         <MetricCard label="Online Orders" value={getTotal('online_order')} color="#f59e0b" onClick={() => onDrilldown({ title:'All Online Orders', type:'online_order', filters: { from: filters.from, to: filters.to } })} sub={<button onClick={e => { e.stopPropagation(); navigate('orders') }} style={{ color:BRAND, background:'none', border:'none', cursor:'pointer', fontSize:12, padding:0, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>View all →</button>} />
-        <MetricCard label="Win Rate" value={`${wonRate}%`} color={BRAND} sub={`${data?.wonCount||0} of ${data?.totalCount||0}`} />
+        <MetricCard label="Win Rate" value={`${wonRate}%`} color={BRAND} sub={`${data?.wonCount||0} won of ${decidedCount} decided`} />
       </div>
       {/* Personal GP for the running quarter — managers only (not purchasing managers). */}
       {user.role === 'manager' && (

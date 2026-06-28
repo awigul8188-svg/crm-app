@@ -56,6 +56,10 @@ router.get('/', (req, res) => {
     const totalCount = db.prepare(`SELECT COUNT(*) as c ${base}`).get(...params).c;
     const wonWhere = 'WHERE ' + [...filters, "i.disposition = 'Closed Won'"].join(' AND ');
     const wonCount = db.prepare(`SELECT COUNT(*) as c FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id LEFT JOIN users u ON i.assigned_to = u.id ${wonWhere}`).get(...params).c;
+    // lostCount lets the client compute win rate as won/(won+lost) — the consistent "decided deals"
+    // definition used by the Leads tab and AE dashboard (not won/all-inquiries).
+    const lostWhere = 'WHERE ' + [...filters, "i.disposition = 'Closed Lost'"].join(' AND ');
+    const lostCount = db.prepare(`SELECT COUNT(*) as c FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id LEFT JOIN users u ON i.assigned_to = u.id ${lostWhere}`).get(...params).c;
 
     const fuFilters = []; const fuParams = [];
     if (req.user.role === 'ae') { fuFilters.push('i.assigned_to = ?'); fuParams.push(req.user.id); }
@@ -63,7 +67,7 @@ router.get('/', (req, res) => {
     fuFilters.push("f.completed = 0", "f.follow_up_date >= date('now')");
     const upcomingFollowups = db.prepare(`SELECT f.*, i.type, c.name as customer_name, u.name as assigned_name FROM followups f JOIN inquiries i ON f.inquiry_id = i.id JOIN customers c ON i.customer_id = c.id LEFT JOIN users u ON i.assigned_to = u.id WHERE ${fuFilters.join(' AND ')} ORDER BY f.follow_up_date ASC LIMIT 10`).all(...fuParams);
 
-    res.json({ totals, byDisposition, bySource, byPerson, trend, totalCount, wonCount, upcomingFollowups });
+    res.json({ totals, byDisposition, bySource, byPerson, trend, totalCount, wonCount, lostCount, upcomingFollowups });
   } catch (err) {
     console.error('Analytics error:', err);
     res.status(500).json({ error: err.message });
@@ -304,13 +308,17 @@ router.get('/summary', (req, res) => {
     if (!isAE) {
       const monthStart = businessToday().slice(0, 8) + '01';
       const today = businessToday();
+      // Win rate = won/(won+lost) (decided deals) — consistent with the Leads tab / AE dashboard.
+      // Rank by the same measure; require at least one decided deal.
       const ae = db.prepare(`
-        SELECT u.name, COUNT(*) as total, SUM(CASE WHEN i.disposition='Closed Won' THEN 1 ELSE 0 END) as won
+        SELECT u.name, COUNT(*) as total,
+          SUM(CASE WHEN i.disposition='Closed Won' THEN 1 ELSE 0 END) as won,
+          SUM(CASE WHEN i.disposition='Closed Lost' THEN 1 ELSE 0 END) as lost
         FROM inquiries i JOIN users u ON i.assigned_to=u.id
         WHERE u.role='ae' AND ${LD} BETWEEN ? AND ?
-        GROUP BY i.assigned_to, u.name HAVING total>0
-        ORDER BY CAST(won AS REAL)/total DESC LIMIT 1`).get(monthStart, today);
-      if (ae) topAE = { name: ae.name, winRate: ae.total>0 ? Math.round(ae.won/ae.total*100) : 0, won: ae.won, total: ae.total };
+        GROUP BY i.assigned_to, u.name HAVING (won + lost) > 0
+        ORDER BY CAST(won AS REAL)/(won + lost) DESC LIMIT 1`).get(monthStart, today);
+      if (ae) topAE = { name: ae.name, winRate: (ae.won + ae.lost) > 0 ? Math.round(ae.won/(ae.won + ae.lost)*100) : 0, won: ae.won, total: ae.total };
     }
 
     res.json({ overdueCount, untouchedCount, newCustomersToday, totalCustomers, conversionFunnel: { total: funnelTotal, quoted: funnelQuoted, bidding: funnelBidding, won: funnelWon, lost: funnelLost }, topAE });
