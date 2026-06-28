@@ -75,7 +75,16 @@ router.get('/', (req, res) => {
   
   try {
     const inquiries = db.prepare(query).all(...params);
-    res.json(inquiries.map(inq => ({ ...inq, requirements: db.prepare('SELECT * FROM requirements WHERE inquiry_id = ?').all(inq.id) })));
+    // Batch the requirements in a single IN-query instead of one query per inquiry (N+1).
+    const ids = inquiries.map(i => i.id);
+    const byInq = {};
+    if (ids.length) {
+      const ph = ids.map(() => '?').join(',');
+      for (const r of db.prepare(`SELECT * FROM requirements WHERE inquiry_id IN (${ph})`).all(...ids)) {
+        (byInq[r.inquiry_id] = byInq[r.inquiry_id] || []).push(r);
+      }
+    }
+    res.json(inquiries.map(inq => ({ ...inq, requirements: byInq[inq.id] || [] })));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
