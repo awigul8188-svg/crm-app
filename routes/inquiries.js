@@ -215,7 +215,14 @@ router.put('/:id', (req, res) => {
     if (!inquiry) return res.status(404).json({ error: 'Not found' });
     // AEs may only edit their own inquiries, and cannot reassign them.
     if (req.user.role === 'ae' && inquiry.assigned_to !== req.user.id) return res.status(403).json({ error: 'Not authorized' });
-    const newAssignee = req.user.role === 'ae' ? inquiry.assigned_to : assigned_to;
+    // Managers keep the current assignee when the request omits assigned_to (or sends null),
+    // so a partial update (e.g. just a disposition change) can't silently unassign the inquiry.
+    // A new assignee must be a real user.
+    const newAssignee = req.user.role === 'ae' ? inquiry.assigned_to : (assigned_to ?? inquiry.assigned_to);
+    if (req.user.role !== 'ae' && newAssignee != null && String(newAssignee) !== String(inquiry.assigned_to)) {
+      const target = db.prepare('SELECT id FROM users WHERE id = ?').get(newAssignee);
+      if (!target) return res.status(400).json({ error: 'Assigned user not found' });
+    }
     const createdAt = custom_date ? new Date(custom_date).toISOString() : null;
     const dispositionChanged = disposition !== inquiry.old_disposition;
 
