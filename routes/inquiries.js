@@ -54,7 +54,7 @@ function buildInFilter(column, value) {
 
 router.get('/', (req, res) => {
   const db = getDB();
-  const { type, disposition, lead_source, from, to } = req.query;
+  const { type, disposition, lead_source, from, to, assigned_to } = req.query;
   let query = `
     SELECT i.*, c.name as customer_name, c.email as customer_email, c.company as customer_company,
       c.phone as customer_phone, c.lead_source, u.name as assigned_name
@@ -67,6 +67,8 @@ router.get('/', (req, res) => {
   if (type) { query += ' AND i.type = ?'; params.push(type); }
   if (disposition) { const f = buildInFilter('i.disposition', disposition); if (f) { query += ` AND ${f.sql}`; params.push(...f.params); } }
   if (lead_source) { const f = buildInFilter('c.lead_source', lead_source); if (f) { query += ` AND ${f.sql}`; params.push(...f.params); } }
+  // Managers can scope to one or more reps (comma-list); AEs are already locked to their own id above.
+  if (assigned_to && req.user.role !== 'ae') { const f = buildInFilter('i.assigned_to', assigned_to); if (f) { query += ` AND ${f.sql}`; params.push(...f.params); } }
   if (from) { query += ` AND ${localDate('i.created_at')} >= ?`; params.push(from); }
   if (to)   { query += ` AND ${localDate('i.created_at')} <= ?`; params.push(to); }
   query += ' ORDER BY i.created_at DESC';
