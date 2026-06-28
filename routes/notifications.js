@@ -44,7 +44,7 @@ router.get('/', (req, res) => {
     let activity = [];
     let unreadActivity = 0;
     if (['manager', 'purchasing_manager', 'ae'].includes(req.user.role)) {
-      const typeCond = req.user.role === 'purchasing_manager'
+      const typeCond = ['manager', 'purchasing_manager'].includes(req.user.role)
         ? "(n.inquiry_type = 'quote' OR n.inquiry_type IN ('lead_parts','repeat_parts','online_order_parts'))"
         : "n.inquiry_type = 'quote'";
       activity = db.prepare(`

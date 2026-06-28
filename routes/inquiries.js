@@ -35,7 +35,9 @@ function notifyManagers(db, { inquiry_id, inquiry_type, customer_name, actor_nam
 function notifyPurchasingManagers(db, { inquiry_id, type, customer_name, actor_name, partNumbers }) {
   try {
     if (!partNumbers || !partNumbers.length) return;
-    const pms = db.prepare("SELECT id FROM users WHERE role = 'purchasing_manager'").all();
+    // Manager-level users (manager + purchasing_manager) all reach the Purchasing dashboard and can
+    // assign parts, so all get the new-parts notification — not just purchasing_manager.
+    const pms = db.prepare("SELECT id FROM users WHERE role IN ('manager','purchasing_manager')").all();
     if (!pms.length) return;
     const comment = partNumbers.slice(0, 8).join(', ') + (partNumbers.length > 8 ? ` +${partNumbers.length - 8} more` : '');
     const insert = db.prepare("INSERT INTO notifications (user_id, inquiry_id, inquiry_type, customer_name, actor_name, action, comment) VALUES (?, ?, ?, ?, ?, ?, ?)");
