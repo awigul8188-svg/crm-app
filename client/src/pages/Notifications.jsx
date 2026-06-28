@@ -149,11 +149,12 @@ function PurchaserNotifCard({ n, clickable, onClick }) {
 function PurchaserFollowCard({ f, onOpen, onComplete }) {
   const [busy, setBusy] = useState(false)
   const overdue = f.bucket === 'overdue'
-  const complete = async (e) => { e.stopPropagation(); setBusy(true); await onComplete(f.id) }
+  // Reset busy in finally so a failed completion doesn't leave the button stuck disabled forever.
+  const complete = async (e) => { e.stopPropagation(); setBusy(true); try { await onComplete(f.id) } catch {} finally { setBusy(false) } }
   return (
     <div style={{ background: overdue ? '#fff5f5' : '#fff', border: `1px solid ${overdue ? '#fecaca' : '#f1f5f9'}`, borderRadius: 14, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
       <button onClick={complete} disabled={busy} title="Mark complete"
-        style={{ width: 22, height: 22, borderRadius: 6, border: '2px solid #cbd5e1', background: 'transparent', cursor: 'pointer', flexShrink: 0 }} />
+        style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${busy ? '#10b981' : '#cbd5e1'}`, background: busy ? '#10b981' : 'transparent', color: '#fff', cursor: busy ? 'default' : 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, lineHeight: 1 }}>{busy ? '✓' : ''}</button>
       <div onClick={() => f.assignment_id && onOpen(f.assignment_id)} style={{ flex: 1, minWidth: 0, cursor: f.assignment_id ? 'pointer' : 'default' }}>
         <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: '#0f172a' }}>{f.part_number || '—'}</div>
         <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{f.note}</div>
@@ -192,7 +193,8 @@ function PurchaserNotifications() {
     setStats(s => s ? { ...s, myNotifications: s.myNotifications.map(n => ({ ...n, read: 1 })) } : s)
   }
   const completeFu = async (id) => {
-    await fetch(`/api/purchasing/followup/${id}/complete`, { method: 'PATCH', headers: { Authorization: `Bearer ${localStorage.getItem('crm_token')}` } }).catch(() => {})
+    const r = await fetch(`/api/purchasing/followup/${id}/complete`, { method: 'PATCH', headers: { Authorization: `Bearer ${localStorage.getItem('crm_token')}` } })
+    if (!r.ok) throw new Error('Could not complete follow-up')  // propagate so the card resets its busy state
     load()
   }
   // Assigned: mark read + open the part. Reassigned: mark read only (purchaser no longer owns it).

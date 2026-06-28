@@ -22,7 +22,7 @@ const money = (v) => {
 
 const PRESETS = [{ label:'Today',v:'today' },{ label:'Week',v:'week' },{ label:'Month',v:'month' },{ label:'All',v:'all' },{ label:'Custom',v:'custom' }]
 function getDateRange(preset, from, to) {
-  const fmt = d => d.toISOString().split('T')[0]; const now = new Date(); const today = fmt(now)
+  const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; const now = new Date(); const today = fmt(now)
   if (preset==='today') return { from:today, to:today }
   if (preset==='week') { const d=new Date(now); d.setDate(d.getDate()-7); return { from:fmt(d), to:today } }
   if (preset==='month') { const d=new Date(now); d.setDate(1); return { from:fmt(d), to:today } }
@@ -55,6 +55,7 @@ function Pagination({ page, pages, onChange }) {
 export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = false, page = false }) {
   const { user } = useAuth()
   const [part, setPart] = useState(null)
+  const [loadErr, setLoadErr] = useState(null)  // set when /part fails (e.g. 403 after being reassigned away)
   const [tab, setTab] = useState('quote')
   // Multi-supplier sourcing: one or more entries, each supplier/qty/price/condition/lead time.
   const [entries, setEntries] = useState([])
@@ -69,14 +70,17 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
   const authHeaders = { Authorization:`Bearer ${localStorage.getItem('crm_token')}`, 'Content-Type':'application/json' }
 
   const load = () => {
+    setLoadErr(null)
     fetch(`/api/purchasing/part/${assignmentId}`, { headers:{ Authorization:`Bearer ${localStorage.getItem('crm_token')}` } })
-      .then(r=>r.json()).then(d => {
+      .then(async r => ({ ok: r.ok, status: r.status, d: await r.json().catch(() => ({})) }))
+      .then(({ ok, status, d }) => {
+        if (!ok || d.error) { setLoadErr(status === 403 ? 'This part is no longer assigned to you.' : (d.error || 'Could not load this part.')); return }
         setPart(d)
         const qs = (d.quotes || []).map(q => ({ supplier_name:q.supplier_name||'', quantity:q.quantity ?? '', price:q.price ?? '', condition:q.condition||'', lead_time:q.lead_time||'' }))
         setEntries(qs.length ? qs : [{ supplier_name:'', quantity:d.quantity ?? '', price:'', condition:'', lead_time:'' }])
         setPurchaserNotes(d.purchaser_notes||''); setDirty(false)
       })
-      .catch(() => showFlash('err','Could not load part'))
+      .catch(() => setLoadErr('Could not load this part.'))
   }
   useEffect(() => { load() }, [assignmentId])
   useEffect(() => { purchasingApi.getSuppliers().then(setSuppliers).catch(() => {}) }, [])
@@ -102,11 +106,11 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
   const removeEntry = (i) => { setEntries(es => es.filter((_, idx) => idx !== i)); setDirty(true) }
 
   const handleQuoteSubmit = async () => {
-    const clean = entries.filter(e => (e.supplier_name && e.supplier_name.trim()) || e.price || e.quantity)
-    if (!clean.length) return setError('Add at least one supplier line')
+    // Keep only real lines: a supplier with a quantity > 0. Blank/partial/zero-qty lines are dropped, not errored.
+    const clean = entries.filter(e => e.supplier_name && e.supplier_name.trim() && (Number(e.quantity) || 0) > 0)
+    if (!clean.length) return setError('Add at least one supplier line with a quantity')
     for (const e of clean) {
-      if (!e.price) return setError('Each line needs a price')
-      if (!e.quantity) return setError('Each line needs a quantity')
+      if (e.price === '' || e.price == null) return setError(`Enter a price for ${e.supplier_name.trim()}`)
     }
     setSaving(true); setError('')
     try {
@@ -129,9 +133,11 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
 
   const handleMarkNotInStock = async () => {
     try {
-      const r = await fetch(`/api/purchasing/assignment/${assignmentId}`, { method:'PATCH', headers:authHeaders, body:JSON.stringify({ not_in_stock: !part.not_in_stock }) })
+      const next = !part.not_in_stock
+      const r = await fetch(`/api/purchasing/assignment/${assignmentId}`, { method:'PATCH', headers:authHeaders, body:JSON.stringify({ not_in_stock: next }) })
       if (!r.ok) throw new Error('Update failed')
-      load(); onSaved()
+      // Update locally — do NOT reload (a full load() would overwrite any unsaved quote lines being typed).
+      setPart(p => ({ ...p, not_in_stock: next ? 1 : 0 })); onSaved()
     } catch(e) { showFlash('err', e.message || 'Could not update stock status') }
   }
 
@@ -141,7 +147,7 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
     try {
       const r = await fetch(`/api/purchasing/comment/${assignmentId}`, { method:'POST', headers:authHeaders, body:JSON.stringify({ comment }) })
       if (!r.ok) throw new Error('Send failed')
-      setComment(''); load()
+      setComment(''); load(); showFlash('ok','Message sent')
     } catch(e) { showFlash('err', e.message || 'Could not send message') }
     setSendingComment(false)
   }
@@ -152,7 +158,7 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
     try {
       const r = await fetch(`/api/purchasing/followup/${assignmentId}`, { method:'POST', headers:authHeaders, body:JSON.stringify({ note:followupNote, follow_up_date:followupDate }) })
       if (!r.ok) throw new Error('Save failed')
-      setFollowupNote(''); setFollowupDate(''); load()
+      setFollowupNote(''); setFollowupDate(''); load(); showFlash('ok','Follow-up added')
     } catch(e) { showFlash('err', e.message || 'Could not add follow-up') }
     setSavingFollowup(false)
   }
@@ -183,11 +189,20 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
     ? { background:'#fff', width:'100%', maxWidth:820, maxHeight:'100vh', display:'flex', flexDirection:'column', fontFamily:'"Plus Jakarta Sans",sans-serif' }
     : { background:'#fff', borderRadius:20, boxShadow:'0 24px 80px rgba(0,0,0,0.25)', width:'100%', maxWidth:640, maxHeight:'92vh', display:'flex', flexDirection:'column', fontFamily:'"Plus Jakarta Sans",sans-serif' }
 
+  // Failed to load (e.g. 403 after being reassigned away) — show a clear message + a way out, not an endless spinner.
+  const errBody = (
+    <div style={{ textAlign:'center', padding:40, color:'#64748b' }}>
+      <div style={{ fontSize:32, marginBottom:10 }}>🚫</div>
+      <div style={{ fontWeight:700, color:'#0f172a', marginBottom:6 }}>{loadErr}</div>
+      <div style={{ fontSize:13, marginBottom:18 }}>It may have been reassigned to another purchaser.</div>
+      <button onClick={onClose} className="btn btn-secondary" style={{ padding:'8px 18px', borderRadius:10, border:'1px solid #e2e8f0', background:'#fff', cursor:'pointer', fontWeight:600 }}>← Back</button>
+    </div>
+  )
   // `page` mode renders in-flow inside the app Layout (sidebar visible) like the lead/order pages.
-  if (page && !part) return <div className="page-wrap" style={{ maxWidth:900 }}><div style={{ padding:40, color:'#94a3b8' }}>Loading…</div></div>
+  if (page && !part) return <div className="page-wrap" style={{ maxWidth:900 }}>{loadErr ? errBody : <div style={{ padding:40, color:'#94a3b8' }}>Loading…</div>}</div>
   if (!part) return createPortal(
-    <div style={fullPage ? backdropStyle : { position:'fixed', inset:0, zIndex:99999, background:'rgba(0,0,0,0.5)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-      <div style={{ background:'#fff', borderRadius:fullPage?0:20, padding:40, color:'#94a3b8', margin:'auto' }}>Loading...</div>
+    <div onClick={loadErr ? onClose : undefined} style={fullPage ? backdropStyle : { position:'fixed', inset:0, zIndex:99999, background:'rgba(0,0,0,0.5)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:'#fff', borderRadius:fullPage?0:20, padding:loadErr?0:40, color:'#94a3b8', margin:'auto', minWidth:300 }}>{loadErr ? errBody : 'Loading...'}</div>
     </div>, document.body
   )
 
@@ -693,7 +708,7 @@ export default function PurchaserDashboard() {
                 : (
                   <div>
                     {[...( stats?.followups?.overdue||[]).map(f=>({...f,urgency:'overdue'})), ...(stats?.followups?.today||[]).map(f=>({...f,urgency:'today'})), ...(stats?.followups?.upcoming||[]).map(f=>({...f,urgency:'upcoming'}))].slice(0,6).map(fu => (
-                      <div key={fu.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0', borderBottom:'1px solid #f8fafc' }}>
+                      <div key={fu.id} onClick={() => fu.assignment_id && setOpenPartId(fu.assignment_id)} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0', borderBottom:'1px solid #f8fafc', cursor: fu.assignment_id ? 'pointer' : 'default' }}>
                         <div style={{ width:6, height:6, borderRadius:'50%', flexShrink:0, background:fu.urgency==='overdue'?'#ef4444':fu.urgency==='today'?'#f59e0b':BRAND }} />
                         <div style={{ flex:1 }}>
                           <div style={{ fontSize:12, fontWeight:600, color:'#0f172a' }}>{fu.part_number}</div>
