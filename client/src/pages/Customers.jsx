@@ -143,7 +143,7 @@ export default function Customers() {
               <option value="">Select lead source</option>
               {LEAD_SOURCES.map(s=><option key={s}>{s}</option>)}
             </select>
-            {user.role==='manager' && (
+            {['manager','purchasing_manager'].includes(user.role) && (
               <select className="input" value={form.assigned_to} onChange={e=>setF('assigned_to',e.target.value)}>
                 {users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
               </select>

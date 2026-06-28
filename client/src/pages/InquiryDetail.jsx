@@ -276,7 +276,7 @@ export default function InquiryDetail({ id }) {
                   : <DispositionBadge disposition={inquiry.disposition} />}
               </Detail>
               <Detail label="Assigned to">
-                {editMode && user.role==='manager'
+                {editMode && ['manager','purchasing_manager'].includes(user.role)
                   ? <select className="input" value={editForm.assigned_to} onChange={e => setEF('assigned_to',e.target.value)}>{users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select>
                   : <span className="font-semibold text-ink-700">{inquiry.assigned_name||'—'}</span>}
               </Detail>

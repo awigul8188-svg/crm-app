@@ -57,7 +57,7 @@ export default function CustomerDetail({ id }) {
             </div>
           </div>
           <div className="flex gap-2 flex-shrink-0">
-            {user.role==='manager' && !editMode && (
+            {['manager','purchasing_manager'].includes(user.role) && !editMode && (
               <button onClick={handleDelete} disabled={deleting} className="btn-danger btn-sm">{deleting ? '...' : '?? Delete'}</button>
             )}
             {editMode
@@ -75,7 +75,7 @@ export default function CustomerDetail({ id }) {
               <option value="">Lead source</option>
               {LEAD_SOURCES.map(s=><option key={s}>{s}</option>)}
             </select>
-            {user.role==='manager' && <select className="input" value={editForm.assigned_to} onChange={e=>setEF('assigned_to',e.target.value)}>{users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select>}
+            {['manager','purchasing_manager'].includes(user.role) && <select className="input" value={editForm.assigned_to} onChange={e=>setEF('assigned_to',e.target.value)}>{users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select>}
           </div>
         ) : (
           <div className="flex flex-wrap gap-5 mt-4 text-sm text-ink-500">
