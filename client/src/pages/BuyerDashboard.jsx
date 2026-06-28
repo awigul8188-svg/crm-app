@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { Package, Truck, CheckCircle2, ClipboardList } from 'lucide-react'
+import { Package, Truck, CheckCircle2, ClipboardList, Search, X, ArrowUpDown, ArrowUp, ArrowDown, SlidersHorizontal } from 'lucide-react'
 import { operationsApi } from '../api'
 import { useAuth } from '../App'
 import { OP_CONDITIONS } from '../components/Badges'
@@ -202,6 +202,13 @@ function VendorModal({ id, suppliers, onAddSupplier, onClose, onSaved }) {
   )
 }
 
+// Fill status of an order line-up: how much of the vendor side is done.
+const fillState = o => o.item_count > 0 && o.items_filled >= o.item_count ? 'filled' : o.items_filled > 0 ? 'partial' : 'unfilled'
+const FILL_OPTS = [{ key: 'all', label: 'All fill states' }, { key: 'unfilled', label: 'Unfilled' }, { key: 'partial', label: 'Partially filled' }, { key: 'filled', label: 'Fully filled' }]
+const stageOf = o => o.fulfillment_status || 'Awaiting PO'
+
+const selStyle = { ...inp, width: 'auto', minWidth: 0, cursor: 'pointer', padding: '8px 28px 8px 11px', appearance: 'none', backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%2364748b\' stroke-width=\'3\'%3E%3Cpath d=\'M6 9l6 6 6-6\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 9px center' }
+
 // ── Dashboard ───────────────────────────────────────────────────────────────
 export default function BuyerDashboard() {
   const { user } = useAuth()
@@ -211,6 +218,12 @@ export default function BuyerDashboard() {
   const [stats, setStats] = useState(null)
   const [suppliers, setSuppliers] = useState([])
   const [editId, setEditId] = useState(null)
+  // Filter / search / sort state (all client-side over the loaded scope).
+  const [q, setQ] = useState('')
+  const [stageF, setStageF] = useState('all')
+  const [repF, setRepF] = useState('all')
+  const [fillF, setFillF] = useState('all')
+  const [sort, setSort] = useState({ key: null, dir: 'asc' }) // null → server order (newest first)
 
   const loadOrders = useCallback(() => {
     setLoading(true)
@@ -233,6 +246,58 @@ export default function BuyerDashboard() {
     { key: 'transit', label: 'In Transit', Icon: Truck, count: stats?.transit },
     { key: 'delivered', label: 'Delivered', Icon: CheckCircle2, count: stats?.delivered },
   ]
+
+  // Distinct reps present in the current scope, for the Rep filter dropdown.
+  const reps = useMemo(() => [...new Set(orders.map(o => o.rep).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [orders])
+  // Stages actually present, so we don't offer empty filter options.
+  const stagesPresent = useMemo(() => STAGES.filter(s => orders.some(o => stageOf(o) === s)), [orders])
+
+  const toggleSort = key => setSort(s => s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' })
+
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase()
+    let list = orders.filter(o => {
+      if (stageF !== 'all' && stageOf(o) !== stageF) return false
+      if (repF !== 'all' && (o.rep || '') !== repF) return false
+      if (fillF !== 'all' && fillState(o) !== fillF) return false
+      if (needle) {
+        const hay = [o.order_number, o.customer_name, o.rep, o.buyer, o.lead_source, o.tracking_to_customer, o.shipped_via].filter(Boolean).join(' ').toLowerCase()
+        if (!hay.includes(needle)) return false
+      }
+      return true
+    })
+    if (sort.key) {
+      const dir = sort.dir === 'asc' ? 1 : -1
+      const val = o => {
+        switch (sort.key) {
+          case 'order_number': return o.order_number || ''
+          case 'customer_name': return (o.customer_name || '').toLowerCase()
+          case 'rep': return (o.rep || '').toLowerCase()
+          case 'fill': return o.item_count ? o.items_filled / o.item_count : -1
+          case 'order_amount': return Number(o.order_amount) || 0
+          case 'stage': return STAGES.indexOf(stageOf(o))
+          default: return ''
+        }
+      }
+      list = [...list].sort((a, b) => { const x = val(a), y = val(b); return (x < y ? -1 : x > y ? 1 : 0) * dir })
+    }
+    return list
+  }, [orders, q, stageF, repF, fillF, sort])
+
+  const filtersActive = q.trim() || stageF !== 'all' || repF !== 'all' || fillF !== 'all'
+  const clearFilters = () => { setQ(''); setStageF('all'); setRepF('all'); setFillF('all') }
+  // Reset filters that no longer make sense when the scope changes.
+  useEffect(() => { clearFilters(); setSort({ key: null, dir: 'asc' }) }, [scope])
+
+  const SortHead = ({ label, sk, align }) => (
+    <th onClick={sk ? () => toggleSort(sk) : undefined}
+      style={{ textAlign: align || 'left', padding: '11px 16px', fontSize: 11, fontWeight: 700, color: sort.key === sk ? '#0f172a' : '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap', cursor: sk ? 'pointer' : 'default', userSelect: 'none' }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexDirection: align === 'right' ? 'row-reverse' : 'row' }}>
+        {label}
+        {sk && (sort.key === sk ? (sort.dir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />) : <ArrowUpDown size={12} style={{ opacity: 0.35 }} />)}
+      </span>
+    </th>
+  )
 
   return (
     <div className="page-wrap" style={{ maxWidth: 1200 }}>
@@ -271,23 +336,70 @@ export default function BuyerDashboard() {
         ))}
       </div>
 
+      {/* Toolbar — search + filters (hidden until there's something to filter) */}
+      {!loading && orders.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+          {/* Search */}
+          <div style={{ position: 'relative', flex: '1 1 240px', minWidth: 200 }}>
+            <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }} />
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search order #, customer, rep, tracking…"
+              style={{ ...inp, paddingLeft: 34, paddingRight: q ? 32 : 11, borderRadius: 100 }} />
+            {q && <button onClick={() => setQ('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', border: 'none', background: '#f1f5f9', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748b' }}><X size={12} /></button>}
+          </div>
+          {/* Stage filter */}
+          <select value={stageF} onChange={e => setStageF(e.target.value)} style={selStyle} title="Filter by stage">
+            <option value="all">All stages</option>
+            {stagesPresent.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          {/* Rep filter */}
+          {reps.length > 1 && (
+            <select value={repF} onChange={e => setRepF(e.target.value)} style={selStyle} title="Filter by rep">
+              <option value="all">All reps</option>
+              {reps.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          )}
+          {/* Fill-status filter */}
+          <select value={fillF} onChange={e => setFillF(e.target.value)} style={selStyle} title="Filter by vendor-fill status">
+            {FILL_OPTS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
+          </select>
+          {filtersActive && (
+            <button onClick={clearFilters} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 12px', borderRadius: 100, border: '1px solid #e2e8f0', background: '#fff', color: '#64748b', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+              <X size={13} /> Clear
+            </button>
+          )}
+          <span style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8', fontWeight: 600, whiteSpace: 'nowrap' }}>
+            {filtersActive ? `${filtered.length} of ${orders.length}` : `${orders.length} order${orders.length === 1 ? '' : 's'}`}
+          </span>
+        </div>
+      )}
+
       {/* Orders */}
       {loading ? <Loader /> : orders.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8', fontSize: 14, background: '#fff', borderRadius: 16, border: '1px solid #f1f5f9' }}>
           {scope === 'todo' ? 'All caught up — no orders awaiting vendor info 🎉' : 'Nothing here yet.'}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: 50, color: '#94a3b8', fontSize: 14, background: '#fff', borderRadius: 16, border: '1px solid #f1f5f9' }}>
+          <SlidersHorizontal size={22} style={{ opacity: 0.4, marginBottom: 8 }} />
+          <div>No orders match these filters.</div>
+          <button onClick={clearFilters} style={{ marginTop: 12, padding: '7px 16px', borderRadius: 100, border: 'none', background: BRAND, color: '#062b29', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Clear filters</button>
         </div>
       ) : (
         <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #f1f5f9', overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
-                {['Order', 'Customer', 'Rep', 'Items', 'Sell', 'Stage', ''].map(h => (
-                  <th key={h} style={{ textAlign: 'left', padding: '11px 16px', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
-                ))}
+                <SortHead label="Order" sk="order_number" />
+                <SortHead label="Customer" sk="customer_name" />
+                <SortHead label="Rep" sk="rep" />
+                <SortHead label="Items" sk="fill" />
+                <SortHead label="Sell" sk="order_amount" align="right" />
+                <SortHead label="Stage" sk="stage" />
+                <th style={{ borderBottom: '2px solid #e2e8f0' }} />
               </tr>
             </thead>
             <tbody>
-              {orders.map((o, i) => (
+              {filtered.map((o, i) => (
                 <tr key={o.id} onClick={() => setEditId(o.id)} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 ? '#fafbfc' : '#fff', cursor: 'pointer' }}
                   onMouseEnter={e => e.currentTarget.style.background = `${BRAND}08`}
                   onMouseLeave={e => e.currentTarget.style.background = i % 2 ? '#fafbfc' : '#fff'}>
@@ -297,7 +409,7 @@ export default function BuyerDashboard() {
                   <td style={{ padding: '11px 16px', color: '#64748b', whiteSpace: 'nowrap' }}>
                     <span style={{ color: o.items_filled >= o.item_count && o.item_count > 0 ? '#10b981' : '#f59e0b', fontWeight: 700 }}>{o.items_filled}</span>/{o.item_count}
                   </td>
-                  <td style={{ padding: '11px 16px', color: '#0f172a', fontWeight: 600, whiteSpace: 'nowrap' }}>{money(o.order_amount)}</td>
+                  <td style={{ padding: '11px 16px', color: '#0f172a', fontWeight: 600, whiteSpace: 'nowrap', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(o.order_amount)}</td>
                   <td style={{ padding: '11px 16px' }}><StageBadge stage={o.fulfillment_status} /></td>
                   <td style={{ padding: '11px 16px', textAlign: 'right' }}>
                     <span style={{ fontSize: 11, fontWeight: 700, color: BRAND, whiteSpace: 'nowrap' }}>{o.vendor_complete ? 'View →' : 'Fill →'}</span>
