@@ -5,6 +5,7 @@ import { operationsApi } from '../api'
 import { useAuth } from '../App'
 import { OP_CONDITIONS } from '../components/Badges'
 import SearchableSelect from '../components/SearchableSelect'
+import { ColumnPicker, useColumnPrefs } from '../components/ColumnPicker'
 
 const BRAND = '#00D4C8'
 const STAGES = ['Awaiting PO', 'PO Placed', 'Shipped to Warehouse', 'Received', 'Shipped to Customer', 'Delivered']
@@ -13,7 +14,7 @@ const STAGE_COLOR = {
   'Received': '#3b82f6', 'Shipped to Customer': '#8b5cf6', 'Delivered': '#10b981',
 }
 const money = n => `$${(Math.round((Number(n) || 0) * 100) / 100).toLocaleString(undefined, { minimumFractionDigits: 0 })}`
-const inp = { width: '100%', boxSizing: 'border-box', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '8px 11px', fontSize: 13, color: '#0f172a', fontFamily: '"Plus Jakarta Sans",sans-serif', outline: 'none' }
+const inp = { width: '100%', boxSizing: 'border-box', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '9px 12px', fontSize: 13, color: '#0f172a', fontFamily: '"Plus Jakarta Sans",sans-serif', outline: 'none' }
 const lbl = { fontSize: 10, fontWeight: 700, color: '#64748b', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }
 
 function Loader() {
@@ -29,6 +30,19 @@ function StageBadge({ stage }) {
 function Field({ label, children }) {
   return <div><div style={lbl}>{label}</div>{children}</div>
 }
+
+// Subsection divider-label inside the vendor form, to break the long field list into scannable groups.
+function Sub({ children }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 11px' }}>
+      <span style={{ fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>{children}</span>
+      <span style={{ flex: 1, height: 1, background: '#eef2f6' }} />
+    </div>
+  )
+}
+
+// Trim float noise (e.g. 95.30999999999997 → 95.31) for display; keep blanks blank so placeholders show.
+const cleanNum = v => (v === null || v === undefined || v === '') ? '' : (Number.isFinite(Number(v)) ? Math.round(Number(v) * 100) / 100 : v)
 
 // ── Vendor-fill modal ───────────────────────────────────────────────────────
 function VendorModal({ id, suppliers, onAddSupplier, onClose, onSaved }) {
@@ -48,7 +62,12 @@ function VendorModal({ id, suppliers, onAddSupplier, onClose, onSaved }) {
   const load = useCallback(() => {
     operationsApi.buyerOrder(id).then(o => {
       setOrder(o)
-      setItems((o.items || []).map(i => ({ ...i })))
+      // Round the money fields on load so stored float noise doesn't show in the inputs.
+      setItems((o.items || []).map(i => ({
+        ...i, selling: cleanNum(i.selling), buying: cleanNum(i.buying),
+        cc_paid: cleanNum(i.cc_paid), tax_paid: cleanNum(i.tax_paid),
+        shipping_paid: cleanNum(i.shipping_paid), duty_paid: cleanNum(i.duty_paid),
+      })))
       setFulfillment(o.fulfillment_status || 'Awaiting PO')
       setShippedVia(o.shipped_via || '')
       setTrackingCust(o.tracking_to_customer || '')
@@ -92,7 +111,7 @@ function VendorModal({ id, suppliers, onAddSupplier, onClose, onSaved }) {
 
   return createPortal(
     <div onClick={attemptClose} style={{ position: "fixed", inset: 0, zIndex: 99999, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 20, boxShadow: '0 32px 100px rgba(0,0,0,0.3)', width: '100%', maxWidth: 860, maxHeight: '92vh', display: 'flex', flexDirection: 'column', fontFamily: '"Plus Jakarta Sans",sans-serif' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 20, boxShadow: '0 32px 100px rgba(0,0,0,0.3)', width: '100%', maxWidth: 940, maxHeight: '92vh', display: 'flex', flexDirection: 'column', fontFamily: '"Plus Jakarta Sans",sans-serif' }}>
         {/* Header */}
         <div style={{ padding: '18px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           {!order ? <div style={{ fontWeight: 700 }}>Loading…</div> : (
@@ -109,16 +128,21 @@ function VendorModal({ id, suppliers, onAddSupplier, onClose, onSaved }) {
         </div>
 
         {!order ? <Loader /> : (
-          <div style={{ overflowY: 'auto', padding: '18px 24px', flex: 1 }}>
+          <div style={{ overflowY: 'auto', padding: '20px 26px', flex: 1, background: '#f8fafc' }}>
             {/* Per-item vendor fields */}
             {items.map((it, i) => (
-              <div key={it.id} style={{ border: '1px solid #f1f5f9', borderRadius: 14, padding: 16, marginBottom: 14, background: '#fafbfc' }}>
-                {/* Sales side — editable so the buyer can fix AE typos */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Sales side</span>
+              <div key={it.id} style={{ border: '1px solid #eef2f6', borderRadius: 16, padding: '20px 22px', marginBottom: 16, background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+                {/* Card header */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', fontFamily: '"Bricolage Grotesque",sans-serif' }}>
+                    {items.length > 1 ? `Item ${i + 1} of ${items.length}` : 'Line item'}{it.part_number ? <span style={{ color: '#94a3b8', fontWeight: 600 }}> · {it.part_number}</span> : ''}
+                  </span>
                   {it.sourced_by && <span style={{ fontSize: 11, color: '#94a3b8' }}>Sourced by {it.sourced_by}</span>}
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1.2fr 1fr', gap: 10, marginBottom: 12 }}>
+
+                {/* Sales side — editable so the buyer can fix AE typos */}
+                <Sub>Sales side</Sub>
+                <div style={{ display: 'grid', gridTemplateColumns: '2.2fr 0.8fr 1.2fr 1fr', gap: 14, marginBottom: 18 }}>
                   <Field label="Part #"><input value={it.part_number || ''} onChange={e => setItem(i, 'part_number', e.target.value)} placeholder="Part #" style={inp} /></Field>
                   <Field label="Qty"><input value={it.quantity ?? ''} onChange={e => setItem(i, 'quantity', e.target.value)} placeholder="0" style={inp} /></Field>
                   <Field label="Condition">
@@ -130,7 +154,9 @@ function VendorModal({ id, suppliers, onAddSupplier, onClose, onSaved }) {
                   <Field label="Selling (unit)"><input value={it.selling ?? ''} onChange={e => setItem(i, 'selling', e.target.value)} placeholder="0" style={inp} /></Field>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
+                {/* Vendor sourcing */}
+                <Sub>Vendor &amp; sourcing</Sub>
+                <div style={{ display: 'grid', gridTemplateColumns: '2.2fr 1fr 1fr', gap: 14, marginBottom: 18, alignItems: 'start' }}>
                   <Field label="Supplier">
                     <SearchableSelect items={supItems} value={it.supplier_id || ''} onChange={(v) => setItem(i, 'supplier_id', v ? Number(v) : null)} placeholder="Pick supplier…" />
                     {addingFor === i ? (
@@ -139,27 +165,33 @@ function VendorModal({ id, suppliers, onAddSupplier, onClose, onSaved }) {
                         <button onClick={() => addSupplier(i)} style={{ border: 'none', background: BRAND, color: '#062b29', borderRadius: 8, padding: '0 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Add</button>
                       </div>
                     ) : (
-                      <button onClick={() => { setAddingFor(i); setNewSup('') }} style={{ marginTop: 5, fontSize: 11, color: BRAND, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>+ New supplier</button>
+                      <button onClick={() => { setAddingFor(i); setNewSup('') }} style={{ marginTop: 6, fontSize: 11, color: BRAND, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>+ New supplier</button>
                     )}
                   </Field>
                   <Field label="Buying (unit)"><input value={it.buying ?? ''} onChange={e => setItem(i, 'buying', e.target.value)} placeholder="0" style={inp} /></Field>
                   <Field label="PO #"><input value={it.ta_po_number || ''} onChange={e => setItem(i, 'ta_po_number', e.target.value)} placeholder="PO-…" style={inp} /></Field>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
+                {/* Landed costs */}
+                <Sub>Landed costs paid</Sub>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 14, marginBottom: 18 }}>
                   <Field label="CC paid"><input value={it.cc_paid ?? ''} onChange={e => setItem(i, 'cc_paid', e.target.value)} placeholder="0" style={inp} /></Field>
                   <Field label="Tax paid"><input value={it.tax_paid ?? ''} onChange={e => setItem(i, 'tax_paid', e.target.value)} placeholder="0" style={inp} /></Field>
                   <Field label="Shipping paid"><input value={it.shipping_paid ?? ''} onChange={e => setItem(i, 'shipping_paid', e.target.value)} placeholder="0" style={inp} /></Field>
                   <Field label="Duty paid"><input value={it.duty_paid ?? ''} onChange={e => setItem(i, 'duty_paid', e.target.value)} placeholder="0" style={inp} /></Field>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
+                {/* Payment */}
+                <Sub>Payment to supplier</Sub>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginBottom: 18 }}>
                   <Field label="Payment method"><input value={it.payment_method || ''} onChange={e => setItem(i, 'payment_method', e.target.value)} placeholder="Wire / CC / …" style={inp} /></Field>
                   <Field label="Supplier terms"><input value={it.supplier_terms || ''} onChange={e => setItem(i, 'supplier_terms', e.target.value)} placeholder="Net 30 / Prepaid" style={inp} /></Field>
                   <Field label="Payment due"><input type="date" value={it.payment_due || ''} onChange={e => setItem(i, 'payment_due', e.target.value)} style={inp} /></Field>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                {/* Receiving */}
+                <Sub>Receiving</Sub>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                   <Field label="Tracking → warehouse"><input value={it.tracking_to_warehouse || ''} onChange={e => setItem(i, 'tracking_to_warehouse', e.target.value)} placeholder="Tracking #" style={inp} /></Field>
                   <Field label="Serials"><input value={it.serials || ''} onChange={e => setItem(i, 'serials', e.target.value)} placeholder="Serial numbers" style={inp} /></Field>
                 </div>
@@ -209,6 +241,23 @@ const stageOf = o => o.fulfillment_status || 'Awaiting PO'
 
 const selStyle = { ...inp, width: 'auto', minWidth: 0, cursor: 'pointer', padding: '8px 28px 8px 11px', appearance: 'none', backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%2364748b\' stroke-width=\'3\'%3E%3Cpath d=\'M6 9l6 6 6-6\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 9px center' }
 
+// Buyer order-table columns. Order/Customer locked (always shown); the last four are opt-in via the picker.
+// `sortKey` (when present) wires the header into the existing sort state. `td` renders the cell.
+const td = { padding: '11px 16px', whiteSpace: 'nowrap' }
+const BUYER_COLS = [
+  { key: 'order', label: 'Order', locked: true, sortKey: 'order_number', tdStyle: { ...td, fontFamily: 'monospace', fontSize: 12, color: '#475569' }, render: o => o.order_number },
+  { key: 'customer', label: 'Customer', locked: true, sortKey: 'customer_name', tdStyle: { padding: '11px 16px', fontWeight: 600, color: '#0f172a' }, render: o => o.customer_name || '—' },
+  { key: 'rep', label: 'Rep', sortKey: 'rep', tdStyle: { ...td, color: '#64748b' }, render: o => o.rep || '—' },
+  { key: 'items', label: 'Items', sortKey: 'fill', tdStyle: { ...td, color: '#64748b' }, render: o => <span><span style={{ color: o.items_filled >= o.item_count && o.item_count > 0 ? '#10b981' : '#f59e0b', fontWeight: 700 }}>{o.items_filled}</span>/{o.item_count}</span> },
+  { key: 'sell', label: 'Sell', sortKey: 'order_amount', align: 'right', tdStyle: { ...td, color: '#0f172a', fontWeight: 600, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }, render: o => money(o.order_amount) },
+  { key: 'stage', label: 'Stage', sortKey: 'stage', tdStyle: { padding: '11px 16px' }, render: o => <StageBadge stage={o.fulfillment_status} /> },
+  { key: 'source', label: 'Source', tdStyle: { ...td, color: '#64748b' }, render: o => o.lead_source || '—' },
+  { key: 'sourced', label: 'Sourced By', tdStyle: { ...td, color: '#64748b' }, render: o => o.buyer || '—' },
+  { key: 'carrier', label: 'Carrier', tdStyle: { ...td, color: '#64748b' }, render: o => o.shipped_via || '—' },
+  { key: 'tracking', label: 'Tracking #', tdStyle: { ...td, color: '#64748b', fontFamily: 'monospace', fontSize: 12 }, render: o => o.tracking_to_customer || '—' },
+]
+const BUYER_DEFAULT_HIDDEN = ['source', 'sourced', 'carrier', 'tracking']
+
 // ── Dashboard ───────────────────────────────────────────────────────────────
 export default function BuyerDashboard() {
   const { user } = useAuth()
@@ -224,6 +273,7 @@ export default function BuyerDashboard() {
   const [repF, setRepF] = useState('all')
   const [fillF, setFillF] = useState('all')
   const [sort, setSort] = useState({ key: null, dir: 'asc' }) // null → server order (newest first)
+  const { visibleColumns, hidden, toggle, reset } = useColumnPrefs('buyer-orders', BUYER_COLS, BUYER_DEFAULT_HIDDEN)
 
   const loadOrders = useCallback(() => {
     setLoading(true)
@@ -308,21 +358,31 @@ export default function BuyerDashboard() {
         <p className="text-ink-400 text-sm mt-1">Vendor & fulfillment — fill the supplier side of closed-won orders and track shipments.</p>
       </div>
 
-      {/* Stat tiles */}
+      {/* Stat tiles — click to jump to that scope */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 24 }}>
         {[
-          { label: 'Awaiting Vendor Info', value: stats?.todo, color: '#ef4444', Icon: ClipboardList },
-          { label: 'In Transit', value: stats?.transit, color: '#6366f1', Icon: Truck },
-          { label: 'Delivered', value: stats?.delivered, color: '#10b981', Icon: CheckCircle2 },
-        ].map(s => (
-          <div key={s.label} style={{ background: '#fff', borderRadius: 16, border: '1px solid rgba(0,0,0,0.06)', padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-              <s.Icon size={14} style={{ color: s.color }} />
-              <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{s.label}</span>
-            </div>
-            <div style={{ fontFamily: '"Bricolage Grotesque",sans-serif', fontSize: 40, fontWeight: 900, lineHeight: 1, color: s.color, fontVariantNumeric: 'tabular-nums' }}>{s.value ?? '—'}</div>
-          </div>
-        ))}
+          { label: 'Awaiting Vendor Info', scope: 'todo', value: stats?.todo, color: '#ef4444', Icon: ClipboardList },
+          { label: 'In Transit', scope: 'transit', value: stats?.transit, color: '#6366f1', Icon: Truck },
+          { label: 'Delivered', scope: 'delivered', value: stats?.delivered, color: '#10b981', Icon: CheckCircle2 },
+        ].map(s => {
+          const active = scope === s.scope
+          return (
+            <button key={s.label} onClick={() => setScope(s.scope)} aria-pressed={active}
+              style={{ textAlign: 'left', background: '#fff', borderRadius: 16, border: '1px solid rgba(0,0,0,0.06)', padding: '18px 20px', cursor: 'pointer', transition: 'box-shadow .15s, transform .15s',
+                boxShadow: active ? `0 0 0 2px ${s.color}, 0 6px 16px ${s.color}22` : '0 2px 8px rgba(0,0,0,0.04)' }}
+              onMouseEnter={e => { if (!active) e.currentTarget.style.boxShadow = '0 6px 18px rgba(0,0,0,0.08)' }}
+              onMouseLeave={e => { if (!active) e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <s.Icon size={14} style={{ color: s.color }} />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{s.label}</span>
+                </div>
+                {active && <span style={{ fontSize: 10, fontWeight: 800, color: s.color, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Viewing</span>}
+              </div>
+              <div style={{ fontFamily: '"Bricolage Grotesque",sans-serif', fontSize: 40, fontWeight: 900, lineHeight: 1, color: s.color, fontVariantNumeric: 'tabular-nums' }}>{s.value ?? '—'}</div>
+            </button>
+          )
+        })}
       </div>
 
       {/* Tabs */}
@@ -367,9 +427,12 @@ export default function BuyerDashboard() {
               <X size={13} /> Clear
             </button>
           )}
-          <span style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8', fontWeight: 600, whiteSpace: 'nowrap' }}>
-            {filtersActive ? `${filtered.length} of ${orders.length}` : `${orders.length} order${orders.length === 1 ? '' : 's'}`}
-          </span>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600, whiteSpace: 'nowrap' }}>
+              {filtersActive ? `${filtered.length} of ${orders.length}` : `${orders.length} order${orders.length === 1 ? '' : 's'}`}
+            </span>
+            <ColumnPicker columns={BUYER_COLS} hidden={hidden} toggle={toggle} reset={reset} />
+          </div>
         </div>
       )}
 
@@ -389,12 +452,7 @@ export default function BuyerDashboard() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
-                <SortHead label="Order" sk="order_number" />
-                <SortHead label="Customer" sk="customer_name" />
-                <SortHead label="Rep" sk="rep" />
-                <SortHead label="Items" sk="fill" />
-                <SortHead label="Sell" sk="order_amount" align="right" />
-                <SortHead label="Stage" sk="stage" />
+                {visibleColumns.map(c => <SortHead key={c.key} label={c.label} sk={c.sortKey} align={c.align} />)}
                 <th style={{ borderBottom: '2px solid #e2e8f0' }} />
               </tr>
             </thead>
@@ -403,14 +461,7 @@ export default function BuyerDashboard() {
                 <tr key={o.id} onClick={() => setEditId(o.id)} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 ? '#fafbfc' : '#fff', cursor: 'pointer' }}
                   onMouseEnter={e => e.currentTarget.style.background = `${BRAND}08`}
                   onMouseLeave={e => e.currentTarget.style.background = i % 2 ? '#fafbfc' : '#fff'}>
-                  <td style={{ padding: '11px 16px', fontFamily: 'monospace', fontSize: 12, color: '#475569', whiteSpace: 'nowrap' }}>{o.order_number}</td>
-                  <td style={{ padding: '11px 16px', fontWeight: 600, color: '#0f172a' }}>{o.customer_name || '—'}</td>
-                  <td style={{ padding: '11px 16px', color: '#64748b' }}>{o.rep || '—'}</td>
-                  <td style={{ padding: '11px 16px', color: '#64748b', whiteSpace: 'nowrap' }}>
-                    <span style={{ color: o.items_filled >= o.item_count && o.item_count > 0 ? '#10b981' : '#f59e0b', fontWeight: 700 }}>{o.items_filled}</span>/{o.item_count}
-                  </td>
-                  <td style={{ padding: '11px 16px', color: '#0f172a', fontWeight: 600, whiteSpace: 'nowrap', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(o.order_amount)}</td>
-                  <td style={{ padding: '11px 16px' }}><StageBadge stage={o.fulfillment_status} /></td>
+                  {visibleColumns.map(c => <td key={c.key} style={c.tdStyle}>{c.render(o)}</td>)}
                   <td style={{ padding: '11px 16px', textAlign: 'right' }}>
                     <span style={{ fontSize: 11, fontWeight: 700, color: BRAND, whiteSpace: 'nowrap' }}>{o.vendor_complete ? 'View →' : 'Fill →'}</span>
                   </td>
