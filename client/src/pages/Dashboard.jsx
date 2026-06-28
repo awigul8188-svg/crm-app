@@ -21,13 +21,25 @@ const PRESETS = [
   { label: 'Custom', value: 'custom' },
 ]
 
+// Business timezone — must match the server's BUSINESS_TZ (default America/Los_Angeles in
+// routes/businessTime.js). The backend buckets created_at by this zone's calendar date, so the
+// dashboard's date presets and "today" drilldowns must compute boundaries the same way. Using
+// toISOString() (UTC) here caused off-by-one days in the evening (counts vs drilldown disagreed).
+const BUSINESS_TZ = 'America/Los_Angeles'
+function businessToday() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: BUSINESS_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+}
+// Format a Date's LOCAL calendar fields (not UTC) as YYYY-MM-DD — pure calendar arithmetic.
+const fmtCal = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+
 function getPresetDates(v) {
-  const fmt = d => d.toISOString().split('T')[0]
-  const now = new Date(); const today = fmt(now)
+  const today = businessToday()
+  const [y, m, d] = today.split('-').map(Number)
+  const base = new Date(y, m-1, d) // local midnight of the business-today calendar date
   if (v === 'today')   return { from: today, to: today }
-  if (v === 'week')    { const d = new Date(now); d.setDate(d.getDate()-7); return { from: fmt(d), to: today } }
-  if (v === 'month')   { const d = new Date(now); d.setDate(1); return { from: fmt(d), to: today } }
-  if (v === 'quarter') { const d = new Date(now); d.setMonth(d.getMonth()-3); return { from: fmt(d), to: today } }
+  if (v === 'week')    { const x = new Date(base); x.setDate(x.getDate()-7); return { from: fmtCal(x), to: today } }
+  if (v === 'month')   return { from: fmtCal(new Date(y, m-1, 1)), to: today }
+  if (v === 'quarter') { const x = new Date(base); x.setMonth(x.getMonth()-3); return { from: fmtCal(x), to: today } }
   return { from: '', to: '' }
 }
 
@@ -493,7 +505,7 @@ function LeadsTab({ filters, onDrilldown, unassigned = [], onReadAll }) {
     <div>
       <SectionLabel>Today</SectionLabel>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:24 }}>
-        <MetricCard label="Leads Received" value={data.today.total} color="#3b82f6" onClick={() => drill('Leads Today', { from: new Date().toISOString().split('T')[0], to: new Date().toISOString().split('T')[0] })} />
+        <MetricCard label="Leads Received" value={data.today.total} color="#3b82f6" onClick={() => drill('Leads Today', { from: businessToday(), to: businessToday() })} />
         {(data.today.perAE||[]).slice(0,3).map((ae,i) => (
           <MetricCard key={ae.name} label={`${ae.name} — Today`} value={ae.count} color={CHART_COLORS[i+1]} />
         ))}
@@ -646,7 +658,7 @@ function RepeatTab({ filters, onDrilldown }) {
     <div>
       <SectionLabel>Today</SectionLabel>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:24 }}>
-        <MetricCard label="Inquiries Received" value={data.today.total} color="#6366f1" onClick={() => drill('Repeat Inquiries Today', { from: new Date().toISOString().split('T')[0], to: new Date().toISOString().split('T')[0] })} />
+        <MetricCard label="Inquiries Received" value={data.today.total} color="#6366f1" onClick={() => drill('Repeat Inquiries Today', { from: businessToday(), to: businessToday() })} />
         <MetricCard label="PPC (Period)" value={p.ppc} color="#3b82f6" onClick={() => drill('PPC Inquiries')} />
         <MetricCard label="Outbound Repeat (Period)" value={p.outbound} color="#8b5cf6" onClick={() => drill('Outbound Repeat Inquiries')} />
       </div>
@@ -709,7 +721,7 @@ function OrdersTab({ filters, onDrilldown, unassigned = [], onReadAll }) {
     <div>
       <SectionLabel>Today</SectionLabel>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:12, marginBottom:24 }}>
-        <MetricCard label="Orders Received" value={t.total} color="#f59e0b" onClick={() => drill('Orders Today', { from: new Date().toISOString().split('T')[0], to: new Date().toISOString().split('T')[0] })} />
+        <MetricCard label="Orders Received" value={t.total} color="#f59e0b" onClick={() => drill('Orders Today', { from: businessToday(), to: businessToday() })} />
         <MetricCard label="Verified" value={t.verified} color="#10b981" />
         <MetricCard label="Not Verified" value={t.not_verified} color="#ef4444" />
         <MetricCard label="Order Value" value={t.value.toFixed(0)} color={BRAND} prefix="$" />
