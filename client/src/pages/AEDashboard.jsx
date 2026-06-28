@@ -534,6 +534,7 @@ function DrilldownModal({ title, type, filters, onClose }) {
     const p = new URLSearchParams()
     if (type) p.set('type', type)
     if (filters.disposition) p.set('disposition', filters.disposition)
+    if (filters.lead_source) p.set('lead_source', filters.lead_source)
     if (filters.from) p.set('from', filters.from)
     if (filters.to) p.set('to', filters.to)
     fetch(`/api/inquiries?${p}`, { headers: { Authorization:`Bearer ${localStorage.getItem('crm_token')}` } })
@@ -684,7 +685,7 @@ function AELeadsTab({ dateFilters, onDrilldown, newAssigned = [], onOpen, onRead
           <STitle>By Source</STitle>
           <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
             {(data.bySource||[]).filter(s=>s.source).slice(0,7).map((s,i) => (
-              <div key={s.source} onClick={() => drill(`Source: ${s.source}`)} style={{ cursor:'pointer' }}>
+              <div key={s.source} onClick={() => drill(`Source: ${s.source}`, { lead_source: s.source })} style={{ cursor:'pointer' }}>
                 <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:2 }}><span style={{ color:'#475569' }}>{s.source}</span><span style={{ fontWeight:700 }}>{s.count}</span></div>
                 <div style={{ height:4, background:'#f1f5f9', borderRadius:4 }}><div style={{ height:'100%', borderRadius:4, background:C[i%C.length], width:`${p.total>0?Math.round(s.count/p.total*100):0}%` }} /></div>
               </div>
@@ -832,7 +833,7 @@ function AEOrdersTab({ dateFilters, onDrilldown, newAssigned = [], onOpenOrder, 
           <STitle>By Source</STitle>
           <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
             {(data.bySource||[]).filter(s=>s.source).map((s,i) => (
-              <div key={s.source} onClick={() => drill(`Source: ${s.source}`)} style={{ cursor:'pointer' }}>
+              <div key={s.source} onClick={() => drill(`Source: ${s.source}`, { lead_source: s.source })} style={{ cursor:'pointer' }}>
                 <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:3 }}><span style={{ color:'#475569' }}>{s.source}</span><span style={{ fontWeight:700 }}>{s.count}</span></div>
                 <div style={{ height:5, background:'#f1f5f9', borderRadius:4 }}><div style={{ height:'100%', borderRadius:4, background:C[i%C.length], width:`${p.total>0?Math.round(s.count/p.total*100):0}%` }} /></div>
               </div>
