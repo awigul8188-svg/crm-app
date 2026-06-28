@@ -111,7 +111,8 @@ export default function ImportData() {
           )}
           {cleared && (
             <button onClick={() => { setCleared(false); setConfirmClear(false) }}
-              className="text-xs text-green-700 border border-green-200 rounded-lg px-2.5 py-1 hover:bg-green-100 transition-colors">undo</button>
+              title="Data is already cleared — this only resets the import step, it does not restore deleted data"
+              className="text-xs text-slate-600 border border-slate-200 rounded-lg px-2.5 py-1 hover:bg-slate-100 transition-colors">↺ Reset step</button>
           )}
         </div>
 

@@ -109,13 +109,14 @@ function StatCard({ label, value, color, icon, sub, warn, delay = 0 }) {
 /* ── Assign dropdown ─────────────────────────────── */
 function AssignCell({ part, purchasers, onAssign }) {
   const [open, setOpen] = useState(false); const ref = useRef()
+  const [confirmingUnassign, setConfirmingUnassign] = useState(false)
   useEffect(() => {
-    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) { setOpen(false); setConfirmingUnassign(false) } }
     document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h)
   }, [])
   return (
     <div ref={ref} style={{ position: 'relative' }}>
-      <button onClick={() => setOpen(o => !o)} style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${part.purchaser_id ? BRAND + '40' : '#e2e8f0'}`, background: part.purchaser_id ? `${BRAND}10` : '#f8fafc', color: part.purchaser_id ? '#00b8ad' : '#64748b', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: '"Plus Jakarta Sans",sans-serif', whiteSpace: 'nowrap' }}>
+      <button onClick={() => { setOpen(o => !o); setConfirmingUnassign(false) }} style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${part.purchaser_id ? BRAND + '40' : '#e2e8f0'}`, background: part.purchaser_id ? `${BRAND}10` : '#f8fafc', color: part.purchaser_id ? '#00b8ad' : '#64748b', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: '"Plus Jakarta Sans",sans-serif', whiteSpace: 'nowrap' }}>
         {part.purchaser_name || '+ Assign'} ▾
       </button>
       {open && (
@@ -131,9 +132,14 @@ function AssignCell({ part, purchasers, onAssign }) {
           ))}
           {part.purchaser_id && <>
             <div style={{ height: 1, background: '#f1f5f9' }} />
-            <div onClick={() => { fetch(`/api/purchasing/assign/${part.requirement_id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${localStorage.getItem('crm_token')}` } }).then(() => onAssign(null, null)); setOpen(false) }}
-              style={{ padding: '8px 14px', cursor: 'pointer', fontSize: 12, color: '#ef4444' }}
-              onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>✕ Unassign</div>
+            <div onClick={() => {
+                  if (!confirmingUnassign) { setConfirmingUnassign(true); return }
+                  purchasingApi.unassign(part.requirement_id).then(() => onAssign(null, null)).catch(() => {})
+                  setConfirmingUnassign(false); setOpen(false)
+                }}
+              style={{ padding: '8px 14px', cursor: 'pointer', fontSize: 12, color: '#ef4444', fontWeight: confirmingUnassign ? 700 : 400, background: confirmingUnassign ? '#fef2f2' : 'transparent' }}
+              onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'} onMouseLeave={e => e.currentTarget.style.background = confirmingUnassign ? '#fef2f2' : 'transparent'}>
+              {confirmingUnassign ? '✕ Click again to confirm' : '✕ Unassign'}</div>
           </>}
         </div>
       )}

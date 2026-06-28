@@ -620,7 +620,7 @@ function LeadsTab({ filters, onDrilldown, unassigned = [], onReadAll }) {
                     onMouseLeave={e => e.currentTarget.style.background=i%2===0?'#fff':'#fafbfc'}>
                     <td style={{ padding:'12px 10px' }}>
                       <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                        {ae.avatar_url ? <img src={ae.avatar_url} alt={ae.name} style={{ width:28, height:28, borderRadius:8, objectFit:'cover', flexShrink:0 }} /> : <div style={{ width:28, height:28, borderRadius:8, background:`${CHART_COLORS[i]}25`, color:CHART_COLORS[i], display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:12, flexShrink:0 }}>{ae.name?.[0]}</div>}
+                        {ae.avatar_url ? <img src={ae.avatar_url} alt={ae.name} style={{ width:28, height:28, borderRadius:8, objectFit:'cover', flexShrink:0 }} /> : <div style={{ width:28, height:28, borderRadius:8, background:`${CHART_COLORS[i % CHART_COLORS.length]}25`, color:CHART_COLORS[i % CHART_COLORS.length], display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:12, flexShrink:0 }}>{ae.name?.[0]}</div>}
                         <span style={{ fontWeight:700, color:'#0f172a', whiteSpace:'nowrap' }}>{ae.name}</span>
                       </div>
                     </td>
@@ -776,7 +776,7 @@ function OrdersTab({ filters, onDrilldown, unassigned = [], onReadAll }) {
             {(data.bySource||[]).filter(s=>s.source).map((s,i) => (
               <div key={s.source} style={{ cursor:'pointer' }} onClick={() => drill(`Source: ${s.source}`)}>
                 <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:4 }}><span style={{ color:'#475569', fontWeight:500 }}>{s.source}</span><span style={{ fontWeight:700, color:'#0f172a' }}>{s.count}</span></div>
-                <div style={{ height:6, background:'#f1f5f9', borderRadius:4 }}><div style={{ height:'100%', borderRadius:4, background:CHART_COLORS[i], width:`${p.total>0?Math.round(s.count/p.total*100):0}%` }} /></div>
+                <div style={{ height:6, background:'#f1f5f9', borderRadius:4 }}><div style={{ height:'100%', borderRadius:4, background:CHART_COLORS[i % CHART_COLORS.length], width:`${p.total>0?Math.round(s.count/p.total*100):0}%` }} /></div>
               </div>
             ))}
           </div>

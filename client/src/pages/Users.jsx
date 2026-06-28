@@ -239,10 +239,11 @@ export default function Users() {
                             onMouseLeave={e => e.currentTarget.style.background='transparent'}>
                             {show('name') && <td style={{ padding:'12px 16px' }}>
                               <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                                {u.avatar_url
-                                  ? <img src={u.avatar_url} alt={u.name} style={{ width:34, height:34, borderRadius:8, objectFit:'cover', flexShrink:0 }} />
-                                  : <div style={{ width:34, height:34, borderRadius:8, background:`${BRAND}20`, color:BRAND, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:13, flexShrink:0 }}>{u.name[0].toUpperCase()}</div>
-                                }
+                                {/* Initials sit underneath; a broken avatar img hides itself onError to reveal them. */}
+                                <div style={{ position:'relative', width:34, height:34, flexShrink:0 }}>
+                                  <div style={{ position:'absolute', inset:0, borderRadius:8, background:`${BRAND}20`, color:BRAND, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:13 }}>{u.name[0].toUpperCase()}</div>
+                                  {u.avatar_url && <img src={u.avatar_url} alt={u.name} onError={e => { e.currentTarget.style.display = 'none' }} style={{ position:'absolute', inset:0, width:34, height:34, borderRadius:8, objectFit:'cover' }} />}
+                                </div>
                                 <div>
                                   <div style={{ fontWeight:600, fontSize:14, color:'#0f172a' }}>
                                     {u.name}
@@ -407,7 +408,7 @@ export default function Users() {
               </thead>
               <tbody>
                 {resetResults.map((r, i) => (
-                  <tr key={r.id} style={{ borderBottom: i < resetResults.length-1 ? '1px solid #f1f5f9' : 'none' }}>
+                  <tr key={r.username || r.id || i} style={{ borderBottom: i < resetResults.length-1 ? '1px solid #f1f5f9' : 'none' }}>
                     <td style={{ padding:'10px 14px', fontWeight:600 }}>{r.name}</td>
                     <td style={{ padding:'10px 14px', fontFamily:'monospace', color:'#64748b' }}>{r.username}</td>
                     <td style={{ padding:'10px 14px' }}>
