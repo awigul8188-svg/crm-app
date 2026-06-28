@@ -27,7 +27,9 @@ const pageOffset = (p) => (parseInt(p || 1) - 1) * PAGE_SIZE;
 // Working days since a date (Mon–Fri only)
 function workingDaysSince(dateStr) {
   if (!dateStr) return 0;
-  const start = new Date(dateStr);
+  // SQLite CURRENT_TIMESTAMP is UTC ("YYYY-MM-DD HH:MM:SS" with no zone) — parse it as UTC explicitly
+  // so the day count doesn't shift with the server's local timezone.
+  const start = new Date(/Z|[+-]\d\d:?\d\d$/.test(dateStr) ? dateStr : dateStr.replace(' ', 'T') + 'Z');
   const now = new Date();
   let count = 0;
   const d = new Date(start);
@@ -242,7 +244,8 @@ router.patch('/assignment/:id', (req, res) => {
   if (mgr && urgency !== undefined) { updates.push('urgency=?'); params.push(urgency); }
   if (mgr && pm_notes !== undefined) { updates.push('pm_notes=?'); params.push(pm_notes); }
   if (purchaser_notes !== undefined) { updates.push('purchaser_notes=?'); params.push(purchaser_notes); }
-  if (not_in_stock !== undefined) { updates.push('not_in_stock=?'); params.push(not_in_stock ? 1 : 0); }
+  // Only act on an explicit boolean/0/1 — a spread form that sends not_in_stock:null/'' must NOT un-flag the part.
+  if (typeof not_in_stock === 'boolean' || not_in_stock === 0 || not_in_stock === 1) { updates.push('not_in_stock=?'); params.push(not_in_stock ? 1 : 0); }
   if (!updates.length) return res.json({ success: true });
   params.push(req.params.id);
   
@@ -490,8 +493,10 @@ router.get('/stats', (req, res) => {
 
       const byType = db.prepare(`SELECT i.type, COUNT(*) as total, SUM(CASE WHEN pa.id IS NULL THEN 1 ELSE 0 END) as unassigned, SUM(CASE WHEN pa.status='pending' AND pa.not_in_stock=0 THEN 1 ELSE 0 END) as pending, SUM(CASE WHEN pa.status='quoted' THEN 1 ELSE 0 END) as quoted, SUM(CASE WHEN pa.not_in_stock=1 THEN 1 ELSE 0 END) as not_in_stock FROM requirements r JOIN inquiries i ON r.inquiry_id=i.id LEFT JOIN purchase_assignments pa ON pa.requirement_id=r.id WHERE r.part_number!='' GROUP BY i.type`).all();
       const byPurchaser = db.prepare(`SELECT u.id, u.name, COUNT(*) as assigned, SUM(CASE WHEN pa.status='quoted' THEN 1 ELSE 0 END) as quoted_count, SUM(CASE WHEN pa.status='pending' AND pa.not_in_stock=0 THEN 1 ELSE 0 END) as pending_count, SUM(CASE WHEN pa.not_in_stock=1 THEN 1 ELSE 0 END) as not_in_stock FROM purchase_assignments pa JOIN users u ON pa.purchaser_id=u.id GROUP BY pa.purchaser_id ORDER BY assigned DESC`).all();
-      const recentQuotes = db.prepare(`SELECT pq.price, pq.condition, pq.updated_at, pq.quantity, r.part_number, pu.name as purchaser_name, c.name as customer_name, i.type as inquiry_type, i.order_amount as selling_price FROM purchase_quotes pq JOIN requirements r ON pq.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id JOIN customers c ON i.customer_id=c.id LEFT JOIN users pu ON pq.purchaser_id=pu.id ORDER BY pq.updated_at DESC LIMIT 10`)
-        .all().map(q => ({ ...q, is_over_selling: isOverSelling(q.price, q.quantity, q.selling_price, q.inquiry_type) }));
+      const recentQuotes = db.prepare(`SELECT pq.price, pq.condition, pq.updated_at, pq.quantity, r.part_number, pu.name as purchaser_name, c.name as customer_name, i.type as inquiry_type, i.order_amount as selling_price,
+        (SELECT COALESCE(SUM(COALESCE(q2.price,0) * COALESCE(q2.quantity,0)), 0) FROM purchase_quotes q2 WHERE q2.assignment_id = pq.assignment_id) AS assignment_total_cost
+        FROM purchase_quotes pq JOIN requirements r ON pq.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id JOIN customers c ON i.customer_id=c.id LEFT JOIN users pu ON pq.purchaser_id=pu.id ORDER BY pq.updated_at DESC LIMIT 10`)
+        .all().map(q => ({ ...q, is_over_selling: isOverSellingTotal(q.assignment_total_cost, q.selling_price, q.inquiry_type) }));
       const urgencyCounts = db.prepare("SELECT urgency, COUNT(*) as count FROM purchase_assignments WHERE status='pending' GROUP BY urgency").all();
 
       res.json({ isPM:true, totalParts, unassigned, pending, quoted, notInStock, quotedToday, newToday, delayed, totalQuotedValue: totalQuotedValue.toFixed(2), avgQuotePrice, overSellingCount, byType, byPurchaser, recentQuotes, urgencyCounts });
@@ -514,7 +519,8 @@ router.get('/stats', (req, res) => {
       const needsAttention = pendingAges.filter(p => p.days >= 4).sort((a, b) => b.days - a.days).slice(0, 8);
 
       // Avg quoting time (hours) + on-time rate (quoted within 4 working days ≈ 96h)
-      const quoteTimes = db.prepare(`SELECT (julianday(pq.created_at)-julianday(pa.assigned_at))*24 as hours FROM purchase_quotes pq JOIN purchase_assignments pa ON pq.assignment_id=pa.id WHERE pa.purchaser_id=?`).all(userId);
+      // ONE sample per assignment (first quote entry), so a multi-supplier quote doesn't count N times.
+      const quoteTimes = db.prepare(`SELECT (julianday(MIN(pq.created_at))-julianday(pa.assigned_at))*24 as hours FROM purchase_quotes pq JOIN purchase_assignments pa ON pq.assignment_id=pa.id WHERE pa.purchaser_id=? GROUP BY pa.id`).all(userId);
       const avgHours = quoteTimes.length > 0 ? (quoteTimes.reduce((s,q) => s+q.hours,0)/quoteTimes.length).toFixed(1) : null;
       const onTimeRate = quoteTimes.length > 0 ? Math.round(quoteTimes.filter(q => q.hours <= 96).length / quoteTimes.length * 100) : null;
 
@@ -530,7 +536,9 @@ router.get('/stats', (req, res) => {
       const upcomingFollowups= db.prepare(`SELECT pf.*, r.part_number FROM purchaser_followups pf JOIN purchase_assignments pa ON pf.assignment_id=pa.id JOIN requirements r ON pa.requirement_id=r.id WHERE pf.purchaser_id=? AND pf.completed=0 AND pf.follow_up_date > ? AND pf.follow_up_date <= date(?,'+'||7||' days') LIMIT 10`).all(userId, today, today);
 
       const byType = db.prepare(`SELECT i.type, COUNT(*) as total, SUM(CASE WHEN pa.status='pending' THEN 1 ELSE 0 END) as pending_count, SUM(CASE WHEN pa.status='quoted' THEN 1 ELSE 0 END) as quoted_count FROM purchase_assignments pa JOIN requirements r ON pa.requirement_id=r.id JOIN inquiries i ON r.inquiry_id=i.id WHERE pa.purchaser_id=? GROUP BY i.type`).all(userId);
-      const myNotifications = db.prepare("SELECT * FROM notifications WHERE user_id=? AND inquiry_type IN ('part_assigned','part_reassigned','quote') ORDER BY created_at DESC LIMIT 20").all(userId);
+      // Only the notification types the purchaser UI actually surfaces (Assigned / Reassigned tabs) — a
+      // 'quote' notification would inflate the sidebar badge with no list entry to clear it from.
+      const myNotifications = db.prepare("SELECT * FROM notifications WHERE user_id=? AND inquiry_type IN ('part_assigned','part_reassigned') ORDER BY created_at DESC LIMIT 20").all(userId);
 
       res.json({ isPM:false, myAssigned, myPending, myQuoted, myToday, myWeek, myMonth, myDelayed, myNotInStock,
         avgHours, onTimeRate, myOverSelling, oldestPendingDays, needsAttention,
