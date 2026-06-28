@@ -537,6 +537,14 @@ router.post('/rma', requireManager, (req, res) => {
     const { rma_number, order_id, order_item_id, customer_id, email, return_quantity, return_reason,
             rma_status, rma_issue_date, rma_completed_date, refund_issued, restocking_fee,
             return_tracking_number, return_shipping_paid, notes, qb_credit_memo, cost_recovered } = req.body;
+    // Cap the return quantity at the line's ordered quantity — an over-count would drive the AR
+    // balance negative (and hide the order from collections) and inflate the GP reversal.
+    if (order_item_id && return_quantity != null && return_quantity !== '') {
+      const li = db.prepare('SELECT quantity FROM op_order_items WHERE id=?').get(order_item_id);
+      if (li && Number(return_quantity) > Number(li.quantity)) {
+        return res.status(400).json({ error: `Return quantity (${return_quantity}) exceeds line quantity (${li.quantity})` });
+      }
+    }
     const result = db.prepare(`
       INSERT INTO op_rma (rma_number,order_id,order_item_id,customer_id,email,return_quantity,return_reason,
         rma_status,rma_issue_date,rma_completed_date,refund_issued,restocking_fee,
@@ -568,6 +576,12 @@ router.put('/rma/:id', requireManager, (req, res) => {
     const { rma_number, order_id, order_item_id, customer_id, email, return_quantity, return_reason,
             rma_status, rma_issue_date, rma_completed_date, refund_issued, restocking_fee,
             return_tracking_number, return_shipping_paid, notes, qb_credit_memo, cost_recovered } = req.body;
+    if (order_item_id && return_quantity != null && return_quantity !== '') {
+      const li = db.prepare('SELECT quantity FROM op_order_items WHERE id=?').get(order_item_id);
+      if (li && Number(return_quantity) > Number(li.quantity)) {
+        return res.status(400).json({ error: `Return quantity (${return_quantity}) exceeds line quantity (${li.quantity})` });
+      }
+    }
     const prevRma = db.prepare(`SELECT order_id FROM op_rma WHERE id=?`).get(req.params.id);
     db.prepare(`
       UPDATE op_rma SET rma_number=?,order_id=?,order_item_id=?,customer_id=?,email=?,return_quantity=?,

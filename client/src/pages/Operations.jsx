@@ -733,7 +733,7 @@ function RMAForm({ rma, presetOrder, orderItems, customers, orders, onSave, onCl
 
         <div style={{ flex: '1 1 100%', borderTop: '1px solid #f1f5f9', paddingTop: 12 }} />
 
-        <FF label="Return Quantity" half><input className="input" type="number" min="1" value={form.return_quantity} onChange={e => set('return_quantity', e.target.value)} /></FF>
+        <FF label="Return Quantity" half><input className="input" type="number" min="1" max={selectedItem?.quantity || undefined} value={form.return_quantity} onChange={e => set('return_quantity', e.target.value)} />{selectedItem && Number(form.return_quantity) > Number(selectedItem.quantity) && <div style={{ fontSize: 10, color: '#ef4444', marginTop: 3 }}>Exceeds ordered qty ({selectedItem.quantity})</div>}</FF>
         <FF label="Return Reason" half><input className="input" value={form.return_reason} onChange={e => set('return_reason', e.target.value)} placeholder="Defective, wrong item…" /></FF>
 
         <FF label="Cost recovered? (goods back to vendor / restocked)" half>
