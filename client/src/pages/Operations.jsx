@@ -1057,8 +1057,13 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
 
         {/* Customer payments (AR) — Received & Balance derive from the payment log below */}
         {(() => {
-          const charged = Number(order.total_order_value) || 0
-          const received = Number(order.customer_paid) || 0
+          // Net completed-RMA credits so Charged/Received/Balance match the Receivables tab:
+          // charged drops the returned value (return_qty × selling), received drops refunds issued.
+          const completedRmas = (order.rmas || []).filter(r => r.rma_status === 'Completed')
+          const rmaReturnCredit = completedRmas.reduce((s, r) => s + (Number(r.return_amount) || 0), 0)
+          const rmaRefund = completedRmas.reduce((s, r) => s + (Number(r.refund_issued) || 0), 0)
+          const charged = (Number(order.total_order_value) || 0) - rmaReturnCredit
+          const received = (Number(order.customer_paid) || 0) - rmaRefund
           const bal = charged - received
           const overdue = bal > 0.005 && order.due_date && new Date(order.due_date) < new Date(new Date().toISOString().slice(0,10))
           const st = bal <= 0.005 && charged > 0 ? { label: 'Paid', bg: '#dcfce7', color: '#15803d' }

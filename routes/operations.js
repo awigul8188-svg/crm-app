@@ -66,7 +66,12 @@ const ORDER_TOTALS_SQL = `
       - o.rma_amount
       AS gp,
     COALESCE(SUM(i.selling * i.quantity), 0) + o.tax_charged + o.shipping_charged + o.cc_charges
+      - COALESCE((SELECT SUM(COALESCE(r.return_quantity,1) * COALESCE(ri.selling,0))
+                  FROM op_rma r LEFT JOIN op_order_items ri ON r.order_item_id = ri.id
+                  WHERE r.order_id = o.id AND r.rma_status = 'Completed'), 0)
       - o.customer_paid
+      + COALESCE((SELECT SUM(COALESCE(r.refund_issued,0))
+                  FROM op_rma r WHERE r.order_id = o.id AND r.rma_status = 'Completed'), 0)
       AS remaining
   FROM op_orders o
   LEFT JOIN op_customers c ON o.customer_id = c.id
