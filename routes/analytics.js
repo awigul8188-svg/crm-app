@@ -163,40 +163,43 @@ router.get('/module', (req, res) => {
       const cold = db.prepare(`SELECT COUNT(*) as c ${base} ${where} AND i.disposition = 'Cold'`).get(...params).c;
       const inProgress = periodTotal - closedWon - closedLost;
 
-      // Per-AE breakdown for the performance table (manager only).
-      const ms = businessToday().slice(0, 8) + '01';
-      // aeBaseRaw = all-time (used by the always-"today" per-AE count). aeBase adds the selected
-      // date range so the AE Performance table tracks the dashboard's date filter instead of
-      // always showing all-time totals.
-      const aeBaseRaw = `FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id JOIN users u ON i.assigned_to = u.id WHERE i.type = 'lead' AND u.role = 'ae'`;
-      const aeDateConds = []; const aeDateParams = [];
-      if (from) { aeDateConds.push(`${LD} >= ?`); aeDateParams.push(from); }
-      if (to)   { aeDateConds.push(`${LD} <= ?`); aeDateParams.push(to); }
-      const aeBase = aeBaseRaw + (aeDateConds.length ? ' AND ' + aeDateConds.join(' AND ') : '');
-      const aePerformance = db.prepare(`
-        SELECT u.id, u.name,
-          COUNT(*) as total,
-          SUM(CASE WHEN ${LD} = ? THEN 1 ELSE 0 END) as today,
-          SUM(CASE WHEN ${LD} >= ? THEN 1 ELSE 0 END) as this_month,
-          SUM(CASE WHEN i.disposition='Closed Won' THEN 1 ELSE 0 END) as won,
-          SUM(CASE WHEN i.disposition='Closed Lost' THEN 1 ELSE 0 END) as lost,
-          SUM(CASE WHEN i.disposition='Quoted' THEN 1 ELSE 0 END) as quoted,
-          SUM(CASE WHEN i.disposition='Bidding' THEN 1 ELSE 0 END) as bidding,
-          SUM(CASE WHEN i.disposition='Fake Lead' THEN 1 ELSE 0 END) as fake,
-          SUM(CASE WHEN i.disposition='No response' THEN 1 ELSE 0 END) as no_response,
-          SUM(CASE WHEN i.disposition='Cold' THEN 1 ELSE 0 END) as cold
-        ${aeBase} GROUP BY i.assigned_to, u.id, u.name ORDER BY total DESC`).all(today, ms, ...aeDateParams);
+      // Per-AE breakdown for the performance table — MANAGER ONLY. An AE must not receive the
+      // whole team's per-rep totals / sources / today counts (peer-performance leak).
+      let aePerformance = [], aeSourceBreakdown = [], todayPerAE = [];
+      if (req.user.role !== 'ae') {
+        const ms = businessToday().slice(0, 8) + '01';
+        // aeBaseRaw = all-time (used by the always-"today" per-AE count). aeBase adds the selected
+        // date range so the AE Performance table tracks the dashboard's date filter.
+        const aeBaseRaw = `FROM inquiries i LEFT JOIN customers c ON i.customer_id = c.id JOIN users u ON i.assigned_to = u.id WHERE i.type = 'lead' AND u.role = 'ae'`;
+        const aeDateConds = []; const aeDateParams = [];
+        if (from) { aeDateConds.push(`${LD} >= ?`); aeDateParams.push(from); }
+        if (to)   { aeDateConds.push(`${LD} <= ?`); aeDateParams.push(to); }
+        const aeBase = aeBaseRaw + (aeDateConds.length ? ' AND ' + aeDateConds.join(' AND ') : '');
+        aePerformance = db.prepare(`
+          SELECT u.id, u.name,
+            COUNT(*) as total,
+            SUM(CASE WHEN ${LD} = ? THEN 1 ELSE 0 END) as today,
+            SUM(CASE WHEN ${LD} >= ? THEN 1 ELSE 0 END) as this_month,
+            SUM(CASE WHEN i.disposition='Closed Won' THEN 1 ELSE 0 END) as won,
+            SUM(CASE WHEN i.disposition='Closed Lost' THEN 1 ELSE 0 END) as lost,
+            SUM(CASE WHEN i.disposition='Quoted' THEN 1 ELSE 0 END) as quoted,
+            SUM(CASE WHEN i.disposition='Bidding' THEN 1 ELSE 0 END) as bidding,
+            SUM(CASE WHEN i.disposition='Fake Lead' THEN 1 ELSE 0 END) as fake,
+            SUM(CASE WHEN i.disposition='No response' THEN 1 ELSE 0 END) as no_response,
+            SUM(CASE WHEN i.disposition='Cold' THEN 1 ELSE 0 END) as cold
+          ${aeBase} GROUP BY i.assigned_to, u.id, u.name ORDER BY total DESC`).all(today, ms, ...aeDateParams);
 
-      const aeSourceBreakdown = db.prepare(`
-        SELECT u.name as ae_name, c.lead_source as source, COUNT(*) as count
-        ${aeBase} AND c.lead_source IS NOT NULL
-        GROUP BY i.assigned_to, u.name, c.lead_source ORDER BY count DESC`).all(...aeDateParams);
+        aeSourceBreakdown = db.prepare(`
+          SELECT u.name as ae_name, c.lead_source as source, COUNT(*) as count
+          ${aeBase} AND c.lead_source IS NOT NULL
+          GROUP BY i.assigned_to, u.name, c.lead_source ORDER BY count DESC`).all(...aeDateParams);
 
-      // Always today, regardless of the selected period filter.
-      const todayPerAE = db.prepare(`
-        SELECT u.name, COUNT(*) as count
-        ${aeBaseRaw} AND ${LD} = ?
-        GROUP BY i.assigned_to, u.name ORDER BY count DESC`).all(today);
+        // Always today, regardless of the selected period filter.
+        todayPerAE = db.prepare(`
+          SELECT u.name, COUNT(*) as count
+          ${aeBaseRaw} AND ${LD} = ?
+          GROUP BY i.assigned_to, u.name ORDER BY count DESC`).all(today);
+      }
 
       res.json({ type, today: { total: todayTotal, perAE: todayPerAE }, period: { total: periodTotal, closed_won: closedWon, closed_lost: closedLost, quoted, bidding, fake, no_response: noResponse, cold, in_progress: inProgress, win_rate: (closedWon + closedLost) > 0 ? Math.round(closedWon / (closedWon + closedLost) * 100) : 0 }, byDisposition, bySource, byPerson, trend, aePerformance, aeSourceBreakdown });
     }
