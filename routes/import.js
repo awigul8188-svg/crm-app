@@ -106,9 +106,10 @@ router.post('/', upload.single('file'), (req, res) => {
   let created = 0;
   const errors = [];
 
+  // imported=1 → historical, already-fulfilled; kept OUT of the purchasing "to assign" queue/counts.
   const insertInquiry = db.prepare(`
-    INSERT INTO inquiries (customer_id, type, disposition, assigned_to, notes, ppc_or_outbound, order_amount, order_ref, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO inquiries (customer_id, type, disposition, assigned_to, notes, ppc_or_outbound, order_amount, order_ref, created_at, updated_at, imported)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
   `);
   const insertReq = db.prepare("INSERT INTO requirements (inquiry_id, part_number, quantity) VALUES (?, ?, ?)");
 

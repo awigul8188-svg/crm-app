@@ -443,4 +443,20 @@ function runQuoteEntriesMigration() {
   catch(e) { console.log('quote quantity backfill note:', e.message); }
 }
 
-module.exports = { initializeDB, getDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations, runInquiryViewsMigration, runBuyerMigration, runQuoteEntriesMigration };
+// Mark inquiries that came from the historical sheet IMPORT vs ones created live in-app. Imported
+// inquiries are already-fulfilled history — their parts must NOT flood the purchasing dashboard's
+// "to assign" queue/counts. Live inquiries (imported=0) flow through purchasing + notify the PM.
+function runImportedFlagMigration() {
+  const db = getDB();
+  const had = db.prepare("PRAGMA table_info(inquiries)").all().some(c => c.name === 'imported');
+  try { db.exec('ALTER TABLE inquiries ADD COLUMN imported INTEGER DEFAULT 0'); } catch (e) {}
+  if (!had) {
+    // First run: every inquiry already in the DB came from the past import, so mark them all imported=1.
+    // They drop out of the purchasing assignment queue immediately. Anything created after this (live
+    // CRM records) defaults to 0 and is sourced normally. Re-imports also stamp imported=1 (see import.js).
+    try { db.prepare('UPDATE inquiries SET imported = 1').run(); }
+    catch (e) { console.log('imported backfill note:', e.message); }
+  }
+}
+
+module.exports = { initializeDB, getDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations, runInquiryViewsMigration, runBuyerMigration, runQuoteEntriesMigration, runImportedFlagMigration };

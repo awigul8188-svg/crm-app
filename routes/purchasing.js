@@ -92,6 +92,8 @@ router.get('/parts', canManage, (req, res) => {
   let where = "r.part_number != ''";
   const params = [];
 
+  // Hide already-fulfilled imported history from the assignment list (override with ?include_imported=1).
+  if (!req.query.include_imported) where += ' AND COALESCE(i.imported,0) = 0';
   if (type) { where += ' AND i.type = ?'; params.push(type); }
   if (search) { where += ' AND (r.part_number LIKE ? OR c.name LIKE ? OR c.company LIKE ?)'; const s = `%${search}%`; params.push(s, s, s); }
   if (status === 'unassigned') where += ' AND pa.id IS NULL';
@@ -467,13 +469,16 @@ router.get('/stats', (req, res) => {
 
   try {
     if (isPM) {
-      const totalParts    = db.prepare("SELECT COUNT(*) as c FROM requirements r JOIN inquiries i ON r.inquiry_id=i.id WHERE r.part_number!=''").get().c;
-      const unassigned    = db.prepare("SELECT COUNT(*) as c FROM requirements r JOIN inquiries i ON r.inquiry_id=i.id LEFT JOIN purchase_assignments pa ON pa.requirement_id=r.id WHERE pa.id IS NULL AND r.part_number!=''").get().c;
+      // Imported (already-fulfilled) parts are excluded from the requirement-based KPIs so the PM
+      // dashboard reflects only live, sourceable work. Assignment/quote-based counts below need no
+      // such filter — imported parts have neither an assignment nor a quote.
+      const totalParts    = db.prepare("SELECT COUNT(*) as c FROM requirements r JOIN inquiries i ON r.inquiry_id=i.id WHERE r.part_number!='' AND COALESCE(i.imported,0)=0").get().c;
+      const unassigned    = db.prepare("SELECT COUNT(*) as c FROM requirements r JOIN inquiries i ON r.inquiry_id=i.id LEFT JOIN purchase_assignments pa ON pa.requirement_id=r.id WHERE pa.id IS NULL AND r.part_number!='' AND COALESCE(i.imported,0)=0").get().c;
       const pending       = db.prepare("SELECT COUNT(*) as c FROM purchase_assignments WHERE status='pending' AND not_in_stock=0").get().c;
       const quoted        = db.prepare("SELECT COUNT(*) as c FROM purchase_assignments WHERE status='quoted'").get().c;
       const notInStock    = db.prepare("SELECT COUNT(*) as c FROM purchase_assignments WHERE not_in_stock=1").get().c;
       const quotedToday   = db.prepare("SELECT COUNT(*) as c FROM purchase_quotes WHERE date(updated_at)=?").get(today).c;
-      const newToday      = db.prepare("SELECT COUNT(*) as c FROM requirements r JOIN inquiries i ON r.inquiry_id=i.id WHERE date(i.created_at)=? AND r.part_number!=''").get(today).c;
+      const newToday      = db.prepare("SELECT COUNT(*) as c FROM requirements r JOIN inquiries i ON r.inquiry_id=i.id WHERE date(i.created_at)=? AND r.part_number!='' AND COALESCE(i.imported,0)=0").get(today).c;
 
       // Delayed: pending > 4 working days — counted in JS so the KPI matches the per-card ⚠️ badge exactly.
       const delayed = db.prepare("SELECT assigned_at FROM purchase_assignments WHERE status='pending' AND not_in_stock=0").all()
@@ -491,7 +496,7 @@ router.get('/stats', (req, res) => {
       });
       const avgQuotePrice = allQuotes.length > 0 ? (totalQuotedValue / allQuotes.length).toFixed(2) : 0;
 
-      const byType = db.prepare(`SELECT i.type, COUNT(*) as total, SUM(CASE WHEN pa.id IS NULL THEN 1 ELSE 0 END) as unassigned, SUM(CASE WHEN pa.status='pending' AND pa.not_in_stock=0 THEN 1 ELSE 0 END) as pending, SUM(CASE WHEN pa.status='quoted' THEN 1 ELSE 0 END) as quoted, SUM(CASE WHEN pa.not_in_stock=1 THEN 1 ELSE 0 END) as not_in_stock FROM requirements r JOIN inquiries i ON r.inquiry_id=i.id LEFT JOIN purchase_assignments pa ON pa.requirement_id=r.id WHERE r.part_number!='' GROUP BY i.type`).all();
+      const byType = db.prepare(`SELECT i.type, COUNT(*) as total, SUM(CASE WHEN pa.id IS NULL THEN 1 ELSE 0 END) as unassigned, SUM(CASE WHEN pa.status='pending' AND pa.not_in_stock=0 THEN 1 ELSE 0 END) as pending, SUM(CASE WHEN pa.status='quoted' THEN 1 ELSE 0 END) as quoted, SUM(CASE WHEN pa.not_in_stock=1 THEN 1 ELSE 0 END) as not_in_stock FROM requirements r JOIN inquiries i ON r.inquiry_id=i.id LEFT JOIN purchase_assignments pa ON pa.requirement_id=r.id WHERE r.part_number!='' AND COALESCE(i.imported,0)=0 GROUP BY i.type`).all();
       const byPurchaser = db.prepare(`SELECT u.id, u.name, COUNT(*) as assigned, SUM(CASE WHEN pa.status='quoted' THEN 1 ELSE 0 END) as quoted_count, SUM(CASE WHEN pa.status='pending' AND pa.not_in_stock=0 THEN 1 ELSE 0 END) as pending_count, SUM(CASE WHEN pa.not_in_stock=1 THEN 1 ELSE 0 END) as not_in_stock FROM purchase_assignments pa JOIN users u ON pa.purchaser_id=u.id GROUP BY pa.purchaser_id ORDER BY assigned DESC`).all();
       const recentQuotes = db.prepare(`SELECT pq.price, pq.condition, pq.updated_at, pq.quantity, r.part_number, pu.name as purchaser_name, c.name as customer_name, i.type as inquiry_type, i.order_amount as selling_price,
         (SELECT COALESCE(SUM(COALESCE(q2.price,0) * COALESCE(q2.quantity,0)), 0) FROM purchase_quotes q2 WHERE q2.assignment_id = pq.assignment_id) AS assignment_total_cost
