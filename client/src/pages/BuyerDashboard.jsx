@@ -59,8 +59,12 @@ function VendorModal({ id, suppliers, onAddSupplier, onClose, onSaved }) {
   const [addingFor, setAddingFor] = useState(null) // item index showing the "+ new supplier" input
   const [dirty, setDirty] = useState(false)
   const [showInvoice, setShowInvoice] = useState(false)
+  const [purchasers, setPurchasers] = useState([])
   const { user } = useAuth()
   const attemptClose = () => { if (dirty && !window.confirm('Discard unsaved changes?')) return; onClose() }
+
+  useEffect(() => { operationsApi.getPurchasers().then(setPurchasers).catch(() => {}) }, [])
+  const purchaserNames = purchasers.map(p => p.name)
 
   const load = useCallback(() => {
     operationsApi.buyerOrder(id).then(o => {
@@ -172,7 +176,13 @@ function VendorModal({ id, suppliers, onAddSupplier, onClose, onSaved }) {
                   </Field>
                   <Field label="Buying (unit)"><input value={it.buying ?? ''} onChange={e => setItem(i, 'buying', e.target.value)} placeholder="0" style={inp} /></Field>
                   <Field label="PO #"><input value={it.ta_po_number || ''} onChange={e => setItem(i, 'ta_po_number', e.target.value)} placeholder="PO-…" style={inp} /></Field>
-                  <Field label="Buyer / sourced by"><input value={it.sourced_by || ''} onChange={e => setItem(i, 'sourced_by', e.target.value)} placeholder="Purchaser" style={inp} /></Field>
+                  <Field label="Buyer / sourced by">
+                    <select value={it.sourced_by || ''} onChange={e => setItem(i, 'sourced_by', e.target.value)} style={{ ...inp, cursor: 'pointer' }}>
+                      <option value="">— Select purchaser —</option>
+                      {!!it.sourced_by && !purchaserNames.includes(it.sourced_by) && <option value={it.sourced_by}>{it.sourced_by} (current)</option>}
+                      {purchasers.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                    </select>
+                  </Field>
                 </div>
 
                 {/* Landed costs */}

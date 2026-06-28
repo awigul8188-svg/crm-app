@@ -727,6 +727,11 @@ router.get('/pending', requireManager, (req, res) => {
 // ── Buyer / Fulfillment (vendor side — e.g. Kevin) ────────────────────────────
 // The buyer fills supplier/buying/PO/tracking on closed-won orders and advances fulfillment.
 const FULFILLMENT_STAGES = ['Awaiting PO', 'PO Placed', 'Shipped to Warehouse', 'Received', 'Shipped to Customer', 'Delivered'];
+// An order counts as Delivered for the buyer queue when EITHER status says so: historical orders only
+// carry order_status='Delivered' (their fulfillment_status was never set), so an Operations "Delivered"
+// must land in the buyer's Delivered tab too. `p` is the table-alias prefix ('o.' for joins, '' for bare).
+const deliveredCond    = (p = '') => `(${p}fulfillment_status='Delivered' OR ${p}order_status='Delivered')`;
+const notDeliveredCond = (p = '') => `COALESCE(${p}fulfillment_status,'') != 'Delivered' AND COALESCE(${p}order_status,'') != 'Delivered'`;
 
 function requireBuyerAccess(req, res, next) {
   if (['buyer', 'manager', 'purchasing_manager'].includes(req.user?.role)) return next();
@@ -760,8 +765,8 @@ router.get('/buyer/orders', requireBuyerAccess, (req, res) => {
     let cond = '1=1';
     // Mutually-exclusive scopes (a partition): todo until marked complete; then transit until Delivered; then delivered.
     if (scope === 'todo') cond = 'COALESCE(o.vendor_complete,0) = 0';
-    else if (scope === 'transit') cond = "COALESCE(o.vendor_complete,0) = 1 AND COALESCE(o.fulfillment_status,'') != 'Delivered'";
-    else if (scope === 'delivered') cond = "COALESCE(o.vendor_complete,0) = 1 AND o.fulfillment_status = 'Delivered'";
+    else if (scope === 'transit') cond = `COALESCE(o.vendor_complete,0) = 1 AND ${notDeliveredCond('o.')}`;
+    else if (scope === 'delivered') cond = `COALESCE(o.vendor_complete,0) = 1 AND ${deliveredCond('o.')}`;
     const orders = db.prepare(`
       SELECT o.id, o.order_number, o.order_date, o.rep, o.buyer, o.lead_source, o.order_status,
              o.fulfillment_status, o.vendor_complete, o.tracking_to_customer, o.shipped_via, o.pending,
@@ -783,8 +788,8 @@ router.get('/buyer/stats', requireBuyerAccess, (req, res) => {
   try {
     const db = getDB();
     const todo = db.prepare("SELECT COUNT(*) AS c FROM op_orders WHERE COALESCE(vendor_complete,0)=0").get().c;
-    const transit = db.prepare("SELECT COUNT(*) AS c FROM op_orders WHERE COALESCE(vendor_complete,0)=1 AND COALESCE(fulfillment_status,'') != 'Delivered'").get().c;
-    const delivered = db.prepare("SELECT COUNT(*) AS c FROM op_orders WHERE COALESCE(vendor_complete,0)=1 AND fulfillment_status='Delivered'").get().c;
+    const transit = db.prepare(`SELECT COUNT(*) AS c FROM op_orders WHERE COALESCE(vendor_complete,0)=1 AND ${notDeliveredCond()}`).get().c;
+    const delivered = db.prepare(`SELECT COUNT(*) AS c FROM op_orders WHERE COALESCE(vendor_complete,0)=1 AND ${deliveredCond()}`).get().c;
     res.json({ todo, transit, delivered, stages: FULFILLMENT_STAGES });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -794,6 +799,15 @@ router.get('/buyer/order/:id', requireBuyerAccess, (req, res) => {
     const order = loadBuyerOrder(getDB(), req.params.id);
     if (!order) return res.status(404).json({ error: 'Not found' });
     res.json(order);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Purchaser users (role='purchaser') — for the buyer/manager to pick who sourced a line.
+// op_order_items.sourced_by / op_orders.buyer store the NAME (free text), so we return names.
+router.get('/purchasers', requireBuyerAccess, (req, res) => {
+  try {
+    const rows = getDB().prepare("SELECT id, name FROM users WHERE role='purchaser' AND name IS NOT NULL AND TRIM(name) != '' ORDER BY name").all();
+    res.json(rows);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

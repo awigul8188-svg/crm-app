@@ -126,6 +126,7 @@ export const operationsApi = {
   buyerSaveOrder: (id, data) => req('PATCH', `/operations/buyer/order/${id}`, data),
   buyerSetComplete: (id, complete) => req('POST', `/operations/buyer/order/${id}/complete`, { complete }),
   invoiceData:    (id)     => req('GET', `/operations/order/${id}/invoice`),
+  getPurchasers:  ()       => req('GET', '/operations/purchasers'),
 
   // Suppliers
   getSuppliers:   (search) => req('GET', `/operations/suppliers${search ? `?search=${encodeURIComponent(search)}` : ''}`),
