@@ -776,6 +776,18 @@ router.get('/pending', requireManager, (req, res) => {
 // ── Buyer / Fulfillment (vendor side — e.g. Kevin) ────────────────────────────
 // The buyer fills supplier/buying/PO/tracking on closed-won orders and advances fulfillment.
 const FULFILLMENT_STAGES = ['Awaiting PO', 'PO Placed', 'Shipped to Warehouse', 'Received', 'Shipped to Customer', 'Delivered'];
+// When the buyer advances the fulfillment stage, mirror it onto the Operations order_status so the
+// two stay in sync (the buyer pipeline and the manager status are the same lifecycle, split by role).
+const FULFILLMENT_TO_ORDER_STATUS = {
+  'Awaiting PO': 'Order placed',
+  'PO Placed': 'In Process',
+  'Shipped to Warehouse': 'Shipped to US',
+  'Received': 'Received in US',
+  'Shipped to Customer': 'Shipped to customer',
+  'Delivered': 'Delivered',
+};
+// Deliberate manager states that a fulfillment change must NOT silently overwrite.
+const PROTECTED_ORDER_STATUS = new Set(['On Hold', 'Refunded', 'Cancelled', 'RMA']);
 // An order counts as Delivered for the buyer queue when EITHER status says so: historical orders only
 // carry order_status='Delivered' (their fulfillment_status was never set), so an Operations "Delivered"
 // must land in the buyer's Delivered tab too. `p` is the table-alias prefix ('o.' for joins, '' for bare).
@@ -944,8 +956,13 @@ router.patch('/buyer/order/:id', requireBuyerAccess, (req, res) => {
   try {
     const db = getDB();
     const id = req.params.id;
-    const before = db.prepare('SELECT fulfillment_status, vendor_complete FROM op_orders WHERE id=?').get(id);
+    const before = db.prepare('SELECT fulfillment_status, vendor_complete, order_status FROM op_orders WHERE id=?').get(id);
     if (!before) return res.status(404).json({ error: 'Not found' });
+    // Mirror the new fulfillment stage onto order_status — but ONLY when the stage actually changed
+    // (a routine vendor-details save shouldn't drag the status backward), and never over a protected state.
+    const stageChanged = req.body.fulfillment_status != null && req.body.fulfillment_status !== (before.fulfillment_status || '');
+    const mappedStatus = stageChanged ? FULFILLMENT_TO_ORDER_STATUS[req.body.fulfillment_status] : null;
+    const newOrderStatus = (mappedStatus && !PROTECTED_ORDER_STATUS.has(before.order_status)) ? mappedStatus : null;
     const { items = [], fulfillment_status, shipped_via, tracking_to_customer, buyer, complete } = req.body;
     const num = (v) => { const n = parseFloat(String(v ?? '').replace(/[$,\s]/g, '')); return isNaN(n) ? 0 : n; };
     // Quantity drives order_amount — reject a blank/zero qty rather than silently coercing it to 1.
@@ -972,8 +989,9 @@ router.patch('/buyer/order/:id', requireBuyerAccess, (req, res) => {
       }
       db.prepare(`UPDATE op_orders SET fulfillment_status=COALESCE(?,fulfillment_status), shipped_via=COALESCE(?,shipped_via),
         tracking_to_customer=COALESCE(?,tracking_to_customer), buyer=COALESCE(?,buyer),
+        order_status=COALESCE(?,order_status),
         updated_at=CURRENT_TIMESTAMP WHERE id=?`)
-        .run(fulfillment_status ?? null, shipped_via ?? null, tracking_to_customer ?? null, buyer ?? null, id);
+        .run(fulfillment_status ?? null, shipped_via ?? null, tracking_to_customer ?? null, buyer ?? null, newOrderStatus, id);
       // Fold the vendor-complete toggle into the SAME transaction so "Save & Mark Complete" is atomic
       // (no half-applied state from a separate /complete request failing).
       if (complete !== undefined) {
@@ -985,6 +1003,8 @@ router.patch('/buyer/order/:id', requireBuyerAccess, (req, res) => {
     // Timeline: stage change, vendor-complete toggle, and a generic vendor-details touch.
     if (fulfillment_status != null && fulfillment_status !== (before.fulfillment_status || ''))
       logOrder(id, req.user, 'Fulfillment stage', `${before.fulfillment_status || '—'} → ${fulfillment_status}`);
+    if (newOrderStatus && newOrderStatus !== before.order_status)
+      logOrder(id, req.user, 'Order status synced', `${before.order_status || '—'} → ${newOrderStatus} (from fulfillment)`);
     if (complete !== undefined && (complete ? 1 : 0) !== (before.vendor_complete || 0))
       logOrder(id, req.user, complete ? 'Marked vendor complete' : 'Reopened (vendor)', null);
     if (items.length) logOrder(id, req.user, 'Vendor details updated', `${items.length} line${items.length > 1 ? 's' : ''}`);
