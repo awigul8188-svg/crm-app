@@ -413,7 +413,7 @@ function OrderForm({ order, customers: customersProp, onSave, onClose, isPending
                 {REPS.filter(r => r !== 'Online').map(r => <option key={r}>{r}</option>)}
               </select>
             </FF>
-            <FF label="Buyer" third>
+            <FF label="Order Buyer (default)" third>
               <select className="input" value={form.buyer} onChange={e => set('buyer', e.target.value)}>
                 <option value="">—</option>
                 {BUYERS.map(b => <option key={b}>{b}</option>)}
@@ -488,7 +488,7 @@ function ItemForm({ item, orderId, orderDate, suppliers: suppliersProp, onSave, 
   const blank = { part_number: '', description: '', product: '', supplier_id: '', quantity: 1,
     product_condition: '', selling: '', buying: '', cc_paid: '', tax_paid: '', shipping_paid: '',
     duty_paid: '', paid_to_supplier: '', payment_method: '', payment_due: '', supplier_terms: '',
-    tracking_to_warehouse: '', ta_po_number: '', serials: '', line_status: 'processed' }
+    tracking_to_warehouse: '', ta_po_number: '', serials: '', line_status: 'processed', sourced_by: '' }
   const [form, setForm] = useState(item ? { ...blank, ...item, supplier_id: item.supplier_id||'', payment_due: item.payment_due?.slice(0,10)||'' } : blank)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
@@ -585,6 +585,14 @@ function ItemForm({ item, orderId, orderDate, suppliers: suppliersProp, onSave, 
             <option value="">—</option>
             {CONDITIONS.map(c => <option key={c}>{c}</option>)}
           </select>
+        </FF>
+
+        <FF label="Buyer / Purchaser (this line)" half>
+          <select className="input" value={form.sourced_by || ''} onChange={e => set('sourced_by', e.target.value)}>
+            <option value="">— (use order buyer)</option>
+            {[...BUYERS, ...(form.sourced_by && !BUYERS.includes(form.sourced_by) ? [form.sourced_by] : [])].map(b => <option key={b}>{b}</option>)}
+          </select>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 5 }}>Who sourced this part — credited per line in GP &amp; Revenue by Buyer.</div>
         </FF>
 
         <div style={{ flex: '1 1 100%', borderTop: '1px solid #f1f5f9', paddingTop: 12 }} />
@@ -1008,6 +1016,7 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
     { h: 'Qty',           render: i => i.quantity },
     { h: 'Condition',     render: i => i.product_condition || '—' },
     { h: 'Supplier',      render: i => i.supplier_name || '—' },
+    { h: 'Buyer',         render: i => i.sourced_by ? <span style={{ fontWeight: 600, color: '#7c3aed' }}>{i.sourced_by}</span> : <span style={{ color: '#cbd5e1' }}>—</span> },
     { h: 'Sell/unit',     render: i => fmt(i.selling) },
     { h: 'Total Sell',    render: i => <span style={{ fontWeight: 700, color: BRAND }}>{fmt(i.total_selling)}</span> },
     { h: 'Buy/unit',      render: i => fmt(i.buying) },
@@ -1627,6 +1636,7 @@ function OrderItemsTab({ onOpenOrder }) {
     )},
     { key: 'description',        label: 'Description'   },
     { key: 'supplier_name',      label: 'Supplier'      },
+    { key: 'sourced_by',         label: 'Buyer',        render: r => r.sourced_by ? <span style={{ fontWeight: 600, color: '#7c3aed' }}>{r.sourced_by}</span> : '—' },
     { key: 'quantity',           label: 'Qty',          num: true },
     { key: 'product_condition',  label: 'Condition'     },
     { key: 'selling',            label: 'Selling/unit', num: true, fmt: true },

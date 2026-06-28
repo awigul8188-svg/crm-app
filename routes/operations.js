@@ -206,19 +206,20 @@ router.post('/orders/:id/items', requireManager, (req, res) => {
     const { part_number, description, product, supplier_id, quantity, product_condition,
             selling, buying, cc_paid, tax_paid, shipping_paid, duty_paid,
             payment_method, payment_due, tracking_to_warehouse, ta_po_number, serials, line_status,
-            supplier_terms } = req.body;
+            supplier_terms, sourced_by } = req.body;
     // paid_to_supplier is NOT set here — it is derived from the supplier payment log (op_item_payments).
+    // sourced_by = the purchaser who sourced THIS line (per-line buyer; drives dashboard byBuyer per line).
     const result = db.prepare(`
       INSERT INTO op_order_items (order_id,part_number,description,product,supplier_id,quantity,
         product_condition,selling,buying,cc_paid,tax_paid,shipping_paid,duty_paid,
-        payment_method,payment_due,tracking_to_warehouse,ta_po_number,serials,line_status,supplier_terms)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        payment_method,payment_due,tracking_to_warehouse,ta_po_number,serials,line_status,supplier_terms,sourced_by)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     `).run(req.params.id, part_number||null, description||null, product||null, supplier_id||null,
            quantity||1, product_condition||null, selling||0, buying||0, cc_paid||0,
            tax_paid||0, shipping_paid||0, duty_paid||0,
            payment_method||null, payment_due||null, tracking_to_warehouse||null,
            ta_po_number||null, serials||null, line_status === 'pending' ? 'pending' : 'processed',
-           supplier_terms||null);
+           supplier_terms||null, sourced_by||null);
     const item = db.prepare(`
       SELECT i.*, s.company AS supplier_name,
         (i.selling * i.quantity) AS total_selling,
@@ -236,19 +237,19 @@ router.put('/order-items/:id', requireManager, (req, res) => {
     const { part_number, description, product, supplier_id, quantity, product_condition,
             selling, buying, cc_paid, tax_paid, shipping_paid, duty_paid,
             payment_method, payment_due, tracking_to_warehouse, ta_po_number, serials, line_status,
-            supplier_terms } = req.body;
+            supplier_terms, sourced_by } = req.body;
     // paid_to_supplier is intentionally NOT updated here — owned by the supplier payment log (syncItemPaid).
     db.prepare(`
       UPDATE op_order_items SET part_number=?,description=?,product=?,supplier_id=?,quantity=?,
         product_condition=?,selling=?,buying=?,cc_paid=?,tax_paid=?,shipping_paid=?,duty_paid=?,
         payment_method=?,payment_due=?,tracking_to_warehouse=?,ta_po_number=?,
-        serials=?,line_status=?,supplier_terms=?,updated_at=CURRENT_TIMESTAMP WHERE id=?
+        serials=?,line_status=?,supplier_terms=?,sourced_by=?,updated_at=CURRENT_TIMESTAMP WHERE id=?
     `).run(part_number||null, description||null, product||null, supplier_id||null,
            quantity||1, product_condition||null, selling||0, buying||0, cc_paid||0,
            tax_paid||0, shipping_paid||0, duty_paid||0,
            payment_method||null, payment_due||null, tracking_to_warehouse||null,
            ta_po_number||null, serials||null, line_status === 'pending' ? 'pending' : 'processed',
-           supplier_terms||null, req.params.id);
+           supplier_terms||null, sourced_by||null, req.params.id);
     const item = db.prepare(`
       SELECT i.*, s.company AS supplier_name,
         (i.selling * i.quantity) AS total_selling,
@@ -813,7 +814,7 @@ router.patch('/buyer/order/:id', requireBuyerAccess, (req, res) => {
       UPDATE op_order_items SET
         part_number=?, quantity=?, product_condition=?, selling=?,
         supplier_id=?, buying=?, cc_paid=?, tax_paid=?, shipping_paid=?, duty_paid=?,
-        payment_method=?, payment_due=?, supplier_terms=?, ta_po_number=?, tracking_to_warehouse=?, serials=?,
+        payment_method=?, payment_due=?, supplier_terms=?, ta_po_number=?, tracking_to_warehouse=?, serials=?, sourced_by=?,
         updated_at=CURRENT_TIMESTAMP
       WHERE id=? AND order_id=?
     `);
@@ -823,7 +824,7 @@ router.patch('/buyer/order/:id', requireBuyerAccess, (req, res) => {
           it.part_number ?? null, num(it.quantity), it.product_condition ?? null, num(it.selling),
           it.supplier_id || null, num(it.buying), num(it.cc_paid), num(it.tax_paid), num(it.shipping_paid), num(it.duty_paid),
           it.payment_method || null, it.payment_due || null, it.supplier_terms || null, it.ta_po_number || null,
-          it.tracking_to_warehouse || null, it.serials || null, it.id, id
+          it.tracking_to_warehouse || null, it.serials || null, it.sourced_by ?? null, it.id, id
         );
       }
       db.prepare(`UPDATE op_orders SET fulfillment_status=COALESCE(?,fulfillment_status), shipped_via=COALESCE(?,shipped_via),
@@ -1318,25 +1319,40 @@ router.get('/dashboard', requireManager, (req, res) => {
       FROM ot GROUP BY lead_source ORDER BY gp DESC
     `).all(...p);
 
-    // Revenue + GP by buyer (purchaser who sourced the goods) — per-order totals grouped by buyer.
+    // Revenue + GP by buyer (purchaser who sourced the goods) — attributed PER LINE ITEM, so an order
+    // whose parts were sourced by different purchasers is credited to each. Each processed line's
+    // rev/cost goes to that line's sourced_by (fallback: the order-level buyer, then 'Unknown').
+    // Order-level charges (tax/shipping/cc) and RMA aren't part-specific → credited to the order buyer.
+    // Totals reconcile with the headline GP (every dollar attributed exactly once).
     const byBuyer = db.prepare(`
-      WITH ot AS (
+      WITH line_contrib AS (
+        SELECT
+          COALESCE(NULLIF(TRIM(i.sourced_by),''), NULLIF(TRIM(o.buyer),''), 'Unknown') AS buyer,
+          o.id AS order_id,
+          (i.selling * i.quantity) AS revenue,
+          (i.selling * i.quantity - (i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid)) AS gp
+        FROM op_orders o
+        JOIN op_order_items i ON i.order_id = o.id AND COALESCE(i.line_status,'processed') = 'processed'
+        WHERE ${baseWhere}
+      ),
+      order_contrib AS (
         SELECT
           COALESCE(NULLIF(TRIM(o.buyer),''),'Unknown') AS buyer,
-          COALESCE(o.tax_charged,0) + COALESCE(o.shipping_charged,0) + COALESCE(o.cc_charges,0) AS order_charges,
-          COALESCE(SUM(i.selling * i.quantity),0) AS item_rev,
-          COALESCE(SUM(i.buying * i.quantity + i.cc_paid + i.shipping_paid + i.tax_paid + i.duty_paid),0) AS item_cost,
-          COALESCE(o.rma_amount,0) AS rma_amount
+          o.id AS order_id,
+          (COALESCE(o.tax_charged,0) + COALESCE(o.shipping_charged,0) + COALESCE(o.cc_charges,0)) AS revenue,
+          (COALESCE(o.tax_charged,0) + COALESCE(o.shipping_charged,0) + COALESCE(o.cc_charges,0) - COALESCE(o.rma_amount,0)) AS gp
         FROM op_orders o
-        LEFT JOIN op_order_items i ON i.order_id = o.id AND COALESCE(i.line_status,'processed') = 'processed'
         WHERE ${baseWhere}
-        GROUP BY o.id
+      ),
+      combined AS (
+        SELECT buyer, order_id, revenue, gp FROM line_contrib
+        UNION ALL
+        SELECT buyer, order_id, revenue, gp FROM order_contrib
       )
-      SELECT buyer, COUNT(*) AS order_count,
-        SUM(item_rev + order_charges) AS revenue,
-        SUM(item_rev + order_charges - item_cost - rma_amount) AS gp
-      FROM ot GROUP BY buyer ORDER BY gp DESC
-    `).all(...p);
+      SELECT buyer, COUNT(DISTINCT order_id) AS order_count,
+        SUM(revenue) AS revenue, SUM(gp) AS gp
+      FROM combined GROUP BY buyer ORDER BY gp DESC
+    `).all(...p, ...p);
 
     const byStatus = db.prepare(`
       SELECT order_status AS status, COUNT(*) AS count

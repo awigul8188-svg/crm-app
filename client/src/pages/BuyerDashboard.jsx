@@ -93,7 +93,7 @@ function VendorModal({ id, suppliers, onAddSupplier, onClose, onSaved }) {
           supplier_id: it.supplier_id, buying: it.buying, cc_paid: it.cc_paid, tax_paid: it.tax_paid,
           shipping_paid: it.shipping_paid, duty_paid: it.duty_paid, payment_method: it.payment_method,
           payment_due: it.payment_due, supplier_terms: it.supplier_terms, ta_po_number: it.ta_po_number,
-          tracking_to_warehouse: it.tracking_to_warehouse, serials: it.serials,
+          tracking_to_warehouse: it.tracking_to_warehouse, serials: it.serials, sourced_by: it.sourced_by,
         })),
         fulfillment_status: fulfillment, shipped_via: shippedVia, tracking_to_customer: trackingCust, buyer,
         // complete folded into the same request → save + mark-complete is atomic (no half-applied state).
@@ -137,7 +137,6 @@ function VendorModal({ id, suppliers, onAddSupplier, onClose, onSaved }) {
                   <span style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', fontFamily: '"Bricolage Grotesque",sans-serif' }}>
                     {items.length > 1 ? `Item ${i + 1} of ${items.length}` : 'Line item'}{it.part_number ? <span style={{ color: '#94a3b8', fontWeight: 600 }}> · {it.part_number}</span> : ''}
                   </span>
-                  {it.sourced_by && <span style={{ fontSize: 11, color: '#94a3b8' }}>Sourced by {it.sourced_by}</span>}
                 </div>
 
                 {/* Sales side — editable so the buyer can fix AE typos */}
@@ -156,7 +155,7 @@ function VendorModal({ id, suppliers, onAddSupplier, onClose, onSaved }) {
 
                 {/* Vendor sourcing */}
                 <Sub>Vendor &amp; sourcing</Sub>
-                <div style={{ display: 'grid', gridTemplateColumns: '2.2fr 1fr 1fr', gap: 14, marginBottom: 18, alignItems: 'start' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1.2fr', gap: 14, marginBottom: 18, alignItems: 'start' }}>
                   <Field label="Supplier">
                     <SearchableSelect items={supItems} value={it.supplier_id || ''} onChange={(v) => setItem(i, 'supplier_id', v ? Number(v) : null)} placeholder="Pick supplier…" />
                     {addingFor === i ? (
@@ -170,6 +169,7 @@ function VendorModal({ id, suppliers, onAddSupplier, onClose, onSaved }) {
                   </Field>
                   <Field label="Buying (unit)"><input value={it.buying ?? ''} onChange={e => setItem(i, 'buying', e.target.value)} placeholder="0" style={inp} /></Field>
                   <Field label="PO #"><input value={it.ta_po_number || ''} onChange={e => setItem(i, 'ta_po_number', e.target.value)} placeholder="PO-…" style={inp} /></Field>
+                  <Field label="Buyer / sourced by"><input value={it.sourced_by || ''} onChange={e => setItem(i, 'sourced_by', e.target.value)} placeholder="Purchaser" style={inp} /></Field>
                 </div>
 
                 {/* Landed costs */}
