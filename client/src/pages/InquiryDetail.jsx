@@ -145,6 +145,7 @@ export default function InquiryDetail({ id }) {
                                   <span className="font-semibold">{q.quantity ?? '—'} ×</span> <span className="font-bold text-green-700">${q.price}</span>
                                   {q.supplier_name ? <span className="text-ink-500"> — {q.supplier_name}</span> : ''}
                                   {q.condition ? <span className="text-ink-400"> ({q.condition}{q.lead_time ? `, ${q.lead_time}` : ''})</span> : q.lead_time ? <span className="text-ink-400"> ({q.lead_time})</span> : ''}
+                                  {q.purchaser_name ? <span className="text-violet-600 font-semibold"> · {q.purchaser_name}</span> : ''}
                                 </div>
                               ))}
                               <div className="text-[11px] text-ink-400">
