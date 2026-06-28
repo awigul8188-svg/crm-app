@@ -345,6 +345,19 @@ function runOperationsMigrations() {
     }
   } catch(e) {}
 
+  // One-time: a sheet re-import created op_orders with vendor_complete=0 (the column default), so every
+  // historical (already-fulfilled) order flooded the buyer's To-Do queue. Mark all current finalized
+  // (non-pending) orders complete — same intent as runBuyerMigration's original backfill. Guarded → runs
+  // ONCE; future imports now stamp vendor_complete=1 themselves (routes/import.js), and live CRM orders
+  // stay pending=1 so they're untouched.
+  try {
+    const done = db.prepare("SELECT value FROM op_settings WHERE key='import_vendor_complete_backfill'").get();
+    if (!done) {
+      db.prepare("UPDATE op_orders SET vendor_complete=1 WHERE (pending IS NULL OR pending=0) AND COALESCE(vendor_complete,0)=0").run();
+      db.prepare("INSERT OR REPLACE INTO op_settings (key, value) VALUES ('import_vendor_complete_backfill', '1')").run();
+    }
+  } catch(e) {}
+
   // v9 — customer payment records (AR receipts). An order's customer_paid is kept in sync as the
   // SUM of these rows, so "Received" / balance / paid-status all derive from the payment log
   // instead of a hand-typed number.

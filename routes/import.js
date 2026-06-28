@@ -487,8 +487,8 @@ function importWorkbook(wb, db, options = {}) {
                   const result = db.prepare(`
                     INSERT INTO op_orders (order_number,order_date,customer_id,lead_source,rep,buyer,
                       payment_status,order_status,tax_charged,shipping_charged,tracking_to_customer,notes,email,
-                      reporting_period,ar_status)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                      reporting_period,ar_status,vendor_complete)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)
                   `).run(
                     orderNum, orderDate, adjCustId, col(2)||null, adjRep||null, buyerOrAbdul(col(6)),
                     mapPaymentOps(rawPayment)||null, mapStatusOps(status),
@@ -542,8 +542,8 @@ function importWorkbook(wb, db, options = {}) {
                   const result = db.prepare(`
                     INSERT INTO op_orders (order_number,order_date,customer_id,lead_source,rep,buyer,
                       payment_status,order_status,tax_charged,shipping_charged,tracking_to_customer,notes,email,
-                      reporting_period,ar_status)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                      reporting_period,ar_status,vendor_complete)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)
                   `).run(
                     orderNum, orderDate, adjCustId, col(2)||null, col(5)||null, buyerOrAbdul(col(6)),
                     mapPaymentOps(rawPayment)||null, mapStatusOps(status),
@@ -616,8 +616,8 @@ function importWorkbook(wb, db, options = {}) {
               const result = db.prepare(`
                 INSERT INTO op_orders (order_number,order_date,customer_id,lead_source,rep,buyer,
                   payment_status,order_status,tax_charged,shipping_charged,tracking_to_customer,notes,email,
-                  reporting_period,ar_status)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                  reporting_period,ar_status,vendor_complete)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)
               `).run(
                 orderNum, orderDate, custId, col(2)||null, col(5)||null, buyerOrAbdul(col(6)),
                 mapPaymentOps(rawPayment)||null, orderStatus,
