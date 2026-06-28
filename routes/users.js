@@ -45,6 +45,10 @@ router.get('/', (req, res) => {
 router.post('/', requireManager, (req, res) => {
   const { username, password, name, role } = req.body;
   if (!username || !password || !name) return res.status(400).json({ error: 'username, password, and name are required' });
+  // A purchasing_manager may only create purchaser accounts — never managers/AEs (no self-escalation).
+  if (req.user.role === 'purchasing_manager' && (role || 'ae') !== 'purchaser') {
+    return res.status(403).json({ error: 'Purchasing managers can only create purchaser accounts' });
+  }
   const db = getDB();
   const hash = bcrypt.hashSync(password, 10);
   const uname = username.toLowerCase().trim();
@@ -70,6 +74,13 @@ router.post('/', requireManager, (req, res) => {
 router.put('/:id', requireManager, (req, res) => {
   const { name, role, password, username } = req.body;
   const db = getDB();
+  // A purchasing_manager may only edit purchaser accounts, and may not promote one to a non-purchaser role.
+  if (req.user.role === 'purchasing_manager') {
+    const target = db.prepare('SELECT role FROM users WHERE id=?').get(req.params.id);
+    if (!target) return res.status(404).json({ error: 'User not found' });
+    if (target.role !== 'purchaser') return res.status(403).json({ error: 'Purchasing managers can only manage purchaser accounts' });
+    if (role !== undefined && role !== 'purchaser') return res.status(403).json({ error: 'Cannot change a purchaser to another role' });
+  }
   const sets = [], params = [];
   if (name !== undefined) { sets.push('name=?'); params.push(String(name).trim()); }
   if (role !== undefined) { sets.push('role=?'); params.push(role); }
@@ -90,6 +101,12 @@ router.delete('/:id', requireManager, (req, res) => {
   const db = getDB();
   const id = parseInt(req.params.id);
   if (id === req.user.id) return res.status(400).json({ error: "Can't delete yourself" });
+  // A purchasing_manager may only delete purchaser accounts.
+  if (req.user.role === 'purchasing_manager') {
+    const target = db.prepare('SELECT role FROM users WHERE id=?').get(id);
+    if (!target) return res.status(404).json({ error: 'User not found' });
+    if (target.role !== 'purchaser') return res.status(403).json({ error: 'Purchasing managers can only delete purchaser accounts' });
+  }
   // foreign_keys is ON, so a referenced user can't be deleted directly. Clean up references first:
   // unassign CRM records (preserve the business data) and remove this user's own purchasing-workflow rows.
   const run = (sql) => { try { db.prepare(sql).run(id); } catch (e) { /* table may not exist in some envs */ } };
@@ -127,8 +144,9 @@ function resetPasswordsForRole(db, role) {
   return results;
 }
 
-// Reset all AE passwords — managers only
+// Reset all AE passwords — sales managers only (a purchasing_manager manages purchasers, not AEs).
 router.post('/reset-ae-passwords', requireManager, (req, res) => {
+  if (req.user.role !== 'manager') return res.status(403).json({ error: 'Managers only' });
   try {
     res.json({ results: resetPasswordsForRole(getDB(), 'ae') });
   } catch (err) {

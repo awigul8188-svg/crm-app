@@ -144,7 +144,7 @@ export default function App() {
       case 'customers':       return isCrm ? <Customers /> : home()
       case 'customer-detail': return isCrm ? <CustomerDetail id={page.params.id} /> : home()
       case 'inquiry-detail':  return isCrm ? <InquiryDetail id={page.params.id} /> : home()
-      case 'users':           return isManager ? <Users /> : home()
+      case 'users':           return user.role === 'manager' ? <Users /> : home()  // sales-manager only; PM manages purchasers via Purchasing
       case 'import':          return isManager ? <ImportData /> : home()
       case 'notifications':   return <Notifications />
       case 'operations':      return isManager ? <Operations /> : home()

@@ -192,7 +192,7 @@ export default function Layout({ children }) {
                 style={{ color: 'rgba(255,255,255,0.2)', fontSize: '9px', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
                 Admin
               </div>
-              {ADMIN_NAV.map(({ name, label, Icon }) => (
+              {ADMIN_NAV.filter(item => item.name !== 'users' || user.role === 'manager').map(({ name, label, Icon }) => (
                 <button key={name} onClick={() => navigate(name)}
                   className={`nav-item ${page.name === name ? 'nav-active' : 'nav-inactive'}`}>
                   <Icon size={15} className="flex-shrink-0" />
