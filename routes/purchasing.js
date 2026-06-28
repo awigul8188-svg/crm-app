@@ -141,15 +141,22 @@ router.post('/assign', canManage, (req, res) => {
 
   try {
     const existing = db.prepare('SELECT purchaser_id FROM purchase_assignments WHERE requirement_id=?').get(requirement_id);
-    db.prepare(`
-      INSERT INTO purchase_assignments (requirement_id, purchaser_id, assigned_by, status, pm_notes, urgency)
-      VALUES (?, ?, ?, 'pending', ?, ?)
-      ON CONFLICT(requirement_id) DO UPDATE SET
-        purchaser_id=excluded.purchaser_id, assigned_by=excluded.assigned_by,
-        status='pending', assigned_at=CURRENT_TIMESTAMP,
-        pm_notes=COALESCE(excluded.pm_notes, pm_notes),
-        urgency=COALESCE(excluded.urgency, urgency)
-    `).run(requirement_id, purchaser_id, req.user.id, pm_notes || null, urgency || 'normal');
+    if (existing) {
+      // Reassign: keep the existing urgency/pm_notes unless the caller explicitly sends a new value.
+      // (The inline AssignCell dropdown sends neither, so a Critical part must NOT drop to Normal.)
+      db.prepare(`
+        UPDATE purchase_assignments SET
+          purchaser_id=?, assigned_by=?, status='pending', assigned_at=CURRENT_TIMESTAMP,
+          pm_notes=COALESCE(?, pm_notes), urgency=COALESCE(?, urgency)
+        WHERE requirement_id=?
+      `).run(purchaser_id, req.user.id, pm_notes || null, urgency || null, requirement_id);
+    } else {
+      // New assignment: default urgency to 'normal' when none provided.
+      db.prepare(`
+        INSERT INTO purchase_assignments (requirement_id, purchaser_id, assigned_by, status, pm_notes, urgency)
+        VALUES (?, ?, ?, 'pending', ?, ?)
+      `).run(requirement_id, purchaser_id, req.user.id, pm_notes || null, urgency || 'normal');
+    }
 
     // The assignment id lets the purchaser's notification deep-link to the exact part.
     const assignmentId = db.prepare('SELECT id FROM purchase_assignments WHERE requirement_id=?').get(requirement_id)?.id || null;
