@@ -246,7 +246,7 @@ function OrderForm({ order, customers: customersProp, onSave, onClose, isPending
     lead_source: '', rep: '', ppc_order_rep: '', buyer: '', payment_status: '', order_status: 'Order placed',
     net: '', due_date: '',
     tax_charged: '', shipping_charged: '', cc_charges: '', customer_paid: '', rma_amount: '', shipped_via: '',
-    tracking_to_customer: '', notes: '' }
+    tracking_to_customer: '', notes: '', reporting_period: '' }
   const [form, setForm] = useState(order ? { ...blank, ...order, customer_id: order.customer_id || '', due_date: order.due_date?.slice(0,10)||'', order_date: order.order_date?.slice(0,10)||'', rma_amount: order.rma_amount||'', net: order.net||'' } : blank)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
@@ -256,9 +256,12 @@ function OrderForm({ order, customers: customersProp, onSave, onClose, isPending
   // Customer lists
   const [opsCustomers, setOpsCustomers] = useState(customersProp || [])
   const [crmCustomers, setCrmCustomers] = useState([])
+  // Reporting periods (for re-tagging an order's month from the Edit form)
+  const [periods, setPeriods] = useState([])
   useEffect(() => {
     operationsApi.getCustomers().then(setOpsCustomers).catch(() => {})
     api.getCustomers().then(list => setCrmCustomers(list || [])).catch(() => {})
+    operationsApi.getReportingPeriods().then(d => setPeriods(Array.isArray(d) ? d : [])).catch(() => {})
   }, [])
 
   // Inline new customer form
@@ -342,6 +345,15 @@ function OrderForm({ order, customers: customersProp, onSave, onClose, isPending
               <input className="input" type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} />
               {termDays(form.net) !== undefined && <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 3 }}>Auto-set from terms · editable</div>}
             </FF>
+            {order && (
+              <FF label="Reporting Period" third>
+                <select className="input" value={form.reporting_period || ''} onChange={e => set('reporting_period', e.target.value)}>
+                  {form.reporting_period && !periods.some(p => p.reporting_period === form.reporting_period) && <option value={form.reporting_period}>{form.reporting_period}</option>}
+                  {periods.map(p => <option key={p.reporting_period} value={p.reporting_period}>{p.closed ? `🔒 ${p.reporting_period}` : p.reporting_period}</option>)}
+                </select>
+                <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 3 }}>Drives dashboard month/quarter grouping</div>
+              </FF>
+            )}
           </div>
         </div>
 

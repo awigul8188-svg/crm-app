@@ -165,18 +165,22 @@ router.put('/orders/:id', requireManager, (req, res) => {
     const db = getDB();
     const { order_number, order_date, customer_id, email, lead_source, rep, ppc_order_rep, buyer,
             payment_status, order_status, net, due_date, tax_charged, shipping_charged,
-            cc_charges, rma_amount, shipped_via, tracking_to_customer, notes } = req.body;
+            cc_charges, rma_amount, shipped_via, tracking_to_customer, notes, reporting_period } = req.body;
     // customer_paid is intentionally NOT updated here — it is owned by the payment log (syncOrderPaid).
+    // reporting_period drives all dashboard month/quarter grouping; allow correcting a mis-tagged month
+    // from the Edit form. COALESCE keeps the existing tag when the field is omitted.
     db.prepare(`
       UPDATE op_orders SET order_number=?,order_date=?,customer_id=?,email=?,lead_source=?,rep=?,
         ppc_order_rep=?,buyer=?,payment_status=?,order_status=?,net=?,due_date=?,tax_charged=?,
         shipping_charged=?,cc_charges=?,rma_amount=?,shipped_via=?,
-        tracking_to_customer=?,notes=?,updated_at=CURRENT_TIMESTAMP WHERE id=?
+        tracking_to_customer=?,notes=?,reporting_period=COALESCE(?, reporting_period),
+        updated_at=CURRENT_TIMESTAMP WHERE id=?
     `).run(order_number, order_date||null, customer_id||null, email||null,
            lead_source||null, rep||null, ppc_order_rep||null, buyer||null,
            payment_status||null, order_status||'Order placed', net||0, due_date||null,
            tax_charged||0, shipping_charged||0, cc_charges||0,
-           rma_amount||0, shipped_via||null, tracking_to_customer||null, notes||null, req.params.id);
+           rma_amount||0, shipped_via||null, tracking_to_customer||null, notes||null,
+           reporting_period || null, req.params.id);
     const order = db.prepare(`${ORDER_TOTALS_SQL} WHERE o.id = ? GROUP BY o.id`).get(req.params.id);
     res.json(order);
   } catch(e) { res.status(500).json({ error: e.message }); }
