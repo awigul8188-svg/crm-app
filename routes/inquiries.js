@@ -233,6 +233,23 @@ router.put('/:id', (req, res) => {
       addedParts = (requirements || []).filter(r => r.part_number?.trim() && !oldParts.has(r.part_number.trim().toLowerCase())).map(r => r.part_number.trim());
     }
 
+    // If the inquiry is moving OUT of its won/processed state, void the PENDING draft op_order
+    // that Closed-Won/Processed created (linked by crm_inquiry_id). Only pending drafts are
+    // removed — a finalized (non-pending) order is left untouched. Prevents orphaned drafts
+    // with no matching won inquiry. Re-winning recreates the draft (from-crm dedups by inquiry).
+    const wonStates = inquiry.type === 'online_order' ? ['Processed'] : ['Closed Won'];
+    if (dispositionChanged && wonStates.includes(inquiry.old_disposition) && !wonStates.includes(disposition)) {
+      try {
+        const drafts = db.prepare('SELECT id FROM op_orders WHERE crm_inquiry_id = ? AND pending = 1').all(req.params.id);
+        const delItemPay = db.prepare('DELETE FROM op_item_payments WHERE order_item_id IN (SELECT id FROM op_order_items WHERE order_id = ?)');
+        const delItems   = db.prepare('DELETE FROM op_order_items WHERE order_id = ?');
+        const delOrdPay  = db.prepare('DELETE FROM op_order_payments WHERE order_id = ?');
+        const delOrder   = db.prepare('DELETE FROM op_orders WHERE id = ?');
+        drafts.forEach(o => { delItemPay.run(o.id); delItems.run(o.id); delOrdPay.run(o.id); delOrder.run(o.id); });
+        if (drafts.length) logActivity(db, req.params.id, req.user, `Voided ${drafts.length} pending draft order(s) — disposition left "${inquiry.old_disposition}"`);
+      } catch (e) { console.error('Void pending draft order error:', e.message); }
+    }
+
     logActivity(db, req.params.id, req.user, 'Inquiry updated');
     if (addedParts.length) notifyPurchasingManagers(db, { inquiry_id: parseInt(req.params.id), type: inquiry?.type, customer_name: inquiry?.customer_name || 'Unknown', actor_name: req.user.name, partNumbers: addedParts });
 
