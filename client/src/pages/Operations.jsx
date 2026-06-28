@@ -1320,6 +1320,10 @@ function OrdersTab({ jumpOrderId, onJumpHandled, initialStatus, initialLeadSourc
   }, [resetToken])
   const [selected, setSelected]   = useState(null)
   const [showForm, setShowForm]   = useState(false)
+  // Month filter options come from the live reporting periods (not a hard-coded list that goes
+  // stale once the open month advances past Jun-26).
+  const [periodOpts, setPeriodOpts] = useState([])
+  useEffect(() => { operationsApi.getReportingPeriods().then(d => setPeriodOpts(Array.isArray(d) ? d : [])).catch(() => {}) }, [])
 
   useEffect(() => {
     if (jumpOrderId) { setSelected(jumpOrderId); onJumpHandled && onJumpHandled() }
@@ -1391,7 +1395,7 @@ function OrdersTab({ jumpOrderId, onJumpHandled, initialStatus, initialLeadSourc
           value={search} onChange={e => setSearch(e.target.value)} />
         <select className="input" style={{ flex: '0 0 120px' }} value={filterPeriod} onChange={e => setFilterPeriod(e.target.value)}>
           <option value="">All Months</option>
-          {['Jan-26','Feb-26','Mar-26','Apr-26','May-26','Jun-26'].map(p => <option key={p}>{p}</option>)}
+          {periodOpts.map(p => <option key={p.reporting_period} value={p.reporting_period}>{p.closed ? `🔒 ${p.reporting_period}` : p.reporting_period}</option>)}
         </select>
         <select className="input" style={{ flex: '0 0 130px' }} value={filterRep} onChange={e => setFilterRep(e.target.value)}>
           <option value="">All Reps</option>
