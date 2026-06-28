@@ -395,7 +395,26 @@ function syncOrderRmaAmount(db, orderId) {
 function syncOrderPaid(db, orderId) {
   if (!orderId) return;
   const r = db.prepare(`SELECT COALESCE(SUM(amount),0) AS total FROM op_order_payments WHERE order_id=?`).get(orderId);
-  db.prepare(`UPDATE op_orders SET customer_paid=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(r.total, orderId);
+  const paid = r.total;
+  // Recompute ar_status from the live balance so the dashboard AR cards (which bucket by
+  // ar_status) stay in sync with recorded payments. Orders explicitly marked 'na'
+  // (AR-not-applicable) are left untouched. Charged basis matches the stats CTE:
+  // Σ(selling×qty over processed lines) + order-level charges.
+  const o = db.prepare(`
+    SELECT o.ar_status,
+      COALESCE(SUM(CASE WHEN COALESCE(i.line_status,'processed')='processed'
+        THEN i.selling * i.quantity ELSE 0 END), 0)
+        + COALESCE(o.tax_charged,0) + COALESCE(o.shipping_charged,0) + COALESCE(o.cc_charges,0) AS charged
+    FROM op_orders o LEFT JOIN op_order_items i ON i.order_id = o.id
+    WHERE o.id=? GROUP BY o.id`).get(orderId);
+  let statusSet = ''; const params = [paid];
+  if (o && o.ar_status !== 'na') {
+    const charged = o.charged || 0;
+    const status = paid <= 0.005 ? 'pending' : (charged - paid <= 0.005 ? 'received' : 'partial');
+    statusSet = ', ar_status=?'; params.push(status);
+  }
+  params.push(orderId);
+  db.prepare(`UPDATE op_orders SET customer_paid=?${statusSet}, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(...params);
 }
 
 // ── Customer payments (AR receipts) ───────────────────────────────────────────
@@ -445,7 +464,22 @@ router.delete('/payments/:id', requireManager, (req, res) => {
 function syncItemPaid(db, itemId) {
   if (!itemId) return;
   const r = db.prepare(`SELECT COALESCE(SUM(amount),0) AS total FROM op_item_payments WHERE order_item_id=?`).get(itemId);
-  db.prepare(`UPDATE op_order_items SET paid_to_supplier=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(r.total, itemId);
+  const paid = r.total;
+  // Recompute ap_status from the live balance so the dashboard AP cards (which bucket by
+  // ap_status) stay in sync with recorded supplier payments. Lines marked 'na' are left
+  // untouched. Cost basis matches the payables/stats AP expression.
+  const it = db.prepare(`SELECT ap_status,
+      COALESCE(quantity,0)*COALESCE(buying,0) + COALESCE(cc_paid,0) + COALESCE(tax_paid,0)
+        + COALESCE(shipping_paid,0) + COALESCE(duty_paid,0) AS ext_cost
+    FROM op_order_items WHERE id=?`).get(itemId);
+  let statusSet = ''; const params = [paid];
+  if (it && it.ap_status !== 'na') {
+    const ext = it.ext_cost || 0;
+    const status = paid <= 0.005 ? 'pending' : (ext - paid <= 0.005 ? 'paid' : 'partial');
+    statusSet = ', ap_status=?'; params.push(status);
+  }
+  params.push(itemId);
+  db.prepare(`UPDATE op_order_items SET paid_to_supplier=?${statusSet}, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(...params);
 }
 
 router.get('/order-items/:id/payments', (req, res) => {
