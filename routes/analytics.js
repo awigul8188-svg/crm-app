@@ -73,19 +73,28 @@ router.get('/', (req, res) => {
 // Detailed module analytics
 router.get('/module', (req, res) => {
   const db = getDB();
-  const { type, from, to, assigned_to } = req.query;
+  const { type, from, to, assigned_to, disposition, lead_source } = req.query;
   if (!type) return res.status(400).json({ error: 'type required' });
 
-  const userId = req.user.role === 'ae' ? req.user.id : (assigned_to || null);
   const today = businessToday();
 
+  // Apply the shared dashboard filters (assignee/disposition/source) consistently to BOTH the
+  // period and the today query sets. AEs are forced to their own data; managers may pass a
+  // comma-list of assignees/dispositions/sources (buildInFilter handles the IN expansion).
+  const applyShared = (arr, prm) => {
+    if (req.user.role === 'ae') { arr.push('i.assigned_to = ?'); prm.push(req.user.id); }
+    else if (assigned_to) { const f = buildInFilter('i.assigned_to', assigned_to); if (f) { arr.push(f.sql); prm.push(...f.params); } }
+    if (disposition) { const f = buildInFilter('i.disposition', disposition); if (f) { arr.push(f.sql); prm.push(...f.params); } }
+    if (lead_source) { const f = buildInFilter('c.lead_source', lead_source); if (f) { arr.push(f.sql); prm.push(...f.params); } }
+  };
+
   const filters = [`i.type = ?`]; const params = [type];
-  if (userId) { filters.push('i.assigned_to = ?'); params.push(userId); }
+  applyShared(filters, params);
   if (from) { filters.push(`${LD} >= ?`); params.push(from); }
   if (to) { filters.push(`${LD} <= ?`); params.push(to); }
 
   const todayFilters = [`i.type = ?`, `${LD} = ?`]; const todayParams = [type, today];
-  if (userId) { todayFilters.push('i.assigned_to = ?'); todayParams.push(userId); }
+  applyShared(todayFilters, todayParams);
 
   const where = 'WHERE ' + filters.join(' AND ');
   const todayWhere = 'WHERE ' + todayFilters.join(' AND ');
