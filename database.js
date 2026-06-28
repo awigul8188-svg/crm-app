@@ -459,4 +459,21 @@ function runImportedFlagMigration() {
   }
 }
 
-module.exports = { initializeDB, getDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations, runInquiryViewsMigration, runBuyerMigration, runQuoteEntriesMigration, runImportedFlagMigration };
+// Customer-facing quotes generated from an inquiry (number sequence + lightweight history/log).
+function runQuotesMigration() {
+  const db = getDB();
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS quotes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      quote_number TEXT,
+      inquiry_id INTEGER,
+      customer_name TEXT,
+      customer_company TEXT,
+      total REAL DEFAULT 0,
+      created_by INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+  } catch (e) { console.log('quotes migration note:', e.message); }
+}
+
+module.exports = { initializeDB, getDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations, runInquiryViewsMigration, runBuyerMigration, runQuoteEntriesMigration, runImportedFlagMigration, runQuotesMigration };

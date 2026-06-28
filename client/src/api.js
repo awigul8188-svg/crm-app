@@ -258,3 +258,8 @@ export const assistantApi = {
   status: () => req('GET', '/assistant/status'),
   ask: (messages) => req('POST', '/assistant/ask', { messages }),
 };
+
+export const quotesApi = {
+  nextNumber: () => req('GET', '/quotes/next-number'),
+  record: (data) => req('POST', '/quotes', data),
+};

@@ -5,6 +5,7 @@ import { useAuth } from '../App'
 import { useNav } from '../App'
 import { DispositionBadge, TypeBadge, DISPOSITIONS, PPC_OPTIONS, ORDER_SOURCES, VERIFICATION_OPTIONS, timeAgo, formatDate } from '../components/Badges'
 import ClosedWonModal from '../components/ClosedWonModal'
+import QuoteModal from '../components/QuoteModal'
 
 export default function InquiryDetail({ id }) {
   const { user } = useAuth()
@@ -23,6 +24,7 @@ export default function InquiryDetail({ id }) {
   const [requirements, setRequirements] = useState([])
   const [activeTab, setActiveTab] = useState('activity')
   const [closedWonOpen, setClosedWonOpen] = useState(false)
+  const [quoteOpen, setQuoteOpen] = useState(false)
   const [cwPrevDisp, setCwPrevDisp] = useState('')
   const [cwCreated, setCwCreated] = useState(false)
 
@@ -93,6 +95,9 @@ export default function InquiryDetail({ id }) {
             </div>
           </div>
           <div className="flex gap-2 ml-4 flex-shrink-0">
+            {!editMode && (
+              <button onClick={() => setQuoteOpen(true)} className="btn-sm" style={{ background: '#00D4C8', color: '#062b29', fontWeight: 700, borderRadius: 8, padding: '6px 12px', border: 'none' }}>📄 Generate Quote</button>
+            )}
             {['manager', 'purchasing_manager'].includes(user.role) && !editMode && (
               <button onClick={handleDelete} disabled={deleting} className="btn-danger btn-sm">{deleting ? '...' : '🗑 Delete'}</button>
             )}
@@ -330,6 +335,8 @@ export default function InquiryDetail({ id }) {
           }}
         />
       )}
+
+      {quoteOpen && <QuoteModal inquiry={{ ...inquiry, requirements }} user={user} onClose={() => setQuoteOpen(false)} />}
     </div>
   )
 }

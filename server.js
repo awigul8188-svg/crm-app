@@ -3,7 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
-const { initializeDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations, runInquiryViewsMigration, runBuyerMigration, runQuoteEntriesMigration, runImportedFlagMigration } = require('./database');
+const { initializeDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations, runInquiryViewsMigration, runBuyerMigration, runQuoteEntriesMigration, runImportedFlagMigration, runQuotesMigration } = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -66,6 +66,7 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/api/purchasing', require('./routes/purchasing'));
 app.use('/api/operations', require('./routes/operations'));
 app.use('/api/assistant', require('./routes/assistant'));
+app.use('/api/quotes', require('./routes/quotes'));
 
 // Temporary public debug endpoint — remove after GP investigation
 app.get('/api/debug-rep-gp', (req, res) => {
@@ -106,4 +107,5 @@ runInquiryViewsMigration();
 runBuyerMigration();
 runQuoteEntriesMigration();
 runImportedFlagMigration();
+runQuotesMigration();
 server.listen(PORT, () => console.log(`CRM running on port ${PORT}`));
