@@ -3,6 +3,7 @@ import { useAuth } from '../App'
 import { useNav } from '../App'
 import { api, purchasingApi } from '../api'
 import HelpAssistant from './HelpAssistant'
+import TALogo from './TALogo'
 
 // Short two-tone "ding" for new-quote alerts (synthesized — no asset needed).
 let _audioCtx = null
@@ -27,17 +28,6 @@ import {
   LayoutDashboard, Target, RotateCcw, ShoppingBag, Users,
   Bell, Upload, UserCog, LogOut, Settings2, Package,
 } from 'lucide-react'
-
-function TALogo({ size = 36 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <polygon points="20,2 46,2 46,14 32,14 32,10 20,10" fill="white"/>
-      <rect x="32" y="14" width="14" height="16" fill="white"/>
-      <rect x="2" y="14" width="28" height="22" fill="#00D4C8"/>
-      <rect x="20" y="36" width="26" height="10" fill="white"/>
-    </svg>
-  )
-}
 
 const DASHBOARD_NAV = { name: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard }
 // Sales-side pages — only for CRM roles (manager + ae). Purchasing roles never see these.

@@ -1,6 +1,7 @@
 // Builds a branded 3-page Tech Atlantix quote PDF and returns a Blob.
 // Lazy-imported from QuoteModal so @react-pdf stays out of the main bundle.
-import { Document, Page, View, Text, Svg, Polygon, StyleSheet, pdf } from '@react-pdf/renderer'
+import { Document, Page, View, Text, Image, StyleSheet, pdf } from '@react-pdf/renderer'
+import logoOnLight from '../assets/ta-logo-on-light.png' // black-top mark (PDF pages are white)
 
 const TEAL = '#00D4C8'
 const INK = '#0a0a0a'
@@ -10,15 +11,9 @@ const LIGHT = '#e2e8f0'
 const num = v => { const n = parseFloat(String(v ?? '').replace(/[$,\s]/g, '')); return isNaN(n) ? 0 : n }
 const money = v => `$${num(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
-// Tech Atlantix mark (black parallelogram + two teal shapes), drawn as vectors.
+// Tech Atlantix logo (exact brand mark image), sized by height; ratio ~0.9.
 function Logo({ size = 34 }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 64 64">
-      <Polygon points="10.5,7 36,7 30,21.5 10.5,21.5" fill={INK} />
-      <Polygon points="29.5,22 56,22 56,36 29.5,36" fill={TEAL} />
-      <Polygon points="29.5,36.5 42,36.5 42,56 10.5,56" fill={TEAL} />
-    </Svg>
-  )
+  return <Image src={logoOnLight} style={{ height: size, width: size * 0.9 }} />
 }
 
 const s = StyleSheet.create({

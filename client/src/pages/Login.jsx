@@ -1,16 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../App'
-
-function TALogo({ size = 48 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <polygon points="20,2 46,2 46,14 32,14 32,10 20,10" fill="white"/>
-      <rect x="32" y="14" width="14" height="16" fill="white"/>
-      <rect x="2" y="14" width="28" height="22" fill="#00D4C8"/>
-      <rect x="20" y="36" width="26" height="10" fill="white"/>
-    </svg>
-  )
-}
+import TALogo from '../components/TALogo'
 
 export default function Login() {
   const { login } = useAuth()
@@ -83,7 +73,7 @@ export default function Login() {
         <div className="w-full max-w-[360px]">
           {/* Mobile logo */}
           <div className="flex lg:hidden items-center gap-3 mb-8">
-            <TALogo size={32} />
+            <TALogo size={32} light />
             <div>
               <div className="font-display font-bold text-ink-900 text-lg leading-none">TECH</div>
               <div className="font-display font-bold text-lg leading-none" style={{ color: '#00D4C8' }}>ATLANTIX</div>
