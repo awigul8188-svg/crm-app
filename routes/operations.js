@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getDB } = require('../database');
-const { authenticate, requireManager } = require('../middleware/auth');
+const { authenticate, requireManager, requireCrmAccess } = require('../middleware/auth');
 const { businessToday } = require('./businessTime');
 
 router.use(authenticate);
@@ -80,7 +80,7 @@ const ORDER_TOTALS_SQL = `
 
 // ── Orders ────────────────────────────────────────────────────────────────────
 
-router.get('/orders', (req, res) => {
+router.get('/orders', requireManager, (req, res) => {
   try {
     const db = getDB();
     const { search, status, rep, customer_id, lead_source, payment_status, date_from, date_to, reporting_period } = req.query;
@@ -138,7 +138,7 @@ router.post('/orders', requireManager, (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-router.get('/orders/:id', (req, res) => {
+router.get('/orders/:id', requireManager, (req, res) => {
   try {
     const db = getDB();
     const order = db.prepare(`${ORDER_TOTALS_SQL} WHERE o.id = ? GROUP BY o.id`).get(req.params.id);
@@ -269,7 +269,7 @@ router.delete('/order-items/:id', requireManager, (req, res) => {
 
 // ── Customers ─────────────────────────────────────────────────────────────────
 
-router.get('/customers', (req, res) => {
+router.get('/customers', requireManager, (req, res) => {
   try {
     const db = getDB();
     const { search } = req.query;
@@ -307,7 +307,7 @@ router.delete('/customers/:id', requireManager, (req, res) => {
 
 // ── Suppliers ─────────────────────────────────────────────────────────────────
 
-router.get('/suppliers', (req, res) => {
+router.get('/suppliers', requireBuyerAccess, (req, res) => {
   try {
     const db = getDB();
     const { search } = req.query;
@@ -359,7 +359,7 @@ const RMA_SELECT = `
   LEFT JOIN op_order_items i ON r.order_item_id = i.id
 `;
 
-router.get('/rma', (req, res) => {
+router.get('/rma', requireManager, (req, res) => {
   try {
     const db = getDB();
     const { search, status, order_id } = req.query;
@@ -427,7 +427,7 @@ function syncOrderPaid(db, orderId) {
 }
 
 // ── Customer payments (AR receipts) ───────────────────────────────────────────
-router.get('/orders/:id/payments', (req, res) => {
+router.get('/orders/:id/payments', requireManager, (req, res) => {
   try {
     const rows = getDB().prepare(`SELECT * FROM op_order_payments WHERE order_id=? ORDER BY payment_date DESC, id DESC`).all(req.params.id);
     res.json(rows);
@@ -491,7 +491,7 @@ function syncItemPaid(db, itemId) {
   db.prepare(`UPDATE op_order_items SET paid_to_supplier=?${statusSet}, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(...params);
 }
 
-router.get('/order-items/:id/payments', (req, res) => {
+router.get('/order-items/:id/payments', requireManager, (req, res) => {
   try {
     res.json(getDB().prepare(`SELECT * FROM op_item_payments WHERE order_item_id=? ORDER BY payment_date DESC, id DESC`).all(req.params.id));
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -561,7 +561,7 @@ router.post('/rma', requireManager, (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-router.get('/rma/:id', (req, res) => {
+router.get('/rma/:id', requireManager, (req, res) => {
   try {
     const db = getDB();
     const rma = db.prepare(`${RMA_SELECT} WHERE r.id=?`).get(req.params.id);
@@ -612,7 +612,7 @@ router.delete('/rma/:id', requireManager, (req, res) => {
 
 // ── All Order Items (global view) ────────────────────────────────────────────
 
-router.get('/items', (req, res) => {
+router.get('/items', requireManager, (req, res) => {
   try {
     const db = getDB();
     const { search = '', order_id } = req.query;
@@ -642,7 +642,7 @@ router.get('/items', (req, res) => {
 // Create a PENDING Operations order from a Closed-Won CRM inquiry. The rep fills the
 // sales side (customer, line items, selling). The buying/AP side is left for the buyer/ops.
 // Deduped by crm_inquiry_id so re-triggering Closed Won never creates a second order.
-router.post('/from-crm', authenticate, (req, res) => {
+router.post('/from-crm', requireCrmAccess, (req, res) => {
   try {
     const db = getDB();
     const { customer_name, customer_email, customer_phone, lead_source, rep, ppc_order_rep,
@@ -695,7 +695,7 @@ router.post('/from-crm', authenticate, (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-router.get('/pending', (req, res) => {
+router.get('/pending', requireManager, (req, res) => {
   try {
     const db = getDB();
     const orders = db.prepare(`
@@ -838,7 +838,7 @@ router.post('/buyer/order/:id/complete', requireBuyerAccess, (req, res) => {
 
 // ── Stats (for dashboard summary card) ───────────────────────────────────────
 
-router.get('/reporting-periods', (req, res) => {
+router.get('/reporting-periods', requireManager, (req, res) => {
   try {
     const db = getDB();
     const rows = db.prepare(`
@@ -884,7 +884,7 @@ router.delete('/quarters/close/:period', requireManager, (req, res) => {
 // ── Open month (boundary) ──────────────────────────────────────────────────────
 
 // Current open month — the period new CRM orders are auto-tagged to.
-router.get('/open-period', (req, res) => {
+router.get('/open-period', requireManager, (req, res) => {
   try { res.json({ open_period: getOpenPeriod(getDB()) }); }
   catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -1012,7 +1012,7 @@ router.post('/orders/:id/split-next', requireManager, (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-router.get('/stats', (req, res) => {
+router.get('/stats', requireManager, (req, res) => {
   try {
     const db = getDB();
     const { date_from, date_to, reporting_period } = req.query;
@@ -1083,7 +1083,7 @@ function currentQuarterPeriods() {
 // Per-rep GP for the running quarter, broken out by month — resets automatically each quarter.
 // Each user sees only their own credited GP (o.rep = their name; online orders credit "Online",
 // not a person, so they're naturally excluded). Same GP formula as the Operations dashboard byRep.
-router.get('/my-gp', (req, res) => {
+router.get('/my-gp', requireCrmAccess, (req, res) => {
   try {
     const db = getDB();
     const rep = req.user.name;
@@ -1121,7 +1121,7 @@ router.get('/my-gp', (req, res) => {
 // Returns every non-pending order with an outstanding balance (charged > received), excluding
 // orders flagged 'na' (stock / FOC / sample). Balance & aging are computed client-side from
 // charged / received / due_date.
-router.get('/receivables', (req, res) => {
+router.get('/receivables', requireManager, (req, res) => {
   try {
     const db = getDB();
     const { reporting_period } = req.query;
@@ -1149,7 +1149,7 @@ router.get('/receivables', (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-router.get('/payables', (req, res) => {
+router.get('/payables', requireManager, (req, res) => {
   try {
     const db = getDB();
     const { reporting_period } = req.query;
@@ -1223,7 +1223,7 @@ function buildPeriodConds(reporting_period, date_from, date_to) {
   return { baseConds, simConds, p };
 }
 
-router.get('/dashboard', (req, res) => {
+router.get('/dashboard', requireManager, (req, res) => {
   try {
     const db = getDB();
     const { date_from, date_to, reporting_period } = req.query;
