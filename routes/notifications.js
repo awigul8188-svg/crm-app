@@ -92,10 +92,17 @@ router.post('/read-all', (req, res) => {
   }
 });
 
-// Mark a follow-up complete
+// Mark a follow-up complete. Only a manager, the inquiry's assignee, or the follow-up's
+// creator may complete it — previously any authenticated user could complete any follow-up by id.
 router.patch('/followup/:id/complete', (req, res) => {
   const db = getDB();
   try {
+    const fu = db.prepare('SELECT f.created_by, i.assigned_to FROM followups f JOIN inquiries i ON f.inquiry_id = i.id WHERE f.id = ?').get(req.params.id);
+    if (!fu) return res.status(404).json({ error: 'Follow-up not found' });
+    const isManager = ['manager', 'purchasing_manager'].includes(req.user.role);
+    if (!isManager && fu.assigned_to !== req.user.id && fu.created_by !== req.user.id) {
+      return res.status(403).json({ error: 'Not your follow-up' });
+    }
     db.prepare('UPDATE followups SET completed = 1 WHERE id = ?').run(req.params.id);
     res.json({ success: true });
   } catch (err) {
