@@ -127,6 +127,10 @@ export const operationsApi = {
   buyerSetComplete: (id, complete) => req('POST', `/operations/buyer/order/${id}/complete`, { complete }),
   invoiceData:    (id)     => req('GET', `/operations/order/${id}/invoice`),
   getPurchasers:  ()       => req('GET', '/operations/purchasers'),
+  orderActivity:  (id)     => req('GET', `/operations/orders/${id}/activity`),
+  poData:         (id)     => req('GET', `/operations/order/${id}/po`),
+  poNextNumber:   ()       => req('GET', '/operations/po/next-number'),
+  recordPO:       (data)   => req('POST', '/operations/po', data),
 
   // Suppliers
   getSuppliers:   (search) => req('GET', `/operations/suppliers${search ? `?search=${encodeURIComponent(search)}` : ''}`),

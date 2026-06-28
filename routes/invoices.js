@@ -32,6 +32,13 @@ router.post('/', (req, res) => {
       .run(invoice_number || null, order_id || null, customer_name || null, Number(total) || 0, req.user.id);
     const finalNumber = (invoice_number && String(invoice_number).trim()) || fmt(r.lastInsertRowid);
     if (!invoice_number) db.prepare('UPDATE invoices SET invoice_number=? WHERE id=?').run(finalNumber, r.lastInsertRowid);
+    // Log it on the order's activity timeline (same shape as operations.js logOrder).
+    if (order_id) {
+      try {
+        db.prepare("INSERT INTO activity_log (entity_type, entity_id, user_id, user_name, action, comment) VALUES ('op_order',?,?,?,?,?)")
+          .run(order_id, req.user.id, req.user.name, 'Invoice generated', `${finalNumber} · $${(Number(total) || 0).toFixed(2)}`);
+      } catch (e) { /* best-effort */ }
+    }
     res.json({ id: r.lastInsertRowid, invoice_number: finalNumber });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

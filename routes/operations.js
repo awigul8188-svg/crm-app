@@ -6,6 +6,17 @@ const { businessToday } = require('./businessTime');
 
 router.use(authenticate);
 
+// ── Order activity timeline ────────────────────────────────────────────────────
+// Append a change-log entry for an order. Reuses the shared activity_log table with
+// entity_type='op_order'. Best-effort — never let logging break the mutation.
+function logOrder(orderId, user, action, detail) {
+  if (!orderId) return;
+  try {
+    getDB().prepare("INSERT INTO activity_log (entity_type, entity_id, user_id, user_name, action, comment) VALUES ('op_order',?,?,?,?,?)")
+      .run(orderId, user?.id || null, user?.name || 'System', action, detail || null);
+  } catch (e) { /* logging is best-effort */ }
+}
+
 // ── Reporting-period helpers (open/close month) ────────────────────────────────
 const PERIOD_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 // 'Jun-26' → 'Jul-26', 'Dec-26' → 'Jan-27'
@@ -133,8 +144,19 @@ router.post('/orders', requireManager, (req, res) => {
            payment_status||null, order_status||'Order placed', net||0, due_date||null,
            tax_charged||0, shipping_charged||0, cc_charges||0,
            rma_amount||0, shipped_via||null, tracking_to_customer||null, notes||null, period||null);
+    logOrder(result.lastInsertRowid, req.user, 'Order created', order_number || null);
     const order = db.prepare(`${ORDER_TOTALS_SQL} WHERE o.id = ? GROUP BY o.id`).get(result.lastInsertRowid);
     res.json(order);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Order change-log timeline (manager view, beside the order in Operations).
+router.get('/orders/:id/activity', requireManager, (req, res) => {
+  try {
+    const rows = getDB().prepare(
+      "SELECT id, user_name, action, comment, created_at FROM activity_log WHERE entity_type='op_order' AND entity_id=? ORDER BY id DESC"
+    ).all(req.params.id);
+    res.json(rows);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -174,6 +196,7 @@ router.put('/orders/:id', requireManager, (req, res) => {
     // customer_paid is intentionally NOT updated here — it is owned by the payment log (syncOrderPaid).
     // reporting_period drives all dashboard month/quarter grouping; allow correcting a mis-tagged month
     // from the Edit form. COALESCE keeps the existing tag when the field is omitted.
+    const prev = db.prepare('SELECT * FROM op_orders WHERE id=?').get(req.params.id);
     db.prepare(`
       UPDATE op_orders SET order_number=?,order_date=?,customer_id=?,email=?,lead_source=?,rep=?,
         ppc_order_rep=?,buyer=?,payment_status=?,order_status=?,net=?,due_date=?,tax_charged=?,
@@ -186,6 +209,22 @@ router.put('/orders/:id', requireManager, (req, res) => {
            tax_charged||0, shipping_charged||0, cc_charges||0,
            rma_amount||0, shipped_via||null, tracking_to_customer||null, notes||null,
            reporting_period || null, req.params.id);
+    // Build a human-readable diff of the fields the edit form touches.
+    if (prev) {
+      const next = { order_number, order_status: order_status || 'Order placed', payment_status: payment_status || null,
+        rep, buyer, order_date: order_date || null, due_date: due_date || null,
+        tax_charged: tax_charged || 0, shipping_charged: shipping_charged || 0, cc_charges: cc_charges || 0,
+        rma_amount: rma_amount || 0, lead_source, shipped_via, tracking_to_customer, reporting_period: reporting_period || prev.reporting_period };
+      const labels = { order_number: 'Order #', order_status: 'Status', payment_status: 'Payment status', rep: 'Rep',
+        buyer: 'Buyer', order_date: 'Order date', due_date: 'Due date', tax_charged: 'Tax', shipping_charged: 'Shipping',
+        cc_charges: 'CC charges', rma_amount: 'RMA amount', lead_source: 'Lead source', shipped_via: 'Shipped via',
+        tracking_to_customer: 'Tracking', reporting_period: 'Period' };
+      const norm = v => v === null || v === undefined ? '' : String(v);
+      const changes = Object.keys(labels)
+        .filter(k => norm(prev[k]) !== norm(next[k]))
+        .map(k => `${labels[k]}: ${norm(prev[k]) || '—'} → ${norm(next[k]) || '—'}`);
+      if (changes.length) logOrder(req.params.id, req.user, 'Order edited', changes.join('; '));
+    }
     const order = db.prepare(`${ORDER_TOTALS_SQL} WHERE o.id = ? GROUP BY o.id`).get(req.params.id);
     res.json(order);
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -227,6 +266,7 @@ router.post('/orders/:id/items', requireManager, (req, res) => {
       FROM op_order_items i LEFT JOIN op_suppliers s ON i.supplier_id = s.id
       WHERE i.id = ?
     `).get(result.lastInsertRowid);
+    logOrder(req.params.id, req.user, 'Item added', `${part_number || 'item'}${quantity ? ` ×${quantity}` : ''}`);
     res.json(item);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -257,13 +297,17 @@ router.put('/order-items/:id', requireManager, (req, res) => {
       FROM op_order_items i LEFT JOIN op_suppliers s ON i.supplier_id = s.id
       WHERE i.id = ?
     `).get(req.params.id);
+    if (item) logOrder(item.order_id, req.user, 'Item updated', `${item.part_number || 'item'}`);
     res.json(item);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 router.delete('/order-items/:id', requireManager, (req, res) => {
   try {
-    getDB().prepare(`DELETE FROM op_order_items WHERE id = ?`).run(req.params.id);
+    const db = getDB();
+    const it = db.prepare('SELECT order_id, part_number FROM op_order_items WHERE id=?').get(req.params.id);
+    db.prepare(`DELETE FROM op_order_items WHERE id = ?`).run(req.params.id);
+    if (it) logOrder(it.order_id, req.user, 'Item removed', it.part_number || null);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -442,6 +486,7 @@ router.post('/orders/:id/payments', requireManager, (req, res) => {
     const result = db.prepare(`INSERT INTO op_order_payments (order_id,amount,payment_date,method,reference,notes) VALUES (?,?,?,?,?,?)`)
       .run(req.params.id, Number(amount) || 0, payment_date || null, method || null, reference || null, notes || null);
     syncOrderPaid(db, req.params.id);
+    logOrder(req.params.id, req.user, 'Payment received', `$${(Number(amount) || 0).toFixed(2)}${method ? ` · ${method}` : ''}`);
     res.json(db.prepare(`SELECT * FROM op_order_payments WHERE id=?`).get(result.lastInsertRowid));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -455,6 +500,7 @@ router.put('/payments/:id', requireManager, (req, res) => {
     db.prepare(`UPDATE op_order_payments SET amount=?,payment_date=?,method=?,reference=?,notes=? WHERE id=?`)
       .run(Number(amount) || 0, payment_date || null, method || null, reference || null, notes || null, req.params.id);
     syncOrderPaid(db, row.order_id);
+    logOrder(row.order_id, req.user, 'Payment edited', `$${(Number(amount) || 0).toFixed(2)}`);
     res.json(db.prepare(`SELECT * FROM op_order_payments WHERE id=?`).get(req.params.id));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -462,9 +508,9 @@ router.put('/payments/:id', requireManager, (req, res) => {
 router.delete('/payments/:id', requireManager, (req, res) => {
   try {
     const db = getDB();
-    const row = db.prepare(`SELECT order_id FROM op_order_payments WHERE id=?`).get(req.params.id);
+    const row = db.prepare(`SELECT order_id, amount FROM op_order_payments WHERE id=?`).get(req.params.id);
     db.prepare(`DELETE FROM op_order_payments WHERE id=?`).run(req.params.id);
-    if (row) syncOrderPaid(db, row.order_id);
+    if (row) { syncOrderPaid(db, row.order_id); logOrder(row.order_id, req.user, 'Payment deleted', `$${(Number(row.amount) || 0).toFixed(2)}`); }
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -505,6 +551,8 @@ router.post('/order-items/:id/payments', requireManager, (req, res) => {
     const result = db.prepare(`INSERT INTO op_item_payments (order_item_id,amount,payment_date,method,reference,notes) VALUES (?,?,?,?,?,?)`)
       .run(req.params.id, Number(amount) || 0, payment_date || null, method || null, reference || null, notes || null);
     syncItemPaid(db, req.params.id);
+    const it = db.prepare('SELECT order_id, part_number FROM op_order_items WHERE id=?').get(req.params.id);
+    if (it) logOrder(it.order_id, req.user, 'Supplier paid', `${it.part_number || 'item'} · $${(Number(amount) || 0).toFixed(2)}`);
     res.json(db.prepare(`SELECT * FROM op_item_payments WHERE id=?`).get(result.lastInsertRowid));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -557,7 +605,7 @@ router.post('/rma', requireManager, (req, res) => {
            refund_issued||0, restocking_fee||0, return_tracking_number||null,
            return_shipping_paid||0, notes||null, qb_credit_memo||null,
            cost_recovered === 0 || cost_recovered === false ? 0 : 1);
-    if (order_id) syncOrderRmaAmount(db, order_id);
+    if (order_id) { syncOrderRmaAmount(db, order_id); logOrder(order_id, req.user, 'RMA created', `${rma_number || ''}${return_reason ? ` · ${return_reason}` : ''}`); }
     res.json(db.prepare(`${RMA_SELECT} WHERE r.id=?`).get(result.lastInsertRowid));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -692,6 +740,7 @@ router.post('/from-crm', requireCrmAccess, (req, res) => {
       insItem.run(orderId, it.part_number||null, it.description||null, num(it.quantity)||1, it.product_condition||null, num(it.selling), num(it.buying), supplierIdFor(it.supplier_name), it.sourced_by||null);
     }
 
+    logOrder(orderId, req.user, 'Order created from CRM', `${orderNum}${rep ? ` · rep ${rep}` : ''} · ${lines.length} line${lines.length > 1 ? 's' : ''}`);
     res.json({ ok: true, order_id: orderId, order_number: orderNum, item_count: lines.length });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -811,6 +860,59 @@ router.get('/purchasers', requireBuyerAccess, (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Supplier Purchase Orders (PO) ────────────────────────────────────────────
+// Data to build a PO: the order header, the distinct suppliers on its lines, and the lines
+// (with BUYING cost) grouped client-side per supplier. One PO is generated per supplier.
+router.get('/order/:id/po', requireBuyerAccess, (req, res) => {
+  try {
+    const db = getDB();
+    const o = db.prepare("SELECT id, order_number, order_date FROM op_orders WHERE id=?").get(req.params.id);
+    if (!o) return res.status(404).json({ error: 'Not found' });
+    const items = db.prepare(`
+      SELECT i.id, i.supplier_id, s.company AS supplier_name, s.rep_name AS supplier_rep, s.email AS supplier_email, s.phone AS supplier_phone,
+             i.part_number, i.description, i.product, i.quantity, i.product_condition, i.buying, i.supplier_terms, i.ta_po_number
+      FROM op_order_items i LEFT JOIN op_suppliers s ON s.id = i.supplier_id
+      WHERE i.order_id = ? ORDER BY i.id
+    `).all(req.params.id);
+    const suppliers = [];
+    const seen = new Set();
+    for (const it of items) {
+      if (it.supplier_id && !seen.has(it.supplier_id)) {
+        seen.add(it.supplier_id);
+        suppliers.push({ id: it.supplier_id, company: it.supplier_name, rep_name: it.supplier_rep, email: it.supplier_email, phone: it.supplier_phone });
+      }
+    }
+    res.json({ order_number: o.order_number, order_date: o.order_date, suppliers, items });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/po/next-number', requireBuyerAccess, (req, res) => {
+  try {
+    const max = getDB().prepare('SELECT COALESCE(MAX(id),0) AS m FROM purchase_orders').get().m;
+    res.json({ po_number: 'PO-' + String(max + 1).padStart(5, '0') });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Record a generated PO: stores the row, writes the PO# back onto its lines, logs the timeline.
+router.post('/po', requireBuyerAccess, (req, res) => {
+  try {
+    const db = getDB();
+    const { order_id, supplier_id, supplier_name, po_number, total, item_ids } = req.body;
+    const r = db.prepare(`INSERT INTO purchase_orders (po_number, order_id, supplier_id, supplier_name, total, created_by) VALUES (?,?,?,?,?,?)`)
+      .run(po_number || null, order_id || null, supplier_id || null, supplier_name || null, Number(total) || 0, req.user.id);
+    const finalNumber = (po_number && String(po_number).trim()) || ('PO-' + String(r.lastInsertRowid).padStart(5, '0'));
+    if (!po_number) db.prepare('UPDATE purchase_orders SET po_number=? WHERE id=?').run(finalNumber, r.lastInsertRowid);
+    // Stamp the PO number onto the included line items (so the order shows it).
+    if (Array.isArray(item_ids) && item_ids.length && order_id) {
+      const ph = item_ids.map(() => '?').join(',');
+      db.prepare(`UPDATE op_order_items SET ta_po_number=?, updated_at=CURRENT_TIMESTAMP WHERE order_id=? AND id IN (${ph})`)
+        .run(finalNumber, order_id, ...item_ids);
+    }
+    logOrder(order_id, req.user, 'PO generated', `${finalNumber}${supplier_name ? ` · ${supplier_name}` : ''}`);
+    res.json({ id: r.lastInsertRowid, po_number: finalNumber });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // Invoice data for an order — customer-facing totals (subtotal/tax/shipping/cc/total/paid/balance)
 // + line SELLING prices, for the buyer/manager to bill the customer. Deliberately excludes cost/GP
 // (buying, supplier payments) — invoices never show those. (Buyer otherwise can't read order charges.)
@@ -842,7 +944,8 @@ router.patch('/buyer/order/:id', requireBuyerAccess, (req, res) => {
   try {
     const db = getDB();
     const id = req.params.id;
-    if (!db.prepare('SELECT id FROM op_orders WHERE id=?').get(id)) return res.status(404).json({ error: 'Not found' });
+    const before = db.prepare('SELECT fulfillment_status, vendor_complete FROM op_orders WHERE id=?').get(id);
+    if (!before) return res.status(404).json({ error: 'Not found' });
     const { items = [], fulfillment_status, shipped_via, tracking_to_customer, buyer, complete } = req.body;
     const num = (v) => { const n = parseFloat(String(v ?? '').replace(/[$,\s]/g, '')); return isNaN(n) ? 0 : n; };
     // Quantity drives order_amount — reject a blank/zero qty rather than silently coercing it to 1.
@@ -879,6 +982,12 @@ router.patch('/buyer/order/:id', requireBuyerAccess, (req, res) => {
           .run(c, c ? new Date().toISOString() : null, c ? req.user.id : null, id);
       }
     })();
+    // Timeline: stage change, vendor-complete toggle, and a generic vendor-details touch.
+    if (fulfillment_status != null && fulfillment_status !== (before.fulfillment_status || ''))
+      logOrder(id, req.user, 'Fulfillment stage', `${before.fulfillment_status || '—'} → ${fulfillment_status}`);
+    if (complete !== undefined && (complete ? 1 : 0) !== (before.vendor_complete || 0))
+      logOrder(id, req.user, complete ? 'Marked vendor complete' : 'Reopened (vendor)', null);
+    if (items.length) logOrder(id, req.user, 'Vendor details updated', `${items.length} line${items.length > 1 ? 's' : ''}`);
     res.json(loadBuyerOrder(db, id));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -890,6 +999,7 @@ router.post('/buyer/order/:id/complete', requireBuyerAccess, (req, res) => {
     const complete = req.body?.complete === false ? 0 : 1;
     db.prepare(`UPDATE op_orders SET vendor_complete=?, vendor_completed_at=?, vendor_completed_by=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`)
       .run(complete, complete ? new Date().toISOString() : null, complete ? req.user.id : null, req.params.id);
+    logOrder(req.params.id, req.user, complete ? 'Marked vendor complete' : 'Reopened (vendor)', null);
     res.json(loadBuyerOrder(db, req.params.id));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -990,6 +1100,7 @@ router.post('/orders/:id/move-next', requireManager, (req, res) => {
       return res.status(400).json({ error: `${to} is closed — reopen it before moving orders into it` });
     }
     db.prepare(`UPDATE op_orders SET reporting_period=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(to, o.id);
+    logOrder(o.id, req.user, 'Moved to next month', `${cur} → ${to}`);
     const order = db.prepare(`${ORDER_TOTALS_SQL} WHERE o.id=? GROUP BY o.id`).get(o.id);
     res.json({ ok: true, from: cur, to, order });
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -1064,6 +1175,8 @@ router.post('/orders/:id/split-next', requireManager, (req, res) => {
       if (movedCount === 0) db.prepare(`DELETE FROM op_orders WHERE id=?`).run(newId);
     })();
     if (movedCount === 0) return res.status(400).json({ error: 'No valid items/quantities to move' });
+    logOrder(o.id, req.user, 'Split to next month', `${movedCount} line${movedCount > 1 ? 's' : ''} · ${cur} → ${to}`);
+    logOrder(newId, req.user, 'Created from split', `${movedCount} line${movedCount > 1 ? 's' : ''} from ${cur}`);
     const new_order = db.prepare(`${ORDER_TOTALS_SQL} WHERE o.id=? GROUP BY o.id`).get(newId);
     const original = db.prepare(`${ORDER_TOTALS_SQL} WHERE o.id=? GROUP BY o.id`).get(o.id);
     res.json({ ok: true, from: cur, to, new_order, original });

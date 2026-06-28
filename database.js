@@ -492,4 +492,21 @@ function runInvoicesMigration() {
   } catch (e) { console.log('invoices migration note:', e.message); }
 }
 
-module.exports = { initializeDB, getDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations, runInquiryViewsMigration, runBuyerMigration, runQuoteEntriesMigration, runImportedFlagMigration, runQuotesMigration, runInvoicesMigration };
+// Records each generated supplier purchase order — drives the auto-sequential PO number + history.
+function runPurchaseOrdersMigration() {
+  const db = getDB();
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS purchase_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      po_number TEXT,
+      order_id INTEGER,
+      supplier_id INTEGER,
+      supplier_name TEXT,
+      total REAL DEFAULT 0,
+      created_by INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+  } catch (e) { console.log('purchase_orders migration note:', e.message); }
+}
+
+module.exports = { initializeDB, getDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations, runInquiryViewsMigration, runBuyerMigration, runQuoteEntriesMigration, runImportedFlagMigration, runQuotesMigration, runInvoicesMigration, runPurchaseOrdersMigration };

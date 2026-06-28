@@ -7,6 +7,7 @@ import SearchableSelect from '../components/SearchableSelect'
 import MultiSelect from '../components/MultiSelect'
 import { useColumnPrefs, ColumnPicker } from '../components/ColumnPicker'
 import InvoiceModal from '../components/InvoiceModal'
+import POModal from '../components/POModal'
 import { useAuth } from '../App'
 import { Search, Plus, Edit2, Trash2, Package, Users, Truck, RotateCcw, ChevronRight, X, AlertCircle, List, ClipboardList, Upload, DollarSign, CreditCard, CheckCircle2, Info } from 'lucide-react'
 
@@ -919,6 +920,35 @@ function SupplierPaymentsModal({ item, onClose, onChanged }) {
   )
 }
 
+// Scrollable change-log panel shown beside an order (toggleable). Fed by GET /orders/:id/activity.
+function OrderTimeline({ activity, onHide }) {
+  const fmt = (ts) => {
+    if (!ts) return ''
+    const d = new Date(String(ts).replace(' ', 'T') + 'Z')   // SQLite stores UTC 'YYYY-MM-DD HH:MM:SS'
+    return isNaN(d) ? ts : d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  }
+  return (
+    <div style={{ width: 320, flexShrink: 0, borderLeft: '1px solid #eef2f6', paddingLeft: 18 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <SectionLabel>Activity timeline</SectionLabel>
+        <button onClick={onHide} className="btn btn-secondary btn-sm" style={{ padding: '3px 8px' }}>Hide</button>
+      </div>
+      <div style={{ maxHeight: '64vh', overflowY: 'auto', paddingRight: 6 }}>
+        {(!activity || activity.length === 0) && <div style={{ fontSize: 12, color: '#94a3b8' }}>No activity yet. Changes will appear here.</div>}
+        {(activity || []).map((a, i) => (
+          <div key={a.id || i} style={{ position: 'relative', paddingLeft: 16, paddingBottom: 14 }}>
+            <div style={{ position: 'absolute', left: 0, top: 4, width: 8, height: 8, borderRadius: 8, background: BRAND }} />
+            {i < activity.length - 1 && <div style={{ position: 'absolute', left: 3.5, top: 12, bottom: 0, width: 1, background: '#e2e8f0' }} />}
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: '#0f172a' }}>{a.action}</div>
+            {a.comment && <div style={{ fontSize: 12, color: '#475569', marginTop: 1, whiteSpace: 'pre-wrap' }}>{a.comment}</div>}
+            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{a.user_name || 'System'} · {fmt(a.created_at)}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
   const [order, setOrder] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -931,17 +961,23 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
   const [payForm, setPayForm] = useState(null)   // false-y = closed; true = new; object = edit
   const [supPayItem, setSupPayItem] = useState(null)  // line item whose AP payments modal is open
   const [showInvoice, setShowInvoice] = useState(false)
+  const [showPO, setShowPO] = useState(false)
+  const [activity, setActivity] = useState([])
+  const [showTimeline, setShowTimeline] = useState(() => localStorage.getItem('op-timeline') === '1')
   const { user } = useAuth()
+  const toggleTimeline = (v) => { const nv = v === undefined ? !showTimeline : v; setShowTimeline(nv); localStorage.setItem('op-timeline', nv ? '1' : '0') }
+  const loadActivity = useCallback(() => { operationsApi.orderActivity(orderId).then(setActivity).catch(() => {}) }, [orderId])
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const o = await operationsApi.getOrder(orderId); setOrder(o)
       const p = await operationsApi.getPayments(orderId); setPayments(p || [])
+      loadActivity()
     }
     catch(e) { console.error(e) }
     finally { setLoading(false) }
-  }, [orderId])
+  }, [orderId, loadActivity])
 
   const handleDeletePayment = async (id) => {
     if (!await confirmAction({ title: 'Delete payment?', message: 'This customer payment record will be removed.', confirmLabel: 'Delete' })) return
@@ -1040,8 +1076,11 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
 
   return (
     <>
-      <Modal title={`Order ${order.order_number}`} onClose={onClose} wide>
+      <Modal title={`Order ${order.order_number}`} onClose={onClose} maxWidthPx={showTimeline ? 1280 : 920}>
         {loading && <div style={{ position: 'absolute', top: 12, right: 60, fontSize: 11, color: '#94a3b8' }}>Refreshing…</div>}
+
+        <div style={{ display: 'flex', gap: 22, alignItems: 'flex-start' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
 
         {/* Status + actions */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
@@ -1054,11 +1093,14 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
             <button className="btn btn-secondary btn-sm" onClick={handleMoveWhole} disabled={moving} title="Move this whole order to the next month">
               <ChevronRight size={13} /> Move to next month
             </button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowPO(true)}>🧾 PO</button>
             <button className="btn btn-secondary btn-sm" onClick={() => setShowInvoice(true)}>📄 Invoice</button>
             <button className="btn btn-secondary btn-sm" onClick={() => setEditOrder(true)}><Edit2 size={13} /> Edit Order</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => toggleTimeline()} title="Show / hide the change timeline">🕑 {showTimeline ? 'Hide' : 'Timeline'}</button>
           </div>
         </div>
         {showInvoice && <InvoiceModal orderId={orderId} user={user} onClose={() => setShowInvoice(false)} />}
+        {showPO && <POModal orderId={orderId} user={user} onClose={() => setShowPO(false)} onGenerated={loadActivity} />}
 
         {/* Financial summary */}
         <SectionLabel>Financials</SectionLabel>
@@ -1268,6 +1310,10 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
             <div style={{ background: '#f8fafc', borderRadius: 10, padding: '12px 14px', fontSize: 13, color: '#475569', whiteSpace: 'pre-wrap' }}>{order.notes}</div>
           </>
         )}
+
+        </div>{/* /main column */}
+        {showTimeline && <OrderTimeline activity={activity} onHide={() => toggleTimeline(false)} />}
+        </div>{/* /two-column row */}
       </Modal>
 
       {editOrder && (
