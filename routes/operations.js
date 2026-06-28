@@ -797,6 +797,32 @@ router.get('/buyer/order/:id', requireBuyerAccess, (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Invoice data for an order — customer-facing totals (subtotal/tax/shipping/cc/total/paid/balance)
+// + line SELLING prices, for the buyer/manager to bill the customer. Deliberately excludes cost/GP
+// (buying, supplier payments) — invoices never show those. (Buyer otherwise can't read order charges.)
+router.get('/order/:id/invoice', requireBuyerAccess, (req, res) => {
+  try {
+    const db = getDB();
+    const o = db.prepare(`
+      SELECT o.id, o.order_number, o.order_date, o.net, o.due_date, o.payment_status,
+             o.tax_charged, o.shipping_charged, o.cc_charges, o.customer_paid,
+             o.shipped_via, o.tracking_to_customer, o.notes,
+             c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone, c.address AS customer_address
+      FROM op_orders o LEFT JOIN op_customers c ON o.customer_id = c.id WHERE o.id = ?
+    `).get(req.params.id);
+    if (!o) return res.status(404).json({ error: 'Not found' });
+    const items = db.prepare(`
+      SELECT part_number, description, product, quantity, product_condition, selling
+      FROM op_order_items WHERE order_id = ? ORDER BY id
+    `).all(req.params.id);
+    const n = (v) => { const x = parseFloat(String(v ?? '').replace(/[$,\s]/g, '')); return isNaN(x) ? 0 : x; };
+    const subtotal = items.reduce((t, it) => t + n(it.selling) * n(it.quantity), 0);
+    const total = subtotal + n(o.tax_charged) + n(o.shipping_charged) + n(o.cc_charges);
+    const balance_due = total - n(o.customer_paid);
+    res.json({ ...o, items, subtotal, total, balance_due });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Save the vendor side: per-item buying details + order-level fulfillment/tracking.
 router.patch('/buyer/order/:id', requireBuyerAccess, (req, res) => {
   try {

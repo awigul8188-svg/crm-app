@@ -476,4 +476,20 @@ function runQuotesMigration() {
   } catch (e) { console.log('quotes migration note:', e.message); }
 }
 
-module.exports = { initializeDB, getDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations, runInquiryViewsMigration, runBuyerMigration, runQuoteEntriesMigration, runImportedFlagMigration, runQuotesMigration };
+// Records each generated customer invoice — drives the auto-sequential INV number + history.
+function runInvoicesMigration() {
+  const db = getDB();
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS invoices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      invoice_number TEXT,
+      order_id INTEGER,
+      customer_name TEXT,
+      total REAL DEFAULT 0,
+      created_by INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+  } catch (e) { console.log('invoices migration note:', e.message); }
+}
+
+module.exports = { initializeDB, getDB, runPurchasingMigrations, runPurchasingV2Migrations, runOperationsMigrations, runInquiryViewsMigration, runBuyerMigration, runQuoteEntriesMigration, runImportedFlagMigration, runQuotesMigration, runInvoicesMigration };

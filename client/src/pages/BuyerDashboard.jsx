@@ -6,6 +6,7 @@ import { useAuth } from '../App'
 import { OP_CONDITIONS } from '../components/Badges'
 import SearchableSelect from '../components/SearchableSelect'
 import { ColumnPicker, useColumnPrefs } from '../components/ColumnPicker'
+import InvoiceModal from '../components/InvoiceModal'
 
 const BRAND = '#00D4C8'
 const STAGES = ['Awaiting PO', 'PO Placed', 'Shipped to Warehouse', 'Received', 'Shipped to Customer', 'Delivered']
@@ -57,6 +58,8 @@ function VendorModal({ id, suppliers, onAddSupplier, onClose, onSaved }) {
   const [newSup, setNewSup] = useState('')
   const [addingFor, setAddingFor] = useState(null) // item index showing the "+ new supplier" input
   const [dirty, setDirty] = useState(false)
+  const [showInvoice, setShowInvoice] = useState(false)
+  const { user } = useAuth()
   const attemptClose = () => { if (dirty && !window.confirm('Discard unsaved changes?')) return; onClose() }
 
   const load = useCallback(() => {
@@ -220,15 +223,19 @@ function VendorModal({ id, suppliers, onAddSupplier, onClose, onSaved }) {
 
         {/* Footer actions */}
         {order && (
-          <div style={{ borderTop: '1px solid #f1f5f9', padding: '14px 24px', display: 'flex', gap: 10, justifyContent: 'flex-end', flexShrink: 0 }}>
+          <div style={{ borderTop: '1px solid #f1f5f9', padding: '14px 24px', display: 'flex', gap: 10, justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+            <button onClick={() => setShowInvoice(true)} style={{ padding: '10px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', color: '#0f172a', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>📄 Generate Invoice</button>
+            <div style={{ display: 'flex', gap: 10 }}>
             <button onClick={attemptClose} style={{ padding: '10px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', color: '#475569', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
             <button onClick={() => save(undefined)} disabled={saving} style={{ padding: '10px 18px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', color: '#0f172a', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>{saving ? 'Saving…' : 'Save'}</button>
             {order.vendor_complete
               ? <button onClick={() => save(false)} disabled={saving} style={{ padding: '10px 18px', borderRadius: 10, border: 'none', background: '#f59e0b', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Reopen</button>
               : <button onClick={() => save(true)} disabled={saving} style={{ padding: '10px 18px', borderRadius: 10, border: 'none', background: BRAND, color: '#062b29', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Save & Mark Complete</button>}
+            </div>
           </div>
         )}
       </div>
+      {showInvoice && <InvoiceModal orderId={id} user={user} onClose={() => setShowInvoice(false)} />}
     </div>,
     document.body
   )

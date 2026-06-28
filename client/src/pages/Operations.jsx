@@ -6,6 +6,8 @@ import ImportModal from '../components/ImportModal'
 import SearchableSelect from '../components/SearchableSelect'
 import MultiSelect from '../components/MultiSelect'
 import { useColumnPrefs, ColumnPicker } from '../components/ColumnPicker'
+import InvoiceModal from '../components/InvoiceModal'
+import { useAuth } from '../App'
 import { Search, Plus, Edit2, Trash2, Package, Users, Truck, RotateCcw, ChevronRight, X, AlertCircle, List, ClipboardList, Upload, DollarSign, CreditCard, CheckCircle2, Info } from 'lucide-react'
 
 const BRAND = '#00D4C8'
@@ -928,6 +930,8 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
   const [payments, setPayments] = useState([])
   const [payForm, setPayForm] = useState(null)   // false-y = closed; true = new; object = edit
   const [supPayItem, setSupPayItem] = useState(null)  // line item whose AP payments modal is open
+  const [showInvoice, setShowInvoice] = useState(false)
+  const { user } = useAuth()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -1050,9 +1054,11 @@ function OrderDetail({ orderId, customers, suppliers, onClose, onUpdated }) {
             <button className="btn btn-secondary btn-sm" onClick={handleMoveWhole} disabled={moving} title="Move this whole order to the next month">
               <ChevronRight size={13} /> Move to next month
             </button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowInvoice(true)}>📄 Invoice</button>
             <button className="btn btn-secondary btn-sm" onClick={() => setEditOrder(true)}><Edit2 size={13} /> Edit Order</button>
           </div>
         </div>
+        {showInvoice && <InvoiceModal orderId={orderId} user={user} onClose={() => setShowInvoice(false)} />}
 
         {/* Financial summary */}
         <SectionLabel>Financials</SectionLabel>

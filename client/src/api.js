@@ -125,6 +125,7 @@ export const operationsApi = {
   buyerOrder:     (id)     => req('GET', `/operations/buyer/order/${id}`),
   buyerSaveOrder: (id, data) => req('PATCH', `/operations/buyer/order/${id}`, data),
   buyerSetComplete: (id, complete) => req('POST', `/operations/buyer/order/${id}/complete`, { complete }),
+  invoiceData:    (id)     => req('GET', `/operations/order/${id}/invoice`),
 
   // Suppliers
   getSuppliers:   (search) => req('GET', `/operations/suppliers${search ? `?search=${encodeURIComponent(search)}` : ''}`),
@@ -262,4 +263,9 @@ export const assistantApi = {
 export const quotesApi = {
   nextNumber: () => req('GET', '/quotes/next-number'),
   record: (data) => req('POST', '/quotes', data),
+};
+
+export const invoicesApi = {
+  nextNumber: () => req('GET', '/invoices/next-number'),
+  record: (data) => req('POST', '/invoices', data),
 };
