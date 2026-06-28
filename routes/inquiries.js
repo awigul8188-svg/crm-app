@@ -318,7 +318,9 @@ router.post('/:id/comments', (req, res) => {
   const db = getDB();
 
   try {
-    const inquiry = db.prepare('SELECT i.type, c.name as customer_name FROM inquiries i JOIN customers c ON i.customer_id = c.id WHERE i.id = ?').get(req.params.id);
+    const inquiry = db.prepare('SELECT i.type, i.assigned_to, c.name as customer_name FROM inquiries i JOIN customers c ON i.customer_id = c.id WHERE i.id = ?').get(req.params.id);
+    if (!inquiry) return res.status(404).json({ error: 'Not found' });
+    if (req.user.role === 'ae' && inquiry.assigned_to !== req.user.id) return res.status(403).json({ error: 'Not authorized' });
 
     logActivity(db, req.params.id, req.user, 'Comment', comment);
 
@@ -344,7 +346,9 @@ router.post('/:id/followups', (req, res) => {
   const db = getDB();
 
   try {
-    const inquiry = db.prepare('SELECT i.type, c.name as customer_name FROM inquiries i JOIN customers c ON i.customer_id = c.id WHERE i.id = ?').get(req.params.id);
+    const inquiry = db.prepare('SELECT i.type, i.assigned_to, c.name as customer_name FROM inquiries i JOIN customers c ON i.customer_id = c.id WHERE i.id = ?').get(req.params.id);
+    if (!inquiry) return res.status(404).json({ error: 'Not found' });
+    if (req.user.role === 'ae' && inquiry.assigned_to !== req.user.id) return res.status(403).json({ error: 'Not authorized' });
 
     const result = db.prepare('INSERT INTO followups (inquiry_id, note, follow_up_date, created_by) VALUES (?, ?, ?, ?)').run(req.params.id, note, follow_up_date || null, req.user.id);
     logActivity(db, req.params.id, req.user, 'Follow-up added', note);
