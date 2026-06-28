@@ -352,8 +352,16 @@ router.post('/:id/followups', (req, res) => {
 
 router.put('/followups/:id', (req, res) => {
   const { completed, note, follow_up_date } = req.body;
+  const db = getDB();
   try {
-    getDB().prepare('UPDATE followups SET completed=?, note=?, follow_up_date=? WHERE id=?').run(completed ? 1 : 0, note, follow_up_date || null, req.params.id);
+    // Same ownership rule as completing a follow-up: manager, inquiry assignee, or creator only.
+    const fu = db.prepare('SELECT f.created_by, i.assigned_to FROM followups f JOIN inquiries i ON f.inquiry_id = i.id WHERE f.id = ?').get(req.params.id);
+    if (!fu) return res.status(404).json({ error: 'Follow-up not found' });
+    const isManager = ['manager', 'purchasing_manager'].includes(req.user.role);
+    if (!isManager && fu.assigned_to !== req.user.id && fu.created_by !== req.user.id) {
+      return res.status(403).json({ error: 'Not your follow-up' });
+    }
+    db.prepare('UPDATE followups SET completed=?, note=?, follow_up_date=? WHERE id=?').run(completed ? 1 : 0, note, follow_up_date || null, req.params.id);
     res.json({ success: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
