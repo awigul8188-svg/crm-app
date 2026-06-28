@@ -228,7 +228,7 @@ function InquiryAssignModal({ inquiryId, onClose, onSaved }) {
 }
 
 /* ── Parts table ─────────────────────────────────── */
-function PartsTable({ type, purchasers, dateRange, onRefresh }) {
+function PartsTable({ type, purchasers, dateRange, onRefresh, refreshToken }) {
   const [result, setResult] = useState(null); const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1); const [filterStatus, setFilterStatus] = useState(''); const [search, setSearch] = useState('')
   const load = () => {
@@ -239,7 +239,7 @@ function PartsTable({ type, purchasers, dateRange, onRefresh }) {
   }
   useEffect(() => { setPage(1) }, [type, filterStatus, search, JSON.stringify(dateRange)])
   // Server-side search (debounced) so it matches across all pages, not just the loaded one.
-  useEffect(() => { const t = setTimeout(load, search ? 300 : 0); return () => clearTimeout(t) }, [type, filterStatus, page, search, JSON.stringify(dateRange)])
+  useEffect(() => { const t = setTimeout(load, search ? 300 : 0); return () => clearTimeout(t) }, [type, filterStatus, page, search, JSON.stringify(dateRange), refreshToken])
   const handleAssign = async (reqId, purchaserId) => { try { if (purchaserId) await purchasingApi.assign({ requirement_id: reqId, purchaser_id: purchaserId }) } catch (e) {} load(); onRefresh() }
   const filtered = result?.parts || []
   const PT_COLS = [
@@ -408,7 +408,7 @@ function PurchaserPerformanceCard({ purchasers }) {
                     {[
                       { label: 'Quoted',    value: p.quoted_count,   color: '#10b981', bg: '#f0fdf4' },
                       { label: 'Pending',   value: p.pending_count,  color: '#f59e0b', bg: '#fffbeb' },
-                      { label: 'Unassigned',value: Math.max(0, p.assigned - p.quoted_count - (p.pending_count||0)), color: '#ef4444', bg: '#fef2f2' },
+                      { label: 'Not In Stock',value: p.not_in_stock ?? Math.max(0, p.assigned - p.quoted_count - (p.pending_count||0)), color: '#ef4444', bg: '#fef2f2' },
                       { label: 'Quote Rate',value: `${quoteRate}%`,  color: BRAND,     bg: `${BRAND}10` },
                     ].map(m => (
                       <div key={m.label} style={{ background: m.bg, borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
@@ -452,6 +452,7 @@ export default function PurchasingManagerView() {
   const [notifications, setNotifications] = useState([]); const [activeTab, setActiveTab] = useState('dashboard')
   const [preset, setPreset] = useState('all'); const [customFrom, setCustomFrom] = useState(''); const [customTo, setCustomTo] = useState('')
   const [assignInquiryId, setAssignInquiryId] = useState(null)
+  const [partsRefresh, setPartsRefresh] = useState(0)  // bumped after the assign modal saves → reloads the parts tables
   const [showNewUser, setShowNewUser] = useState(false); const [newUserForm, setNewUserForm] = useState({ name: '', username: '', password: '' })
   const [savingUser, setSavingUser] = useState(false); const [userError, setUserError] = useState('')
   const [resetting, setResetting] = useState(false); const [resetResults, setResetResults] = useState(null); const [copiedAll, setCopiedAll] = useState(false)
@@ -561,7 +562,7 @@ export default function PurchasingManagerView() {
               <div style={{ fontSize: 26, fontWeight: 800, color: '#10b981', fontFamily: '"Bricolage Grotesque",sans-serif' }}>${parseFloat(ms.totalQuotedValue || 0).toLocaleString()}</div>
             </div>
             <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #f1f5f9', padding: '16px 20px', animation: 'fadeUp 0.4s ease 0.25s both' }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Avg Quote Price</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Avg Cost / Part</div>
               <div style={{ fontSize: 26, fontWeight: 800, color: BRAND, fontFamily: '"Bricolage Grotesque",sans-serif' }}>${parseFloat(ms.avgQuotePrice || 0).toFixed(2)}</div>
             </div>
             <div style={{ background: ms.overSellingCount > 0 ? '#fff5f5' : '#fff', borderRadius: 14, border: `1px solid ${ms.overSellingCount > 0 ? '#fecaca' : '#f1f5f9'}`, padding: '16px 20px', animation: 'fadeUp 0.4s ease 0.3s both' }}>
@@ -640,9 +641,9 @@ export default function PurchasingManagerView() {
         </div>
       )}
 
-      {activeTab === 'leads'  && <PartsTable type="lead"         purchasers={purchasers} dateRange={dateRange} onRefresh={loadStats} />}
-      {activeTab === 'repeat' && <PartsTable type="repeat"       purchasers={purchasers} dateRange={dateRange} onRefresh={loadStats} />}
-      {activeTab === 'orders' && <PartsTable type="online_order" purchasers={purchasers} dateRange={dateRange} onRefresh={loadStats} />}
+      {activeTab === 'leads'  && <PartsTable type="lead"         purchasers={purchasers} dateRange={dateRange} onRefresh={loadStats} refreshToken={partsRefresh} />}
+      {activeTab === 'repeat' && <PartsTable type="repeat"       purchasers={purchasers} dateRange={dateRange} onRefresh={loadStats} refreshToken={partsRefresh} />}
+      {activeTab === 'orders' && <PartsTable type="online_order" purchasers={purchasers} dateRange={dateRange} onRefresh={loadStats} refreshToken={partsRefresh} />}
       {activeTab === 'quotes' && <QuotesTable dateRange={dateRange} />}
 
       {/* Notifications tab */}
@@ -686,7 +687,7 @@ export default function PurchasingManagerView() {
         </div>
       )}
 
-      {assignInquiryId && <InquiryAssignModal inquiryId={assignInquiryId} onClose={() => setAssignInquiryId(null)} onSaved={() => { loadStats(); loadNotifications() }} />}
+      {assignInquiryId && <InquiryAssignModal inquiryId={assignInquiryId} onClose={() => setAssignInquiryId(null)} onSaved={() => { loadStats(); loadNotifications(); setPartsRefresh(n => n + 1) }} />}
 
       <ConfirmModal state={confirmState} onClose={() => setConfirmState(null)} />
 
@@ -704,7 +705,7 @@ export default function PurchasingManagerView() {
             {userError && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#dc2626' }}>⚠ {userError}</div>}
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={() => setShowNewUser(false)} style={{ flex: 1, padding: 11, borderRadius: 12, border: '1px solid #e2e8f0', background: '#fff', color: '#475569', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: '"Plus Jakarta Sans",sans-serif' }}>Cancel</button>
-              <button onClick={handleCreatePurchaser} disabled={savingUser} style={{ flex: 1, padding: 11, borderRadius: 12, border: 'none', background: BRAND, color: '#0d0d0d', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: '"Plus Jakarta Sans",sans-serif' }}>{savingUser ? 'Adding...' : 'Add Purchaser'}</button>
+              <button onClick={handleCreatePurchaser} disabled={savingUser || !newUserForm.name.trim() || !newUserForm.username.trim() || !newUserForm.password.trim()} style={{ flex: 1, padding: 11, borderRadius: 12, border: 'none', background: BRAND, color: '#0d0d0d', fontWeight: 700, fontSize: 13, cursor: (savingUser || !newUserForm.name.trim() || !newUserForm.username.trim() || !newUserForm.password.trim()) ? 'not-allowed' : 'pointer', opacity: (!newUserForm.name.trim() || !newUserForm.username.trim() || !newUserForm.password.trim()) ? 0.5 : 1, fontFamily: '"Plus Jakarta Sans",sans-serif' }}>{savingUser ? 'Adding...' : 'Add Purchaser'}</button>
             </div>
           </div>
         </Modal>
@@ -793,7 +794,7 @@ function QuotesTable({ dateRange }) {
                     {show('delta') && <td style={{ padding: '9px 12px' }}>
                       {q.selling_price && q.inquiry_type === 'online_order' ? (
                         <span style={{ fontSize: 11, fontWeight: 700, color: q.is_over_selling ? '#dc2626' : '#10b981' }}>
-                          {q.is_over_selling ? '⚠️ +' : '✓ '}${Math.abs(num(q.price) * (parseInt(q.quantity) || 1) - num(q.selling_price)).toFixed(2)}
+                          {q.is_over_selling ? '⚠️ +' : '✓ '}${Math.abs(num(q.assignment_total_cost) - num(q.selling_price)).toFixed(2)}
                         </span>
                       ) : '—'}
                     </td>}
