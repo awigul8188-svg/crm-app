@@ -38,7 +38,8 @@ function getDateFilters(preset, customFrom, customTo) {
   if (preset === 'today')   return { from: today, to: today }
   if (preset === 'week')    { const d = new Date(now); d.setDate(d.getDate()-7); return { from: fmt(d), to: today } }
   if (preset === 'month')   { const d = new Date(now); d.setDate(1); return { from: fmt(d), to: today } }
-  if (preset === 'quarter') { const d = new Date(now); d.setMonth(d.getMonth()-3); return { from: fmt(d), to: today } }
+  // Calendar quarter (start of the current quarter), to match the Overview QuarterGPTile — not a rolling 90 days.
+  if (preset === 'quarter') { const d = new Date(now.getFullYear(), Math.floor(now.getMonth()/3)*3, 1); return { from: fmt(d), to: today } }
   if (preset === 'custom')  return { from: customFrom, to: customTo }
   return { from: '', to: '' }
 }
@@ -401,6 +402,11 @@ function InquiryQuickEditModal({ id, onClose, onSaved }) {
                     onClose={() => { setClosedWonOpen(false); if (!cwCreated) setDisposition(cwPrevDisp || '') }}
                   />
                 )}
+                {cwCreated && !closedWonOpen && (
+                  <div style={{ marginTop:8, fontSize:12, fontWeight:600, color:'#15803d', background:'#dcfce7', border:'1px solid #bbf7d0', borderRadius:8, padding:'7px 10px' }}>
+                    ✓ Order created — click <b>Save</b> below to finish marking this {inquiry?.type === 'online_order' ? 'Processed' : 'Closed Won'}.
+                  </div>
+                )}
               </div>
             </div>
 
@@ -525,7 +531,7 @@ function InquiryQuickEditModal({ id, onClose, onSaved }) {
 }
 
 // ── Drilldown Modal ─────────────────────────────────────────────
-function DrilldownModal({ title, type, filters, onClose }) {
+function DrilldownModal({ title, type, filters, onClose, onChanged }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [editingId, setEditingId] = useState(null)
@@ -599,7 +605,7 @@ function DrilldownModal({ title, type, filters, onClose }) {
         <InquiryQuickEditModal
           id={editingId}
           onClose={() => setEditingId(null)}
-          onSaved={() => { setEditingId(null); load() }}
+          onSaved={() => { setEditingId(null); load(); onChanged && onChanged() }}
         />
       )}
     </div>,
@@ -821,7 +827,7 @@ function AEOrdersTab({ dateFilters, onDrilldown, newAssigned = [], onOpenOrder, 
                     <div style={{ fontSize:11, color:'#94a3b8' }}>{[o.lead_source || o.source, formatDateShort(o.created_at)].filter(Boolean).join(' · ')}</div>
                   </div>
                   <div style={{ textAlign:'right', flexShrink:0, marginLeft:12 }}>
-                    {o.order_amount ? <div style={{ fontWeight:700, color:BRAND, fontSize:13 }}>${o.order_amount}</div> : null}
+                    {o.order_amount ? <div style={{ fontWeight:700, color:BRAND, fontSize:13 }}>${(parseFloat(String(o.order_amount).replace(/[$,\s]/g,'')) || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div> : null}
                     <div style={{ fontSize:11, color:'#dc2626', fontWeight:700 }}>Open →</div>
                   </div>
                 </div>
@@ -945,8 +951,11 @@ export default function AEDashboard() {
   const [overviewLoading, setOverviewLoading] = useState(true)
   const [drilldown, setDrilldown] = useState(null)
   const [newModal, setNewModal] = useState(null)
+  // Bumped after a quick-edit save so the tab's module cards refetch (the `_r` field is part of
+  // useModuleData's key but isn't sent as a query param).
+  const [refreshKey, setRefreshKey] = useState(0)
 
-  const dateFilters = getDateFilters(preset, customFrom, customTo)
+  const dateFilters = { ...getDateFilters(preset, customFrom, customTo), _r: refreshKey }
 
   const loadOverview = () => {
     setOverviewLoading(true)
@@ -1044,7 +1053,7 @@ export default function AEDashboard() {
       {activeTab === 'orders'   && <AEOrdersTab   dateFilters={dateFilters} onDrilldown={setDrilldown} newAssigned={newAssigned} onReadAll={readAllOrders} onOpenOrder={(id) => { markSeen(id); navigate('inquiry-detail', { id }) }} />}
 
       {/* Drilldown + quick edit */}
-      {drilldown && <DrilldownModal {...drilldown} onClose={() => setDrilldown(null)} />}
+      {drilldown && <DrilldownModal {...drilldown} onClose={() => setDrilldown(null)} onChanged={() => { setRefreshKey(k => k + 1); loadNew(); loadOverview() }} />}
 
       {newModal && <NewInquiryModal defaultType={newModal} onClose={() => setNewModal(null)} onCreated={() => { setNewModal(null); loadOverview() }} />}
     </div>
