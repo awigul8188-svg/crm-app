@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../App'
 import { useNav } from '../App'
 import { api, purchasingApi } from '../api'
+import HelpAssistant from './HelpAssistant'
 
 // Short two-tone "ding" for new-quote alerts (synthesized — no asset needed).
 let _audioCtx = null
@@ -221,6 +222,8 @@ export default function Layout({ children }) {
       <main className="flex-1 overflow-y-auto" style={{ background: '#f8fafc' }}>
         {children}
       </main>
+
+      <HelpAssistant />
     </div>
   )
 }

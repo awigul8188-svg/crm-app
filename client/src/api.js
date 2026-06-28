@@ -253,3 +253,8 @@ export const purchasingApi = {
   getSuppliers: (search) => req('GET', `/purchasing/suppliers${search ? `?search=${encodeURIComponent(search)}` : ''}`),
   createSupplier: (data) => req('POST', '/purchasing/suppliers', data),
 };
+
+export const assistantApi = {
+  status: () => req('GET', '/assistant/status'),
+  ask: (messages) => req('POST', '/assistant/ask', { messages }),
+};

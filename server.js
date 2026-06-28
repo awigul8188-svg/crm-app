@@ -65,6 +65,7 @@ app.use('/api/upload', require('./routes/upload'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/purchasing', require('./routes/purchasing'));
 app.use('/api/operations', require('./routes/operations'));
+app.use('/api/assistant', require('./routes/assistant'));
 
 // Temporary public debug endpoint — remove after GP investigation
 app.get('/api/debug-rep-gp', (req, res) => {
