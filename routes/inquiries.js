@@ -292,7 +292,11 @@ router.put('/:id', (req, res) => {
 // Mark a single inquiry as seen by the current user (clears it from "Newly Assigned").
 router.post('/:id/seen', (req, res) => {
   try {
-    getDB().prepare('INSERT OR IGNORE INTO inquiry_views (user_id, inquiry_id) VALUES (?, ?)').run(req.user.id, req.params.id);
+    const db = getDB();
+    const inq = db.prepare('SELECT assigned_to FROM inquiries WHERE id = ?').get(req.params.id);
+    if (!inq) return res.status(404).json({ error: 'Not found' });
+    if (req.user.role === 'ae' && inq.assigned_to !== req.user.id) return res.status(403).json({ error: 'Not authorized' });
+    db.prepare('INSERT OR IGNORE INTO inquiry_views (user_id, inquiry_id) VALUES (?, ?)').run(req.user.id, req.params.id);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
