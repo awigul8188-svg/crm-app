@@ -42,6 +42,8 @@ function VendorModal({ id, suppliers, onAddSupplier, onClose, onSaved }) {
   const [error, setError] = useState('')
   const [newSup, setNewSup] = useState('')
   const [addingFor, setAddingFor] = useState(null) // item index showing the "+ new supplier" input
+  const [dirty, setDirty] = useState(false)
+  const attemptClose = () => { if (dirty && !window.confirm('Discard unsaved changes?')) return; onClose() }
 
   const load = useCallback(() => {
     operationsApi.buyerOrder(id).then(o => {
@@ -55,7 +57,7 @@ function VendorModal({ id, suppliers, onAddSupplier, onClose, onSaved }) {
   }, [id])
   useEffect(() => { load() }, [load])
 
-  const setItem = (i, k, v) => setItems(arr => arr.map((it, idx) => idx === i ? { ...it, [k]: v } : it))
+  const setItem = (i, k, v) => { setDirty(true); setItems(arr => arr.map((it, idx) => idx === i ? { ...it, [k]: v } : it)) }
 
   const addSupplier = async (i) => {
     if (!newSup.trim()) return
@@ -75,18 +77,21 @@ function VendorModal({ id, suppliers, onAddSupplier, onClose, onSaved }) {
           tracking_to_warehouse: it.tracking_to_warehouse, serials: it.serials,
         })),
         fulfillment_status: fulfillment, shipped_via: shippedVia, tracking_to_customer: trackingCust, buyer,
+        // complete folded into the same request → save + mark-complete is atomic (no half-applied state).
+        ...(markComplete !== undefined ? { complete: markComplete } : {}),
       })
-      if (markComplete !== undefined) await operationsApi.buyerSetComplete(id, markComplete)
-      onSaved(); onClose()
+      setDirty(false); onSaved(); onClose()
     } catch (e) { setError(e.message) } finally { setSaving(false) }
   }
 
   const supItems = suppliers.map(s => ({ value: s.id, label: s.company, sub: s.rep_name || '' }))
   const sellTotal = items.reduce((s, it) => s + (Number(it.selling) || 0) * (Number(it.quantity) || 0), 0)
-  const buyTotal = items.reduce((s, it) => s + (Number(it.buying) || 0) * (Number(it.quantity) || 0), 0)
+  // Landed cost = buying×qty + the per-line cc/tax/shipping/duty paid, so the margin reflects true cost.
+  const buyTotal = items.reduce((s, it) => s + (Number(it.buying) || 0) * (Number(it.quantity) || 0)
+    + (Number(it.cc_paid) || 0) + (Number(it.tax_paid) || 0) + (Number(it.shipping_paid) || 0) + (Number(it.duty_paid) || 0), 0)
 
   return createPortal(
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 99999, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+    <div onClick={attemptClose} style={{ position: "fixed", inset: 0, zIndex: 99999, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 20, boxShadow: '0 32px 100px rgba(0,0,0,0.3)', width: '100%', maxWidth: 860, maxHeight: '92vh', display: 'flex', flexDirection: 'column', fontFamily: '"Plus Jakarta Sans",sans-serif' }}>
         {/* Header */}
         <div style={{ padding: '18px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
@@ -100,7 +105,7 @@ function VendorModal({ id, suppliers, onAddSupplier, onClose, onSaved }) {
               <div style={{ fontSize: 12, color: '#94a3b8' }}>{order.order_number} · Rep: {order.rep || '—'} · Sell {money(sellTotal)}</div>
             </div>
           )}
-          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 10, border: 'none', background: '#f1f5f9', cursor: 'pointer', fontSize: 18, color: '#64748b' }}>×</button>
+          <button onClick={attemptClose} style={{ width: 32, height: 32, borderRadius: 10, border: 'none', background: '#f1f5f9', cursor: 'pointer', fontSize: 18, color: '#64748b' }}>×</button>
         </div>
 
         {!order ? <Loader /> : (
@@ -167,12 +172,12 @@ function VendorModal({ id, suppliers, onAddSupplier, onClose, onSaved }) {
               <div style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', marginBottom: 12 }}>📦 Fulfillment & shipping to customer</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
                 <Field label="Stage">
-                  <select value={fulfillment} onChange={e => setFulfillment(e.target.value)} style={{ ...inp, cursor: 'pointer' }}>
+                  <select value={fulfillment} onChange={e => { setDirty(true); setFulfillment(e.target.value) }} style={{ ...inp, cursor: 'pointer' }}>
                     {STAGES.map(s => <option key={s}>{s}</option>)}
                   </select>
                 </Field>
-                <Field label="Shipped via"><input value={shippedVia} onChange={e => setShippedVia(e.target.value)} placeholder="FedEx / UPS…" style={inp} /></Field>
-                <Field label="Tracking → customer"><input value={trackingCust} onChange={e => setTrackingCust(e.target.value)} placeholder="Tracking #" style={inp} /></Field>
+                <Field label="Shipped via"><input value={shippedVia} onChange={e => { setDirty(true); setShippedVia(e.target.value) }} placeholder="FedEx / UPS…" style={inp} /></Field>
+                <Field label="Tracking → customer"><input value={trackingCust} onChange={e => { setDirty(true); setTrackingCust(e.target.value) }} placeholder="Tracking #" style={inp} /></Field>
               </div>
               <div style={{ marginTop: 10, fontSize: 12, color: '#64748b' }}>Buy total so far: <b style={{ color: '#0f172a' }}>{money(buyTotal)}</b> · Margin: <b style={{ color: sellTotal - buyTotal >= 0 ? '#10b981' : '#ef4444' }}>{money(sellTotal - buyTotal)}</b></div>
             </div>
@@ -184,7 +189,7 @@ function VendorModal({ id, suppliers, onAddSupplier, onClose, onSaved }) {
         {/* Footer actions */}
         {order && (
           <div style={{ borderTop: '1px solid #f1f5f9', padding: '14px 24px', display: 'flex', gap: 10, justifyContent: 'flex-end', flexShrink: 0 }}>
-            <button onClick={onClose} style={{ padding: '10px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', color: '#475569', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+            <button onClick={attemptClose} style={{ padding: '10px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', color: '#475569', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
             <button onClick={() => save(undefined)} disabled={saving} style={{ padding: '10px 18px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', color: '#0f172a', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>{saving ? 'Saving…' : 'Save'}</button>
             {order.vendor_complete
               ? <button onClick={() => save(false)} disabled={saving} style={{ padding: '10px 18px', borderRadius: 10, border: 'none', background: '#f59e0b', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Reopen</button>

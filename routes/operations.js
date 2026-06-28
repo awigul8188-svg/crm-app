@@ -733,8 +733,13 @@ function requireBuyerAccess(req, res, next) {
 }
 
 function loadBuyerOrder(db, id) {
+  // Explicit column list — the buyer gets sales context + vendor/fulfillment fields, but NOT the
+  // finance-team columns (net, due_date, customer_paid, ar_status, payment_status, order charges, rma_amount).
   const order = db.prepare(`
-    SELECT o.*, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone
+    SELECT o.id, o.order_number, o.order_date, o.customer_id, o.email, o.lead_source, o.rep, o.ppc_order_rep,
+           o.buyer, o.order_status, o.fulfillment_status, o.vendor_complete, o.vendor_completed_at,
+           o.shipped_via, o.tracking_to_customer, o.notes, o.pending, o.reporting_period,
+           c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone
     FROM op_orders o LEFT JOIN op_customers c ON o.customer_id = c.id WHERE o.id = ?
   `).get(id);
   if (!order) return null;
@@ -752,15 +757,16 @@ router.get('/buyer/orders', requireBuyerAccess, (req, res) => {
     const db = getDB();
     const { scope } = req.query;
     let cond = '1=1';
+    // Mutually-exclusive scopes (a partition): todo until marked complete; then transit until Delivered; then delivered.
     if (scope === 'todo') cond = 'COALESCE(o.vendor_complete,0) = 0';
     else if (scope === 'transit') cond = "COALESCE(o.vendor_complete,0) = 1 AND COALESCE(o.fulfillment_status,'') != 'Delivered'";
-    else if (scope === 'delivered') cond = "o.fulfillment_status = 'Delivered'";
+    else if (scope === 'delivered') cond = "COALESCE(o.vendor_complete,0) = 1 AND o.fulfillment_status = 'Delivered'";
     const orders = db.prepare(`
       SELECT o.id, o.order_number, o.order_date, o.rep, o.buyer, o.lead_source, o.order_status,
              o.fulfillment_status, o.vendor_complete, o.tracking_to_customer, o.shipped_via, o.pending,
              c.name AS customer_name,
              COUNT(i.id) AS item_count,
-             SUM(CASE WHEN i.supplier_id IS NOT NULL AND i.buying > 0 THEN 1 ELSE 0 END) AS items_filled,
+             SUM(CASE WHEN i.supplier_id IS NOT NULL THEN 1 ELSE 0 END) AS items_filled,
              COALESCE(SUM(i.selling * i.quantity), 0) AS order_amount
       FROM op_orders o
       LEFT JOIN op_customers c ON o.customer_id = c.id
@@ -777,7 +783,7 @@ router.get('/buyer/stats', requireBuyerAccess, (req, res) => {
     const db = getDB();
     const todo = db.prepare("SELECT COUNT(*) AS c FROM op_orders WHERE COALESCE(vendor_complete,0)=0").get().c;
     const transit = db.prepare("SELECT COUNT(*) AS c FROM op_orders WHERE COALESCE(vendor_complete,0)=1 AND COALESCE(fulfillment_status,'') != 'Delivered'").get().c;
-    const delivered = db.prepare("SELECT COUNT(*) AS c FROM op_orders WHERE fulfillment_status='Delivered'").get().c;
+    const delivered = db.prepare("SELECT COUNT(*) AS c FROM op_orders WHERE COALESCE(vendor_complete,0)=1 AND fulfillment_status='Delivered'").get().c;
     res.json({ todo, transit, delivered, stages: FULFILLMENT_STAGES });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -796,8 +802,12 @@ router.patch('/buyer/order/:id', requireBuyerAccess, (req, res) => {
     const db = getDB();
     const id = req.params.id;
     if (!db.prepare('SELECT id FROM op_orders WHERE id=?').get(id)) return res.status(404).json({ error: 'Not found' });
-    const { items = [], fulfillment_status, shipped_via, tracking_to_customer, buyer, notes } = req.body;
+    const { items = [], fulfillment_status, shipped_via, tracking_to_customer, buyer, complete } = req.body;
     const num = (v) => { const n = parseFloat(String(v ?? '').replace(/[$,\s]/g, '')); return isNaN(n) ? 0 : n; };
+    // Quantity drives order_amount — reject a blank/zero qty rather than silently coercing it to 1.
+    for (const it of items) {
+      if (num(it.quantity) <= 0) return res.status(400).json({ error: `Quantity must be at least 1${it.part_number ? ` for ${it.part_number}` : ''}` });
+    }
     // Buyer can also fix sales-side line fields (part#, qty, condition, selling) — e.g. an AE typo.
     const upItem = db.prepare(`
       UPDATE op_order_items SET
@@ -810,16 +820,23 @@ router.patch('/buyer/order/:id', requireBuyerAccess, (req, res) => {
     db.transaction(() => {
       for (const it of items) {
         upItem.run(
-          it.part_number ?? null, num(it.quantity) || 1, it.product_condition ?? null, num(it.selling),
+          it.part_number ?? null, num(it.quantity), it.product_condition ?? null, num(it.selling),
           it.supplier_id || null, num(it.buying), num(it.cc_paid), num(it.tax_paid), num(it.shipping_paid), num(it.duty_paid),
           it.payment_method || null, it.payment_due || null, it.supplier_terms || null, it.ta_po_number || null,
           it.tracking_to_warehouse || null, it.serials || null, it.id, id
         );
       }
       db.prepare(`UPDATE op_orders SET fulfillment_status=COALESCE(?,fulfillment_status), shipped_via=COALESCE(?,shipped_via),
-        tracking_to_customer=COALESCE(?,tracking_to_customer), buyer=COALESCE(?,buyer), notes=COALESCE(?,notes),
+        tracking_to_customer=COALESCE(?,tracking_to_customer), buyer=COALESCE(?,buyer),
         updated_at=CURRENT_TIMESTAMP WHERE id=?`)
-        .run(fulfillment_status ?? null, shipped_via ?? null, tracking_to_customer ?? null, buyer ?? null, notes ?? null, id);
+        .run(fulfillment_status ?? null, shipped_via ?? null, tracking_to_customer ?? null, buyer ?? null, id);
+      // Fold the vendor-complete toggle into the SAME transaction so "Save & Mark Complete" is atomic
+      // (no half-applied state from a separate /complete request failing).
+      if (complete !== undefined) {
+        const c = complete ? 1 : 0;
+        db.prepare(`UPDATE op_orders SET vendor_complete=?, vendor_completed_at=?, vendor_completed_by=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`)
+          .run(c, c ? new Date().toISOString() : null, c ? req.user.id : null, id);
+      }
     })();
     res.json(loadBuyerOrder(db, id));
   } catch(e) { res.status(500).json({ error: e.message }); }
