@@ -191,7 +191,7 @@ router.delete('/orders/:id', requireManager, (req, res) => {
 
 // ── Order Items ───────────────────────────────────────────────────────────────
 
-router.post('/orders/:id/items', (req, res) => {
+router.post('/orders/:id/items', requireManager, (req, res) => {
   try {
     const db = getDB();
     const { part_number, description, product, supplier_id, quantity, product_condition,
@@ -221,7 +221,7 @@ router.post('/orders/:id/items', (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-router.put('/order-items/:id', (req, res) => {
+router.put('/order-items/:id', requireManager, (req, res) => {
   try {
     const db = getDB();
     const { part_number, description, product, supplier_id, quantity, product_condition,
@@ -251,7 +251,7 @@ router.put('/order-items/:id', (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-router.delete('/order-items/:id', (req, res) => {
+router.delete('/order-items/:id', requireManager, (req, res) => {
   try {
     getDB().prepare(`DELETE FROM op_order_items WHERE id = ?`).run(req.params.id);
     res.json({ ok: true });
