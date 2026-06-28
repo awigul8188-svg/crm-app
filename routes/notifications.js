@@ -51,6 +51,8 @@ router.get('/', (req, res) => {
         SELECT n.*, CASE WHEN n.inquiry_type = 'quote' THEN '$' ELSE '📦' END as type_icon
         FROM notifications n
         WHERE n.user_id = ? AND ${typeCond}
+        -- Hide *_parts notifications whose inquiry was deleted (defends against orphans).
+        AND (n.inquiry_type = 'quote' OR n.inquiry_id IS NULL OR EXISTS (SELECT 1 FROM inquiries i2 WHERE i2.id = n.inquiry_id))
         ORDER BY n.created_at DESC
         LIMIT 100
       `).all(req.user.id);

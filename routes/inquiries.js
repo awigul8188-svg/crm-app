@@ -301,10 +301,14 @@ router.post('/:id/seen', (req, res) => {
 
 router.delete('/:id', requireManager, (req, res) => {
   try {
-    getDB().prepare('DELETE FROM inquiries WHERE id = ?').run(req.params.id);
+    const db = getDB();
+    // Clean up notifications tied to this inquiry (no FK cascade on notifications.inquiry_id),
+    // otherwise they linger as orphans (e.g. a "New Parts" entry pointing at a deleted inquiry).
+    db.prepare('DELETE FROM notifications WHERE inquiry_id = ?').run(req.params.id);
+    db.prepare('DELETE FROM inquiries WHERE id = ?').run(req.params.id);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(400).json({ error: err.message });
   }
 });
 
