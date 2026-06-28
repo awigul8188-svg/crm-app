@@ -243,12 +243,15 @@ router.get('/ae', (req, res) => {
     const year  = stats(yearStart, today);
     const all   = stats(null, null);
 
-    // Weekly trend — last 8 weeks
+    // Weekly trend — last 8 weeks. Anchor week bounds to the business-TODAY calendar date (not UTC),
+    // so the most-recent bucket ends on business-today and edges align with LD (business-local date).
     const weeklyTrend = [];
+    const [by, bm, bd] = today.split('-').map(Number);
+    const fmtCal = d => d.toISOString().split('T')[0];
     for (let w = 7; w >= 0; w--) {
-      const wEnd = new Date(now); wEnd.setDate(wEnd.getDate() - w * 7);
-      const wStart = new Date(wEnd); wStart.setDate(wStart.getDate() - 6);
-      const r = db.prepare(`SELECT COUNT(*) as total, SUM(CASE WHEN i.disposition='Closed Won' THEN 1 ELSE 0 END) as won ${base} AND ${LD} BETWEEN ? AND ?`).get(uid, wStart.toISOString().split('T')[0], wEnd.toISOString().split('T')[0]);
+      const wEnd = new Date(Date.UTC(by, bm - 1, bd)); wEnd.setUTCDate(wEnd.getUTCDate() - w * 7);
+      const wStart = new Date(wEnd); wStart.setUTCDate(wStart.getUTCDate() - 6);
+      const r = db.prepare(`SELECT COUNT(*) as total, SUM(CASE WHEN i.disposition='Closed Won' THEN 1 ELSE 0 END) as won ${base} AND ${LD} BETWEEN ? AND ?`).get(uid, fmtCal(wStart), fmtCal(wEnd));
       weeklyTrend.push({ total: r.total || 0, won: r.won || 0 });
     }
 
@@ -282,10 +285,13 @@ router.get('/summary', (req, res) => {
   const isAE = req.user.role === 'ae';
   const uid = req.user.id;
   try {
+    // Overdue = follow-up date before business-today (follow_up_date is a business-local calendar date;
+    // date('now') is UTC and over-counts in the evening). Mirrors the /ae endpoint.
+    const bToday = businessToday();
     const overdueQ = isAE
-      ? `SELECT COUNT(*) as c FROM followups f JOIN inquiries i ON f.inquiry_id = i.id WHERE f.completed=0 AND f.follow_up_date < date('now') AND i.assigned_to=?`
-      : `SELECT COUNT(*) as c FROM followups f WHERE f.completed=0 AND f.follow_up_date < date('now')`;
-    const overdueCount = db.prepare(overdueQ).get(...(isAE ? [uid] : [])).c;
+      ? `SELECT COUNT(*) as c FROM followups f JOIN inquiries i ON f.inquiry_id = i.id WHERE f.completed=0 AND f.follow_up_date < ? AND i.assigned_to=?`
+      : `SELECT COUNT(*) as c FROM followups f WHERE f.completed=0 AND f.follow_up_date < ?`;
+    const overdueCount = db.prepare(overdueQ).get(...(isAE ? [bToday, uid] : [bToday])).c;
 
     const untouchedQ = `SELECT COUNT(*) as c FROM inquiries i
       WHERE i.disposition NOT IN ('Closed Won','Closed Lost','Fake Lead','Processed','Cancelled')
