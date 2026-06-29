@@ -7,6 +7,8 @@ import SearchableSelect from '../components/SearchableSelect'
 import { ColumnPicker, useColumnPrefs } from '../components/ColumnPicker'
 
 const BRAND = '#00D4C8'
+// Make a non-button clickable element keyboard-activatable (Enter/Space), paired with role="button" + tabIndex={0}.
+const onActivate = (fn) => (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn() } }
 const T = { lead:{ icon:'◎', label:'Lead', color:'#3b82f6' }, repeat:{ icon:'↻', label:'Repeat', color:'#6366f1' }, online_order:{ icon:'◈', label:'Order', color:'#f59e0b' } }
 const URGENCY = { critical:{ label:'Critical', color:'#ef4444', bg:'#fef2f2', border:'#fecaca' }, high:{ label:'High', color:'#f97316', bg:'#fff7ed', border:'#fed7aa' }, normal:{ label:'Normal', color:'#64748b', bg:'#f8fafc', border:'#e2e8f0' }, low:{ label:'Low', color:'#10b981', bg:'#f0fdf4', border:'#bbf7d0' } }
 const CONDITIONS = OP_CONDITIONS
@@ -30,13 +32,13 @@ function getDateRange(preset, from, to) {
   return { from:'', to:'' }
 }
 
-function SInput({ value, onChange, placeholder, type='text', onKeyDown }) {
+function SInput({ value, onChange, placeholder, type='text', onKeyDown, ariaLabel }) {
   const [f,setF] = useState(false)
-  return <input type={type} value={value} onChange={onChange} onKeyDown={onKeyDown} placeholder={placeholder} style={{ ...inp, ...(f?inpF:{}) }} onFocus={()=>setF(true)} onBlur={()=>setF(false)} />
+  return <input type={type} aria-label={ariaLabel} value={value} onChange={onChange} onKeyDown={onKeyDown} placeholder={placeholder} style={{ ...inp, ...(f?inpF:{}) }} onFocus={()=>setF(true)} onBlur={()=>setF(false)} />
 }
-function STextarea({ value, onChange, placeholder }) {
+function STextarea({ value, onChange, placeholder, ariaLabel }) {
   const [f,setF] = useState(false)
-  return <textarea value={value} onChange={onChange} placeholder={placeholder} rows={2} style={{ ...inp, resize:'none', ...(f?inpF:{}) }} onFocus={()=>setF(true)} onBlur={()=>setF(false)} />
+  return <textarea value={value} onChange={onChange} aria-label={ariaLabel} placeholder={placeholder} rows={2} style={{ ...inp, resize:'none', ...(f?inpF:{}) }} onFocus={()=>setF(true)} onBlur={()=>setF(false)} />
 }
 
 function Pagination({ page, pages, onChange }) {
@@ -248,10 +250,10 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
                 {part.not_in_stock?'✓ Mark In Stock':'❌ Not In Stock'}
               </button>
               {!fullPage && !page && (
-                <button onClick={openFullPage} title="Open in a new tab (full page)"
+                <button onClick={openFullPage} title="Open in a new tab (full page)" aria-label="Open in a new tab"
                   style={{ width:32, height:32, borderRadius:10, border:'1px solid #e2e8f0', background:'#fff', cursor:'pointer', fontSize:14, color:'#64748b', display:'flex', alignItems:'center', justifyContent:'center' }}>⤢</button>
               )}
-              <button onClick={attemptClose} style={{ width:32, height:32, borderRadius:10, border:'none', background:'#f1f5f9', cursor:'pointer', fontSize:18, color:'#64748b', display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
+              <button onClick={attemptClose} aria-label="Close" style={{ width:32, height:32, borderRadius:10, border:'none', background:'#f1f5f9', cursor:'pointer', fontSize:18, color:'#64748b', display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
             </div>
           </div>
         </div>
@@ -271,7 +273,7 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
             const reqQty = Number(part.quantity)||0
             const shortQty = Math.max(0, reqQty - sourcedQty)
             const over = part.inquiry_type==='online_order' && Number(part.selling_price)>0 && totalCost > numV(part.selling_price)
-            const ri = { boxSizing:'border-box', width:'100%', border:'1px solid #e2e8f0', borderRadius:8, padding:'7px 9px', fontSize:12, outline:'none', fontFamily:'"Plus Jakarta Sans",sans-serif' }
+            const ri = { boxSizing:'border-box', width:'100%', border:'1px solid #e2e8f0', borderRadius:8, padding:'7px 9px', fontSize:12, fontFamily:'"Plus Jakarta Sans",sans-serif' }
             const rl = { fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:3 }
             return (
             <div>
@@ -293,10 +295,10 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
               {addingSupplier && (
                 <div style={{ border:`1px solid ${BRAND}`, borderRadius:12, padding:'10px 12px', background:'#f0fffe', display:'flex', flexDirection:'column', gap:8, marginBottom:12 }}>
                   <div style={{ fontSize:10, fontWeight:700, color:BRAND, textTransform:'uppercase', letterSpacing:'0.08em' }}>New Supplier</div>
-                  <input value={newSup.company} onChange={e=>setNewSup(p=>({...p, company:e.target.value}))} placeholder="Company *" autoFocus style={{ ...inp, padding:'8px 12px' }} />
+                  <input value={newSup.company} onChange={e=>setNewSup(p=>({...p, company:e.target.value}))} placeholder="Company *" aria-label="Supplier company" autoFocus style={{ ...inp, padding:'8px 12px' }} />
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-                    <input value={newSup.rep_name} onChange={e=>setNewSup(p=>({...p, rep_name:e.target.value}))} placeholder="Rep name" style={{ ...inp, padding:'8px 12px' }} />
-                    <input value={newSup.email} onChange={e=>setNewSup(p=>({...p, email:e.target.value}))} placeholder="Email" style={{ ...inp, padding:'8px 12px' }} />
+                    <input value={newSup.rep_name} onChange={e=>setNewSup(p=>({...p, rep_name:e.target.value}))} placeholder="Rep name" aria-label="Supplier rep name" style={{ ...inp, padding:'8px 12px' }} />
+                    <input type="email" value={newSup.email} onChange={e=>setNewSup(p=>({...p, email:e.target.value}))} placeholder="Email" aria-label="Supplier email" autoComplete="off" spellCheck={false} style={{ ...inp, padding:'8px 12px' }} />
                   </div>
                   <div style={{ display:'flex', gap:8 }}>
                     <button type="button" onClick={handleAddSupplier} disabled={supSaving||!newSup.company.trim()} style={{ padding:'7px 14px', borderRadius:10, border:'none', background:newSup.company.trim()?BRAND:'#cbd5e1', color:'#0d0d0d', fontWeight:700, fontSize:12, cursor:newSup.company.trim()?'pointer':'not-allowed', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>{supSaving?'Saving…':'Add supplier'}</button>
@@ -317,12 +319,12 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
                     <SearchableSelect items={supplierItemsFor(e.supplier_name)} value={e.supplier_name} onChange={(v)=>updateEntry(i,'supplier_name',v||'')} placeholder="Search suppliers…" emptyText="No suppliers — add one above" />
                   </div>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
-                    <div><div style={rl}>Qty *</div><input style={ri} value={e.quantity} onChange={ev=>updateEntry(i,'quantity',ev.target.value)} placeholder={reqQty?`of ${reqQty}`:'qty'} /></div>
-                    <div><div style={rl}>Unit price *</div><input style={ri} value={e.price} onChange={ev=>updateEntry(i,'price',ev.target.value)} placeholder="$" /></div>
-                    <div><div style={rl}>Condition</div><select style={{ ...ri, cursor:'pointer' }} value={e.condition} onChange={ev=>updateEntry(i,'condition',ev.target.value)}><option value="">—</option>{[...CONDITIONS, ...(e.condition && !CONDITIONS.includes(e.condition) ? [e.condition] : [])].map(c=><option key={c}>{c}</option>)}</select></div>
+                    <div><div style={rl}>Qty *</div><input style={ri} inputMode="decimal" aria-label={`Supplier line ${i+1} quantity`} value={e.quantity} onChange={ev=>updateEntry(i,'quantity',ev.target.value)} placeholder={reqQty?`of ${reqQty}`:'qty'} /></div>
+                    <div><div style={rl}>Unit price *</div><input style={ri} inputMode="decimal" aria-label={`Supplier line ${i+1} unit price`} value={e.price} onChange={ev=>updateEntry(i,'price',ev.target.value)} placeholder="$" /></div>
+                    <div><div style={rl}>Condition</div><select style={{ ...ri, cursor:'pointer' }} aria-label={`Supplier line ${i+1} condition`} value={e.condition} onChange={ev=>updateEntry(i,'condition',ev.target.value)}><option value="">—</option>{[...CONDITIONS, ...(e.condition && !CONDITIONS.includes(e.condition) ? [e.condition] : [])].map(c=><option key={c}>{c}</option>)}</select></div>
                   </div>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginTop:8, alignItems:'end' }}>
-                    <div><div style={rl}>Lead time</div><input style={ri} value={e.lead_time} onChange={ev=>updateEntry(i,'lead_time',ev.target.value)} placeholder="e.g. 3-5 days" /></div>
+                    <div><div style={rl}>Lead time</div><input style={ri} aria-label={`Supplier line ${i+1} lead time`} value={e.lead_time} onChange={ev=>updateEntry(i,'lead_time',ev.target.value)} placeholder="e.g. 3-5 days" /></div>
                     <div style={{ fontSize:11, color:'#64748b', textAlign:'right' }}>Line cost: <b style={{ color:'#0f172a' }}>{money(numV(e.price)*(Number(e.quantity)||0))}</b></div>
                   </div>
                 </div>
@@ -342,7 +344,7 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
             <div>
               <div style={{ marginBottom:12 }}>
                 <div style={{ fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6 }}>My Notes / Update</div>
-                <STextarea value={purchaserNotes} onChange={e=>setPurchaserNotes(e.target.value)} placeholder="Add your notes, updates, or research on this part..." />
+                <STextarea value={purchaserNotes} onChange={e=>setPurchaserNotes(e.target.value)} ariaLabel="My notes" placeholder="Add your notes, updates, or research on this part…" />
                 <button onClick={handleSaveNotes} disabled={savingNotes} style={{ marginTop:8, padding:'8px 18px', borderRadius:10, border:'none', background:BRAND, color:'#0d0d0d', fontWeight:700, fontSize:12, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>
                   {savingNotes?'Saving...':'Save Notes'}
                 </button>
@@ -354,7 +356,7 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
           {tab==='comments' && (
             <div>
               <div style={{ display:'flex', gap:8, marginBottom:16 }}>
-                <SInput value={comment} onChange={e=>setComment(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter' && comment.trim()){ e.preventDefault(); handleComment() } }} placeholder="Write to the AE..." />
+                <SInput value={comment} onChange={e=>setComment(e.target.value)} ariaLabel="Message to the AE" onKeyDown={e=>{ if(e.key==='Enter' && comment.trim()){ e.preventDefault(); handleComment() } }} placeholder="Write to the AE…" />
                 <button onClick={handleComment} disabled={sendingComment||!comment.trim()} style={{ padding:'10px 16px', borderRadius:12, border:'none', background:BRAND, color:'#0d0d0d', fontWeight:700, fontSize:13, cursor:'pointer', flexShrink:0, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>
                   {sendingComment?'...':'Send'}
                 </button>
@@ -384,9 +386,9 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
           {tab==='followups' && (
             <div>
               <div style={{ background:'#f8fafc', borderRadius:12, padding:14, border:'1px solid #e2e8f0', marginBottom:16 }}>
-                <SInput value={followupNote} onChange={e=>setFollowupNote(e.target.value)} placeholder="Follow-up note (e.g. Call supplier ABC on Monday)..." />
+                <SInput value={followupNote} onChange={e=>setFollowupNote(e.target.value)} ariaLabel="Follow-up note" placeholder="Follow-up note (e.g. Call supplier ABC on Monday)…" />
                 <div style={{ display:'flex', gap:8, marginTop:8 }}>
-                  <input type="date" value={followupDate} onChange={e=>setFollowupDate(e.target.value)} style={{ ...inp, flex:1 }} />
+                  <input type="date" aria-label="Follow-up date" value={followupDate} onChange={e=>setFollowupDate(e.target.value)} style={{ ...inp, flex:1 }} />
                   <button onClick={handleFollowup} disabled={savingFollowup||!followupNote.trim()} style={{ padding:'10px 16px', borderRadius:12, border:'none', background:BRAND, color:'#0d0d0d', fontWeight:700, fontSize:13, cursor:'pointer', flexShrink:0, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>Add</button>
                 </div>
               </div>
@@ -395,8 +397,9 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
                   {part.followups.map(fu => (
                     <div key={fu.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', background:fu.completed?'#f8fafc':'#fff', borderRadius:12, border:`1px solid ${fu.completed?'#f1f5f9':new Date(fu.follow_up_date)<new Date()?'#fecaca':'#f1f5f9'}`, opacity:fu.completed?0.6:1 }}>
                       <button onClick={() => completeFollowup(fu.id)} disabled={fu.completed}
+                        aria-label={fu.completed ? 'Follow-up completed' : 'Mark follow-up complete'} aria-pressed={!!fu.completed}
                         style={{ width:22, height:22, borderRadius:6, border:`2px solid ${fu.completed?BRAND:'#cbd5e1'}`, background:fu.completed?BRAND:'transparent', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                        {fu.completed && <span style={{ color:'white', fontSize:11 }}>✓</span>}
+                        {fu.completed && <span style={{ color:'white', fontSize:11 }} aria-hidden="true">✓</span>}
                       </button>
                       <div style={{ flex:1 }}>
                         <div style={{ fontSize:13, fontWeight:500, color:'#0f172a', textDecoration:fu.completed?'line-through':'' }}>{fu.note}</div>
@@ -412,7 +415,7 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
       </div>
   )
   const flashEl = flash ? (
-    <div style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', zIndex:100000, background:flash.type==='ok'?'#0f172a':'#dc2626', color:'#fff', padding:'10px 18px', borderRadius:10, fontSize:13, fontWeight:600, boxShadow:'0 8px 24px rgba(0,0,0,0.25)' }}>
+    <div role="status" aria-live="polite" style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', zIndex:100000, background:flash.type==='ok'?'#0f172a':'#dc2626', color:'#fff', padding:'10px 18px', borderRadius:10, fontSize:13, fontWeight:600, boxShadow:'0 8px 24px rgba(0,0,0,0.25)' }}>
       {flash.type==='ok'?'✓ ':'⚠ '}{flash.msg}
     </div>
   ) : null
@@ -433,7 +436,7 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
 function PartCard({ part, onClick }) {
   const tInfo = T[part.inquiry_type]; const urgInfo = URGENCY[part.urgency||'normal']
   return (
-    <div onClick={onClick} style={{ background:part.is_delayed?'#fff5f5':part.not_in_stock?'#fafafa':'#fff', borderRadius:14, border:`1px solid ${part.is_delayed?'#fecaca':part.not_in_stock?'#e2e8f0':part.urgency==='critical'?'#fecaca':part.urgency==='high'?'#fed7aa':'#f1f5f9'}`, padding:'14px 18px', cursor:'pointer', transition:'all 0.15s', display:'flex', alignItems:'flex-start', gap:14, flexWrap:'wrap' }}
+    <div onClick={onClick} role="button" tabIndex={0} onKeyDown={onActivate(onClick)} aria-label={`Open part ${part.part_number}`} style={{ background:part.is_delayed?'#fff5f5':part.not_in_stock?'#fafafa':'#fff', borderRadius:14, border:`1px solid ${part.is_delayed?'#fecaca':part.not_in_stock?'#e2e8f0':part.urgency==='critical'?'#fecaca':part.urgency==='high'?'#fed7aa':'#f1f5f9'}`, padding:'14px 18px', cursor:'pointer', transition:'all 0.15s', display:'flex', alignItems:'flex-start', gap:14, flexWrap:'wrap' }}
       onMouseEnter={e=>{ e.currentTarget.style.borderColor=BRAND; e.currentTarget.style.boxShadow=`0 2px 12px rgba(0,212,200,0.1)` }}
       onMouseLeave={e=>{ e.currentTarget.style.borderColor=part.is_delayed?'#fecaca':part.not_in_stock?'#e2e8f0':part.urgency==='critical'?'#fecaca':part.urgency==='high'?'#fed7aa':'#f1f5f9'; e.currentTarget.style.boxShadow='none' }}>
       <div style={{ width:42, height:42, borderRadius:10, background:`${tInfo?.color}15`, color:tInfo?.color, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>{tInfo?.icon}</div>
@@ -519,7 +522,7 @@ export function PurchaserParts() {
       {label}{sort.key===key?(sort.dir>0?' ▲':' ▼'):''}
     </th>
   )
-  const fStyle = { padding:'6px 8px', border:'1px solid #e2e8f0', borderRadius:8, fontSize:12, outline:'none', width:'100%', boxSizing:'border-box', background:'#fff', fontFamily:'"Plus Jakarta Sans",sans-serif' }
+  const fStyle = { padding:'6px 8px', border:'1px solid #e2e8f0', borderRadius:8, fontSize:12, width:'100%', boxSizing:'border-box', background:'#fff', fontFamily:'"Plus Jakarta Sans",sans-serif' }
 
   // Open a part as a full page (in-flow, sidebar stays) instead of a popup.
   if (openPartId) return <PartDetailModal page assignmentId={openPartId} onClose={()=>setOpenPartId(null)} onSaved={load} />
@@ -540,12 +543,12 @@ export function PurchaserParts() {
             <thead>
               <tr>{show('part_number')&&th('Part #','part_number')}{show('customer_name')&&th('Customer','customer_name')}{show('inquiry_type')&&th('Type','inquiry_type')}{show('quantity')&&th('Qty','quantity',true)}{show('urgency')&&th('Urgency','urgency')}{show('status')&&th('Status')}{show('price')&&th('Quote','price',true)}{show('assigned_at')&&th('Assigned','assigned_at')}</tr>
               <tr style={{ background:'#fff', position:'sticky', top:39, zIndex:1 }}>
-                {show('part_number') && <td style={{ padding:'6px 8px' }}><input value={f.part} onChange={e=>setFilter('part',e.target.value)} placeholder="Search…" style={fStyle} /></td>}
-                {show('customer_name') && <td style={{ padding:'6px 8px' }}><input value={f.customer} onChange={e=>setFilter('customer',e.target.value)} placeholder="Search…" style={fStyle} /></td>}
-                {show('inquiry_type') && <td style={{ padding:'6px 8px' }}><select value={f.type} onChange={e=>setFilter('type',e.target.value)} style={fStyle}><option value="">All</option><option value="lead">Lead</option><option value="repeat">Repeat</option><option value="online_order">Order</option></select></td>}
+                {show('part_number') && <td style={{ padding:'6px 8px' }}><input value={f.part} onChange={e=>setFilter('part',e.target.value)} placeholder="Search…" aria-label="Filter by part number" style={fStyle} /></td>}
+                {show('customer_name') && <td style={{ padding:'6px 8px' }}><input value={f.customer} onChange={e=>setFilter('customer',e.target.value)} placeholder="Search…" aria-label="Filter by customer" style={fStyle} /></td>}
+                {show('inquiry_type') && <td style={{ padding:'6px 8px' }}><select value={f.type} onChange={e=>setFilter('type',e.target.value)} aria-label="Filter by type" style={fStyle}><option value="">All</option><option value="lead">Lead</option><option value="repeat">Repeat</option><option value="online_order">Order</option></select></td>}
                 {show('quantity') && <td />}
-                {show('urgency') && <td style={{ padding:'6px 8px' }}><select value={f.urgency} onChange={e=>setFilter('urgency',e.target.value)} style={fStyle}><option value="">All</option><option value="critical">Critical</option><option value="high">High</option><option value="normal">Normal</option><option value="low">Low</option></select></td>}
-                {show('status') && <td style={{ padding:'6px 8px' }}><select value={f.status} onChange={e=>setFilter('status',e.target.value)} style={fStyle}><option value="">All</option><option value="pending">Pending</option><option value="quoted">Quoted</option><option value="not_in_stock">Not In Stock</option></select></td>}
+                {show('urgency') && <td style={{ padding:'6px 8px' }}><select value={f.urgency} onChange={e=>setFilter('urgency',e.target.value)} aria-label="Filter by urgency" style={fStyle}><option value="">All</option><option value="critical">Critical</option><option value="high">High</option><option value="normal">Normal</option><option value="low">Low</option></select></td>}
+                {show('status') && <td style={{ padding:'6px 8px' }}><select value={f.status} onChange={e=>setFilter('status',e.target.value)} aria-label="Filter by status" style={fStyle}><option value="">All</option><option value="pending">Pending</option><option value="quoted">Quoted</option><option value="not_in_stock">Not In Stock</option></select></td>}
                 {show('price') && <td />}{show('assigned_at') && <td />}
               </tr>
             </thead>
@@ -557,7 +560,7 @@ export function PurchaserParts() {
               ) : rows.map(p => {
                 const st = STATUS_META[statusOf(p)]; const urg = URGENCY[p.urgency||'normal']; const ti = T[p.inquiry_type]
                 return (
-                  <tr key={p.assignment_id} onClick={()=>setOpenPartId(p.assignment_id)} style={{ cursor:'pointer', borderBottom:'1px solid #f1f5f9', background:p.is_delayed?'#fff8f8':'#fff' }}
+                  <tr key={p.assignment_id} onClick={()=>setOpenPartId(p.assignment_id)} tabIndex={0} onKeyDown={onActivate(()=>setOpenPartId(p.assignment_id))} style={{ cursor:'pointer', borderBottom:'1px solid #f1f5f9', background:p.is_delayed?'#fff8f8':'#fff' }}
                     onMouseEnter={e=>e.currentTarget.style.background='#f8fafc'} onMouseLeave={e=>e.currentTarget.style.background=p.is_delayed?'#fff8f8':'#fff'}>
                     {show('part_number') && <td style={{ padding:'10px 12px', fontFamily:'monospace', fontWeight:700, color:'#0f172a' }}>{p.part_number}{p.is_delayed && <span style={{ color:'#dc2626', fontSize:11, marginLeft:6 }}>⚠️{p.working_days_pending}d</span>}</td>}
                     {show('customer_name') && <td style={{ padding:'10px 12px', color:'#0f172a' }}>{p.customer_name}{p.customer_company?<span style={{ color:'#94a3b8' }}> · {p.customer_company}</span>:''}</td>}
@@ -631,9 +634,9 @@ export default function PurchaserDashboard() {
           {PRESETS.map(r => <button key={r.v} onClick={()=>setPreset(r.v)} style={{ padding:'5px 12px', borderRadius:7, border:'none', background:preset===r.v?BRAND:'transparent', color:preset===r.v?'#0d0d0d':'#64748b', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', transition:'all 0.15s' }}>{r.label}</button>)}
         </div>
         {preset==='custom' && <>
-          <input type="date" value={customFrom} onChange={e=>setCustomFrom(e.target.value)} style={{ padding:'7px 10px', border:'1px solid #e2e8f0', borderRadius:8, fontSize:12, outline:'none' }} />
-          <span style={{ color:'#94a3b8' }}>→</span>
-          <input type="date" value={customTo} onChange={e=>setCustomTo(e.target.value)} style={{ padding:'7px 10px', border:'1px solid #e2e8f0', borderRadius:8, fontSize:12, outline:'none' }} />
+          <input type="date" aria-label="From date" value={customFrom} onChange={e=>setCustomFrom(e.target.value)} style={{ padding:'7px 10px', border:'1px solid #e2e8f0', borderRadius:8, fontSize:12 }} />
+          <span style={{ color:'#94a3b8' }} aria-hidden="true">→</span>
+          <input type="date" aria-label="To date" value={customTo} onChange={e=>setCustomTo(e.target.value)} style={{ padding:'7px 10px', border:'1px solid #e2e8f0', borderRadius:8, fontSize:12 }} />
         </>}
         {['lead','repeat','online_order'].includes(activeTab) && (
           <div style={{ display:'flex', gap:6, marginLeft:'auto' }}>
@@ -708,7 +711,7 @@ export default function PurchaserDashboard() {
                 : (
                   <div>
                     {[...( stats?.followups?.overdue||[]).map(f=>({...f,urgency:'overdue'})), ...(stats?.followups?.today||[]).map(f=>({...f,urgency:'today'})), ...(stats?.followups?.upcoming||[]).map(f=>({...f,urgency:'upcoming'}))].slice(0,6).map(fu => (
-                      <div key={fu.id} onClick={() => fu.assignment_id && setOpenPartId(fu.assignment_id)} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0', borderBottom:'1px solid #f8fafc', cursor: fu.assignment_id ? 'pointer' : 'default' }}>
+                      <div key={fu.id} onClick={() => fu.assignment_id && setOpenPartId(fu.assignment_id)} role={fu.assignment_id ? 'button' : undefined} tabIndex={fu.assignment_id ? 0 : undefined} onKeyDown={fu.assignment_id ? onActivate(() => setOpenPartId(fu.assignment_id)) : undefined} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0', borderBottom:'1px solid #f8fafc', cursor: fu.assignment_id ? 'pointer' : 'default' }}>
                         <div style={{ width:6, height:6, borderRadius:'50%', flexShrink:0, background:fu.urgency==='overdue'?'#ef4444':fu.urgency==='today'?'#f59e0b':BRAND }} />
                         <div style={{ flex:1 }}>
                           <div style={{ fontSize:12, fontWeight:600, color:'#0f172a' }}>{fu.part_number}</div>
@@ -745,7 +748,7 @@ export default function PurchaserDashboard() {
               <div>
                 <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>Delayed — quote these first</div>
                 {stats.needsAttention.map(p => (
-                  <div key={p.assignment_id} onClick={()=>setOpenPartId(p.assignment_id)} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', borderRadius:10, cursor:'pointer', border:'1px solid #fee2e2', background:'#fff8f8', marginBottom:6 }}
+                  <div key={p.assignment_id} onClick={()=>setOpenPartId(p.assignment_id)} role="button" tabIndex={0} onKeyDown={onActivate(()=>setOpenPartId(p.assignment_id))} aria-label={`Quote ${p.part_number}`} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', borderRadius:10, cursor:'pointer', border:'1px solid #fee2e2', background:'#fff8f8', marginBottom:6 }}
                     onMouseEnter={e=>e.currentTarget.style.background='#fef2f2'} onMouseLeave={e=>e.currentTarget.style.background='#fff8f8'}>
                     <span style={{ fontSize:11, fontWeight:700, color:'#dc2626', background:'#fef2f2', borderRadius:8, padding:'3px 8px', flexShrink:0 }}>⚠️ {p.days}d</span>
                     <span style={{ fontFamily:'monospace', fontWeight:700, fontSize:13, color:'#0f172a' }}>{p.part_number}</span>

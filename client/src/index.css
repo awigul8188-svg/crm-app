@@ -42,6 +42,15 @@
     box-shadow: 0 0 0 4px rgba(0,212,200,0.14);
   }
 
+  /* Keyboard focus ring for inline-styled native controls that don't use .input
+     (scoped with :not(.input) so the rest of the app keeps its own focus styles). */
+  input:not(.input):focus-visible,
+  select:not(.input):focus-visible,
+  textarea:not(.input):focus-visible {
+    outline: 2px solid #00D4C8;
+    outline-offset: 1px;
+  }
+
   /* Search wrapper — puts a Lucide icon inside an .input */
   .search-wrap { @apply relative; }
   .search-wrap .search-icon { @apply absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-ink-300; }
