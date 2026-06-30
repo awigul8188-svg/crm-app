@@ -336,14 +336,15 @@ router.post('/quote', (req, res) => {
 
     db.transaction(() => {
       db.prepare('DELETE FROM purchase_quotes WHERE assignment_id=?').run(assignment_id);
-      const ins = db.prepare('INSERT INTO purchase_quotes (assignment_id,requirement_id,purchaser_id,price,condition,lead_time,supplier_name,notes,quantity) VALUES (?,?,?,?,?,?,?,?,?)');
+      const ins = db.prepare('INSERT INTO purchase_quotes (assignment_id,requirement_id,purchaser_id,price,condition,lead_time,supplier_name,notes,quantity,offered_part) VALUES (?,?,?,?,?,?,?,?,?,?)');
       // Credit the quote to the ASSIGNED purchaser, not the editor. A manager editing a
       // purchaser's quote must not re-attribute it to themselves (skews per-purchaser stats).
       // Falls back to the editor only when the assignment has no purchaser (manager-quoted).
       const quoteOwner = a.purchaser_id || req.user.id;
       clean.forEach(e => ins.run(assignment_id, a.requirement_id, quoteOwner,
         e.price ?? null, e.condition ?? null, e.lead_time ?? null, e.supplier_name ?? null, e.notes ?? null,
-        e.quantity != null && e.quantity !== '' ? Number(e.quantity) : null));
+        e.quantity != null && e.quantity !== '' ? Number(e.quantity) : null,
+        (e.offered_part && String(e.offered_part).trim()) ? String(e.offered_part).trim() : null));
       db.prepare("UPDATE purchase_assignments SET status=? WHERE id=?").run(clean.length ? 'quoted' : 'pending', assignment_id);
     })();
 

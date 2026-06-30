@@ -78,8 +78,8 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
       .then(({ ok, status, d }) => {
         if (!ok || d.error) { setLoadErr(status === 403 ? 'This part is no longer assigned to you.' : (d.error || 'Could not load this part.')); return }
         setPart(d)
-        const qs = (d.quotes || []).map(q => ({ supplier_name:q.supplier_name||'', quantity:q.quantity ?? '', price:q.price ?? '', condition:q.condition||'', lead_time:q.lead_time||'' }))
-        setEntries(qs.length ? qs : [{ supplier_name:'', quantity:d.quantity ?? '', price:'', condition:'', lead_time:'' }])
+        const qs = (d.quotes || []).map(q => ({ supplier_name:q.supplier_name||'', quantity:q.quantity ?? '', price:q.price ?? '', condition:q.condition||'', lead_time:q.lead_time||'', offered_part:q.offered_part||'' }))
+        setEntries(qs.length ? qs : [{ supplier_name:'', quantity:d.quantity ?? '', price:'', condition:'', lead_time:'', offered_part:'' }])
         setPurchaserNotes(d.purchaser_notes||''); setDirty(false)
       })
       .catch(() => setLoadErr('Could not load this part.'))
@@ -104,7 +104,7 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
 
   const numV = (v) => { const n = parseFloat(String(v ?? '').replace(/[$,]/g, '')); return isNaN(n) ? 0 : n }
   const updateEntry = (i, k, v) => { setEntries(es => es.map((e, idx) => idx === i ? { ...e, [k]: v } : e)); setDirty(true) }
-  const addEntry = () => { setEntries(es => [...es, { supplier_name:'', quantity:'', price:'', condition:'', lead_time:'' }]); setDirty(true) }
+  const addEntry = () => { setEntries(es => [...es, { supplier_name:'', quantity:'', price:'', condition:'', lead_time:'', offered_part:'' }]); setDirty(true) }
   const removeEntry = (i) => { setEntries(es => es.filter((_, idx) => idx !== i)); setDirty(true) }
 
   const handleQuoteSubmit = async () => {
@@ -339,6 +339,12 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
                   <div style={{ marginBottom:8 }}>
                     <div style={rl}>Supplier</div>
                     <SearchableSelect items={supplierItemsFor(e.supplier_name)} value={e.supplier_name} onChange={(v)=>updateEntry(i,'supplier_name',v||'')} placeholder="Search suppliers…" emptyText="No suppliers — add one above" />
+                  </div>
+                  <div style={{ marginBottom:8 }}>
+                    <div style={rl}>Offered part #  <span style={{ textTransform:'none', fontWeight:400, color:'#94a3b8', letterSpacing:0 }}>— only if sourcing a substitute</span></div>
+                    <input style={ri} aria-label={`Supplier line ${i+1} offered / substitute part number`} value={e.offered_part||''} onChange={ev=>updateEntry(i,'offered_part',ev.target.value)} placeholder={part.part_number ? `Leave blank if it's ${part.part_number}` : 'Alternative part number'} />
+                    {!!(e.offered_part && e.offered_part.trim() && e.offered_part.trim().toLowerCase() !== (part.part_number||'').trim().toLowerCase()) &&
+                      <div style={{ fontSize:11, fontWeight:700, color:'#b45309', marginTop:4 }}>⇄ Substitute for {part.part_number} — the AE will be notified to confirm with the customer</div>}
                   </div>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
                     <div><div style={rl}>Qty *</div><input style={ri} inputMode="decimal" aria-label={`Supplier line ${i+1} quantity`} value={e.quantity} onChange={ev=>updateEntry(i,'quantity',ev.target.value)} placeholder={reqQty?`of ${reqQty}`:'qty'} /></div>

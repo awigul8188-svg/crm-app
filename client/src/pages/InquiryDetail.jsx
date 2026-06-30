@@ -151,6 +151,8 @@ export default function InquiryDetail({ id }) {
                                   {q.supplier_name ? <span className="text-ink-500"> — {q.supplier_name}</span> : ''}
                                   {q.condition ? <span className="text-ink-400"> ({q.condition}{q.lead_time ? `, ${q.lead_time}` : ''})</span> : q.lead_time ? <span className="text-ink-400"> ({q.lead_time})</span> : ''}
                                   {q.purchaser_name ? <span className="text-violet-600 font-semibold"> · {q.purchaser_name}</span> : ''}
+                                  {q.offered_part && q.offered_part.trim().toLowerCase() !== (r.part_number||'').trim().toLowerCase() &&
+                                    <div className="mt-0.5 inline-block rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700 border border-amber-200">⇄ Substitute: <span className="font-mono">{q.offered_part}</span> — confirm with customer</div>}
                                 </div>
                               ))}
                               <div className="text-[11px] text-ink-400">
