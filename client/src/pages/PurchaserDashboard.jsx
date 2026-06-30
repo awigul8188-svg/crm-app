@@ -78,8 +78,8 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
       .then(({ ok, status, d }) => {
         if (!ok || d.error) { setLoadErr(status === 403 ? 'This part is no longer assigned to you.' : (d.error || 'Could not load this part.')); return }
         setPart(d)
-        const qs = (d.quotes || []).map(q => ({ supplier_name:q.supplier_name||'', quantity:q.quantity ?? '', price:q.price ?? '', condition:q.condition||'', lead_time:q.lead_time||'', offered_part:q.offered_part||'' }))
-        setEntries(qs.length ? qs : [{ supplier_name:'', quantity:d.quantity ?? '', price:'', condition:'', lead_time:'', offered_part:'' }])
+        const qs = (d.quotes || []).map(q => ({ supplier_name:q.supplier_name||'', quantity:q.quantity ?? '', price:q.price ?? '', condition:q.condition||'', lead_time:q.lead_time||'', offered_part:q.offered_part||'', notes:q.notes||'' }))
+        setEntries(qs.length ? qs : [{ supplier_name:'', quantity:d.quantity ?? '', price:'', condition:'', lead_time:'', offered_part:'', notes:'' }])
         setPurchaserNotes(d.purchaser_notes||''); setDirty(false)
       })
       .catch(() => setLoadErr('Could not load this part.'))
@@ -104,7 +104,7 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
 
   const numV = (v) => { const n = parseFloat(String(v ?? '').replace(/[$,]/g, '')); return isNaN(n) ? 0 : n }
   const updateEntry = (i, k, v) => { setEntries(es => es.map((e, idx) => idx === i ? { ...e, [k]: v } : e)); setDirty(true) }
-  const addEntry = () => { setEntries(es => [...es, { supplier_name:'', quantity:'', price:'', condition:'', lead_time:'', offered_part:'' }]); setDirty(true) }
+  const addEntry = () => { setEntries(es => [...es, { supplier_name:'', quantity:'', price:'', condition:'', lead_time:'', offered_part:'', notes:'' }]); setDirty(true) }
   const removeEntry = (i) => { setEntries(es => es.filter((_, idx) => idx !== i)); setDirty(true) }
 
   const handleQuoteSubmit = async () => {
@@ -354,6 +354,10 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginTop:8, alignItems:'end' }}>
                     <div><div style={rl}>Lead time</div><input style={ri} aria-label={`Supplier line ${i+1} lead time`} value={e.lead_time} onChange={ev=>updateEntry(i,'lead_time',ev.target.value)} placeholder="e.g. 3-5 days" /></div>
                     <div style={{ fontSize:11, color:'#64748b', textAlign:'right' }}>Line cost: <b style={{ color:'#0f172a' }}>{money(numV(e.price)*(Number(e.quantity)||0))}</b></div>
+                  </div>
+                  <div style={{ marginTop:8 }}>
+                    <div style={rl}>💬 Comment to rep <span style={{ textTransform:'none', fontWeight:400, color:'#94a3b8', letterSpacing:0 }}>— sent to the AE with this quote</span></div>
+                    <textarea style={{ ...ri, resize:'vertical' }} rows={2} aria-label={`Supplier line ${i+1} comment to rep`} value={e.notes||''} onChange={ev=>updateEntry(i,'notes',ev.target.value)} placeholder="e.g. Last unit at this price · ships from EU · MOQ 10" />
                   </div>
                 </div>
               ))}

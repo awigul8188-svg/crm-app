@@ -199,7 +199,7 @@ router.get('/:id', (req, res) => {
     const reqRows = db.prepare('SELECT * FROM requirements WHERE inquiry_id = ? ORDER BY id').all(req.params.id);
     const requirements = reqRows.map(r => {
       const a = db.prepare('SELECT id, status, not_in_stock, purchaser_id FROM purchase_assignments WHERE requirement_id = ?').get(r.id);
-      const quotes = a ? db.prepare(`SELECT pq.price, pq.condition, pq.lead_time, pq.supplier_name, pq.quantity, pq.offered_part, pq.updated_at, pu.name AS purchaser_name
+      const quotes = a ? db.prepare(`SELECT pq.price, pq.condition, pq.lead_time, pq.supplier_name, pq.quantity, pq.offered_part, pq.notes, pq.updated_at, pu.name AS purchaser_name
         FROM purchase_quotes pq LEFT JOIN users pu ON pq.purchaser_id = pu.id WHERE pq.assignment_id = ? ORDER BY pq.id`).all(a.id) : [];
       const quoted_qty = quotes.reduce((s, q) => s + (Number(q.quantity) || 0), 0);
       const quote_total_cost = quotes.reduce((s, q) => s + numVal(q.price) * (Number(q.quantity) || 0), 0);
