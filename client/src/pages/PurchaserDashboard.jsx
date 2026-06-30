@@ -214,6 +214,28 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
   // In full-page mode the whole surface is the card — backdrop clicks must NOT close it.
   const openFullPage = () => window.open(`${window.location.origin}/?part=${assignmentId}`, '_blank')
 
+  // When there's room (full-page or popped-out tab) My Notes lives in a persistent side panel
+  // instead of a tab, so the purchaser can jot research while quoting. Narrow modal keeps the tab.
+  const wide = page || fullPage
+  const notesEditor = (
+    <>
+      <STextarea value={purchaserNotes} onChange={e=>setPurchaserNotes(e.target.value)} ariaLabel="My notes" placeholder="Add your notes, updates, or research on this part…" />
+      <button onClick={handleSaveNotes} disabled={savingNotes} style={{ marginTop:8, padding:'8px 18px', borderRadius:10, border:'none', background:BRAND, color:'#0d0d0d', fontWeight:700, fontSize:12, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>
+        {savingNotes?'Saving…':'Save Notes'}
+      </button>
+    </>
+  )
+  const notesPanel = (
+    <div style={{ width:340, flexShrink:0, alignSelf:'flex-start', position:'sticky', top:16, background:'#fff', borderRadius:16, border:'1px solid #f1f5f9', boxShadow:'0 1px 3px rgba(0,0,0,0.04)', padding:'18px 20px', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:10 }}>
+        <span aria-hidden="true" style={{ fontSize:14 }}>📝</span>
+        <span style={{ fontWeight:800, fontSize:14, color:'#0f172a' }}>My Notes</span>
+      </div>
+      {notesEditor}
+      <div style={{ fontSize:11, color:'#94a3b8', marginTop:10, lineHeight:1.5 }}>Private to you — your research and updates on this part.</div>
+    </div>
+  )
+
   const card = (
       <div onClick={e=>e.stopPropagation()} style={cardStyle}>
         <style>{`@keyframes modalIn{from{opacity:0;transform:scale(0.96) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
@@ -260,7 +282,7 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
 
         {/* Tabs */}
         <div style={{ display:'flex', gap:1, borderBottom:'1px solid #f1f5f9', flexShrink:0 }}>
-          {[['quote','💰 Quote'],['notes','📝 My Notes'],['comments',`💬 AE Chat (${part.comments?.length||0})`],['followups',`📅 Follow-ups (${part.followups?.filter(f=>!f.completed).length||0})`]].map(([k,l]) => (
+          {[['quote','💰 Quote'],...(wide?[]:[['notes','📝 My Notes']]),['comments',`💬 AE Chat (${part.comments?.length||0})`],['followups',`📅 Follow-ups (${part.followups?.filter(f=>!f.completed).length||0})`]].map(([k,l]) => (
             <button key={k} onClick={()=>setTab(k)} style={{ flex:1, padding:'10px 0', border:'none', background:'transparent', color:tab===k?'#0f172a':'#64748b', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif', borderBottom:`2px solid ${tab===k?BRAND:'transparent'}`, transition:'all 0.15s' }}>{l}</button>
           ))}
         </div>
@@ -339,16 +361,11 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
             )
           })()}
 
-          {/* My Notes tab */}
-          {tab==='notes' && (
+          {/* My Notes tab (only in narrow modal — wide layouts show the persistent side panel) */}
+          {tab==='notes' && !wide && (
             <div>
-              <div style={{ marginBottom:12 }}>
-                <div style={{ fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6 }}>My Notes / Update</div>
-                <STextarea value={purchaserNotes} onChange={e=>setPurchaserNotes(e.target.value)} ariaLabel="My notes" placeholder="Add your notes, updates, or research on this part…" />
-                <button onClick={handleSaveNotes} disabled={savingNotes} style={{ marginTop:8, padding:'8px 18px', borderRadius:10, border:'none', background:BRAND, color:'#0d0d0d', fontWeight:700, fontSize:12, cursor:'pointer', fontFamily:'"Plus Jakarta Sans",sans-serif' }}>
-                  {savingNotes?'Saving...':'Save Notes'}
-                </button>
-              </div>
+              <div style={{ fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6 }}>My Notes / Update</div>
+              {notesEditor}
             </div>
           )}
 
@@ -421,13 +438,22 @@ export function PartDetailModal({ assignmentId, onClose, onSaved, fullPage = fal
   ) : null
 
   if (page) return (
-    <div className="page-wrap" style={{ maxWidth:900 }}>
+    <div className="page-wrap" style={{ maxWidth:1240 }}>
       <button onClick={onClose} style={{ display:'flex', alignItems:'center', gap:4, fontSize:13, color:'#64748b', background:'none', border:'none', cursor:'pointer', fontWeight:600, marginBottom:14, fontFamily:'"Plus Jakarta Sans",sans-serif' }}>← Back</button>
-      {card}{flashEl}
+      <div style={{ display:'flex', gap:20, alignItems:'flex-start' }}>
+        <div style={{ flex:1, minWidth:0 }}>{card}</div>
+        {notesPanel}
+      </div>
+      {flashEl}
     </div>
   )
   return createPortal(
-    <div onClick={fullPage ? undefined : attemptClose} style={backdropStyle}>{card}{flashEl}</div>,
+    <div onClick={fullPage ? undefined : attemptClose} style={backdropStyle}>
+      {fullPage
+        ? <div onClick={e=>e.stopPropagation()} style={{ display:'flex', gap:18, alignItems:'flex-start', width:'100%', maxWidth:1200, margin:'auto', padding:'24px 20px' }}><div style={{ flex:1, minWidth:0 }}>{card}</div>{notesPanel}</div>
+        : card}
+      {flashEl}
+    </div>,
     document.body
   )
 }
